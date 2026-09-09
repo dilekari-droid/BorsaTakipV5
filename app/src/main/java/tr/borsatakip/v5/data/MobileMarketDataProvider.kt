@@ -16,28 +16,6 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 
-/**
- * Mobil uygulamanın ana BIST veri sağlayıcısı.
- *
- * Bu sınıf Yahoo Finance veya masaüstü DLL kullanmaz. Veriyi kullanıcının Ayarlar ekranında
- * tanımladığı HTTPS backend üzerinden alır. Backend; iDeal, Matriks, ForInvest veya başka bir
- * lisanslı veri kaynağına bağlanabilir. Android uygulama sadece bu standart REST sözleşmesini bilir.
- *
- * Beklenen uç noktalar:
- * GET /v1/bist/symbols
- *   { "items": ["AKBNK", "THYAO", ...] }
- *
- * GET /v1/bist/history/{symbol}?range=1y&interval=1d
- *   {
- *     "symbol":"AKBNK",
- *     "name":"Akbank T.A.Ş.",
- *     "source":"iDeal",
- *     "dataTimestamp": 1788930000000,
- *     "candles":[
- *       {"timestamp":1788800000000,"open":10.0,"high":10.3,"low":9.9,"close":10.2,"volume":1234567}
- *     ]
- *   }
- */
 class MobileMarketDataProvider(context: Context) {
     private val settings = SettingsStore(context)
 
@@ -95,11 +73,12 @@ class MobileMarketDataProvider(context: Context) {
 
         if (candles.size < 220) return null
         val source = json.optString("source").ifBlank { "Mobil veri servisi" }
-        val dataTimestamp = json.optLong("dataTimestamp", candles.last().timestamp)
+        val sorted = candles.sortedBy { it.timestamp }
+        val dataTimestamp = json.optLong("dataTimestamp", sorted.last().timestamp)
         return Stock(
             symbol = json.optString("symbol").ifBlank { symbol },
-            name = json.optString("name").takeIf { it.isNotBlank() },
-            candles = candles.sortedBy { it.timestamp },
+            companyName = json.optString("name").takeIf { it.isNotBlank() },
+            candles = sorted,
             source = source,
             dataTimestamp = dataTimestamp
         )
@@ -107,14 +86,13 @@ class MobileMarketDataProvider(context: Context) {
 
     private fun getJson(path: String): JSONObject? {
         val base = settings.baseUrl.trim().removeSuffix("/")
+        require(base.startsWith("https://")) { "Mobil veri servisi HTTPS olmalıdır." }
         val con = URL(base + path).openConnection() as HttpURLConnection
         con.requestMethod = "GET"
         con.connectTimeout = 8000
         con.readTimeout = 12000
         con.setRequestProperty("Accept", "application/json")
-        if (settings.apiKey.isNotBlank()) {
-            con.setRequestProperty("Authorization", "Bearer ${settings.apiKey}")
-        }
+        if (settings.apiKey.isNotBlank()) con.setRequestProperty("Authorization", "Bearer ${settings.apiKey}")
         return try {
             if (con.responseCode !in 200..299) return null
             JSONObject(con.inputStream.bufferedReader().use { it.readText() })
