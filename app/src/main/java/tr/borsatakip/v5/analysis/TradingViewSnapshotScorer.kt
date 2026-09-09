@@ -8,6 +8,7 @@ import tr.borsatakip.v5.model.TechnicalSnapshot
  * OHLC geçmişi, KAP, VWAP, destek/direnç veya alış-satış hacmi uydurulmaz.
  */
 object TradingViewSnapshotScorer {
+    private const val MAX_SNAPSHOT_AGE_MS = 15 * 60_000L
 
     data class Snapshot(
         val symbol: String,
@@ -31,6 +32,8 @@ object TradingViewSnapshotScorer {
 
     fun score(x: Snapshot): Opportunity? {
         if (!x.price.isFinite() || x.price <= 0.0 || !x.changePct.isFinite()) return null
+        val ageMs = if (x.receivedAt > 0L) (System.currentTimeMillis() - x.receivedAt).coerceAtLeast(0L) else Long.MAX_VALUE
+        if (ageMs > MAX_SNAPSHOT_AGE_MS) return null
 
         var longScore = 0
         var shortScore = 0
@@ -130,13 +133,21 @@ object TradingViewSnapshotScorer {
             else -> "Düşük"
         }
 
-        // Mevcut ağırlıklar değiştirilmedi. Backtest yapılmadan katsayılar optimize edilmiş kabul edilmez.
+        // Katsayılar backtest yapılmadan optimize edilmiş kabul edilmez.
         val technicalContribution = technicalScore * 0.55
         val riskSafety = 100 - risk
         val riskContribution = riskSafety * 0.25
         val confidenceContribution = confidence * 0.20
         val finalSignalRaw = technicalContribution + riskContribution + confidenceContribution
-        val finalSignal = finalSignalRaw.toInt().coerceIn(0, 100)
+        val confidenceCap = when {
+            confidence >= 90 -> 100
+            confidence >= 75 -> 95
+            confidence >= 60 -> 90
+            confidence >= 45 -> 80
+            else -> 70
+        }
+        val uncappedFinalSignal = finalSignalRaw.toInt().coerceIn(0, 100)
+        val finalSignal = minOf(uncappedFinalSignal, confidenceCap)
 
         val liquidity = when {
             relVol == null -> "Veri yok"
@@ -176,14 +187,16 @@ object TradingViewSnapshotScorer {
 
         val breakdown = buildList {
             addAll(chosenParts)
-            add("KAP: +0 (veri yok)")
-            add("VWAP: +0 (Scanner snapshot alanı değil)")
-            add("Destek/Direnç: veri yok (tarihsel OHLCV gerekli)")
+            add("KAP: +0 (veri yok; nötr kabul edilmedi, veri güveni düşürüldü)")
+            add("VWAP: +0 (Scanner snapshot alanı değil; veri güveni düşürüldü)")
+            add("Destek/Direnç: veri yok (tarihsel OHLCV gerekli; veri güveni düşürüldü)")
             add("Snapshot Teknik Puanı: $technicalScore/100")
             add("Risk: $risk/100 • Risk güvenliği: $riskSafety/100")
             add("Veri Güveni: $confidence/100 ($confidenceLabel)")
             add("Nihai formül: Teknik %55 + Risk güvenliği %25 + Veri güveni %20")
-            add("Nihai katkı: Teknik ${"%.2f".format(technicalContribution)} + Risk ${"%.2f".format(riskContribution)} + Veri ${"%.2f".format(confidenceContribution)} = ${"%.2f".format(finalSignalRaw)} → $finalSignal")
+            add("Ham nihai katkı: Teknik ${"%.2f".format(technicalContribution)} + Risk ${"%.2f".format(riskContribution)} + Veri ${"%.2f".format(confidenceContribution)} = ${"%.2f".format(finalSignalRaw)}")
+            add("Veri güveni tavanı: $confidenceCap/100 • Ham ${uncappedFinalSignal}/100 → Nihai $finalSignal/100")
+            add("Veri yaşı: ${ageMs / 1000L} sn • 15 dk üzeri snapshot için sinyal üretilmez")
             add("Nihai Sinyal: $finalSignal/100 • $direction")
             add("Not: Bu katsayılar backtest ile optimize edilmiş kabul edilmemelidir.")
         }
