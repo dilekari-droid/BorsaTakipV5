@@ -1,18 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="bg">#061A2A</color>
-    <color name="surface">#0A2A40</color>
-    <color name="surface_2">#0D3550</color>
-    <color name="stroke">#15557B</color>
-    <color name="text_primary">#F5F8FC</color>
-    <color name="text_secondary">#A8C0D4</color>
-    <color name="blue">#14A8FF</color>
-    <color name="blue_dark">#0874E8</color>
-    <color name="green">#12C56A</color>
-    <color name="yellow">#F4C842</color>
-    <color name="orange">#FF7A30</color>
-    <color name="red">#FF3E5E</color>
-    <color name="purple">#7A42F4</color>
+    <color name="bg">#01192D</color>
+    <color name="surface">#061B2D</color>
+    <color name="surface_2">#0B273B</color>
+    <color name="stroke">#174662</color>
+    <color name="bottom_nav">#02121F</color>
+    <color name="text_primary">#F4F7FB</color>
+    <color name="text_secondary">#A7B5C8</color>
+    <color name="text_muted">#8294AA</color>
+    <color name="blue">#18A5FF</color>
+    <color name="blue_dark">#087BE8</color>
+    <color name="green">#10D977</color>
+    <color name="yellow">#FFC53D</color>
+    <color name="orange">#FF8A1F</color>
+    <color name="red">#FF4055</color>
+    <color name="purple">#7452FF</color>
     <color name="white">#FFFFFF</color>
     <color name="transparent">#00000000</color>
 </resources>
