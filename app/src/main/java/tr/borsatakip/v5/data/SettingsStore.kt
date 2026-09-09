@@ -131,7 +131,8 @@ class SettingsStore(c: Context) {
     }.getOrNull()
 
     companion object {
-        private const val KEY_ALIAS = "borsa_takip_secure_store"
+        // Preserve the alias used by previous versions so existing encrypted API keys remain readable.
+        private const val KEY_ALIAS = "borsa_takip_api_key"
         private const val IV_SIZE = 12
     }
 }
