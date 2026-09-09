@@ -11,14 +11,41 @@ android {
         applicationId = "tr.borsatakip.v5"
         minSdk = 26
         targetSdk = 35
-        versionCode = 51
-        versionName = "5.1.0"
+        versionCode = 52
+        versionName = "5.1.1"
+    }
+
+    val releaseStorePath = System.getenv("BORSA_KEYSTORE_PATH")
+    val releaseStorePassword = System.getenv("BORSA_STORE_PASSWORD")
+    val releaseKeyAlias = System.getenv("BORSA_KEY_ALIAS")
+    val releaseKeyPassword = System.getenv("BORSA_KEY_PASSWORD")
+    val hasReleaseSigning = listOf(
+        releaseStorePath,
+        releaseStorePassword,
+        releaseKeyAlias,
+        releaseKeyPassword
+    ).all { !it.isNullOrBlank() }
+
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("releaseSecure") {
+                storeFile = file(releaseStorePath!!)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+                enableV1Signing = true
+                enableV2Signing = true
+                enableV3Signing = true
+                enableV4Signing = true
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            if (hasReleaseSigning) signingConfig = signingConfigs.getByName("releaseSecure")
         }
     }
 
