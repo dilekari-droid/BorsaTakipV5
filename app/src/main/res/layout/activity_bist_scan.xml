@@ -1,10 +1,38 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:background="@color/bg">
-<ScrollView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"><LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="18dp">
-<TextView style="@style/Title" android:text="BIST Tarama"/><TextView android:id="@+id/txtSource" style="@style/Sub" android:text="V5.1.5 TEST MODU"/>
-<LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:layout_marginTop="16dp" android:background="@drawable/bg_card" android:padding="14dp"><TextView android:id="@+id/txtProgress" android:layout_width="wrap_content" android:layout_height="wrap_content" android:textColor="@color/text_primary" android:textSize="22sp" android:textStyle="bold" android:text="0 / 10 • %0"/><ProgressBar android:id="@+id/progress" style="?android:attr/progressBarStyleHorizontal" android:layout_width="match_parent" android:layout_height="10dp" android:layout_marginTop="10dp" android:max="100"/></LinearLayout>
-<TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="14dp" android:textColor="@color/text_primary" android:textStyle="bold" android:text="Test Tarama Motoru"/>
-<Button android:id="@+id/btnStartScan" android:layout_width="match_parent" android:layout_height="58dp" android:layout_marginTop="14dp" android:background="@drawable/bg_card_blue" android:textColor="@color/white" android:textStyle="bold" android:text="TEST TARAMASINI BAŞLAT"/>
-<TextView android:id="@+id/txtStatus" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:background="@drawable/bg_card" android:padding="12dp" android:textColor="@color/text_secondary" android:text="Hazır"/>
-<TextView android:id="@+id/txtDebugState" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:background="@drawable/bg_card" android:padding="12dp" android:textColor="@color/text_secondary" android:text="Motor: HAZIR\nProvider: TEST\nTarama: 0/10\nSon işlenen: -\nHata: 0"/>
-</LinearLayout></ScrollView><include layout="@layout/include_bottom_nav"/></LinearLayout>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@drawable/bg_screen_gradient">
+
+    <ScrollView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:fillViewport="true">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="18dp">
+            <TextView style="@style/Title" android:text="BIST Tarama" />
+            <TextView android:id="@+id/txtSource" style="@style/Sub" android:text="Veri kaynağı hazırlanıyor..." android:layout_marginTop="2dp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginTop="16dp"
+                android:background="@drawable/bg_card_blue"
+                android:padding="18dp"
+                android:elevation="5dp">
+                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="⌕  BIST hisseleri taranıyor" android:textColor="@color/white" android:textStyle="bold" android:textSize="16sp" />
+                <TextView android:id="@+id/txtProgress" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:textColor="@color/white" android:textSize="24sp" android:textStyle="bold" android:text="0 / 0 • %0" />
+                <ProgressBar android:id="@+id/progress" style="?android:attr/progressBarStyleHorizontal" android:layout_width="match_parent" android:layout_height="10dp" android:layout_marginTop="10dp" android:max="100" />
+            </LinearLayout>
+
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="Tarama Durumu" android:textColor="@color/blue" android:textStyle="bold" android:textSize="15sp" />
+
+            <TextView android:id="@+id/txtStatus" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:background="@drawable/bg_card" android:padding="14dp" android:textColor="@color/text_primary" android:text="Hazır" />
+
+            <TextView android:id="@+id/txtDebugState" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:background="@drawable/bg_card" android:padding="14dp" android:textColor="@color/text_secondary" android:lineSpacingExtra="4dp" android:text="Motor: HAZIR\nProvider: -\nTarama: 0/0\nSon işlenen: -\nHata: 0" />
+
+            <Button android:id="@+id/btnStartScan" android:layout_width="match_parent" android:layout_height="58dp" android:layout_marginTop="16dp" android:background="@drawable/bg_card_blue" android:textColor="@color/white" android:textStyle="bold" android:text="BIST TARAMASINI BAŞLAT" />
+
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:padding="12dp" android:background="@drawable/bg_card" android:textColor="@color/text_muted" android:text="İlerleme yalnız gerçek işlem durumundan hesaplanır. Veri bulunmayan alanlar tamamlandı olarak gösterilmez." android:textSize="12sp" />
+        </LinearLayout>
+    </ScrollView>
+    <include layout="@layout/include_bottom_nav" />
+</LinearLayout>
