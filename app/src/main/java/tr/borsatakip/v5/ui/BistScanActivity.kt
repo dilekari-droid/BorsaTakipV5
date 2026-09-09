@@ -7,13 +7,18 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.chip.Chip
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import tr.borsatakip.v5.R
-import tr.borsatakip.v5.analysis.OpportunityEngine
 import tr.borsatakip.v5.data.ProviderRouter
 import tr.borsatakip.v5.data.SettingsStore
+import tr.borsatakip.v5.scan.BistScanner
+import tr.borsatakip.v5.scan.ScanState
+import tr.borsatakip.v5.scan.ScanStatus
 
 class BistScanActivity : BaseActivity() {
+    private var scanJob: Job? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_bist_scan)
@@ -37,24 +42,37 @@ class BistScanActivity : BaseActivity() {
                 if (cached == 0) append(" • Sabit 28 hisse listesi kullanılmaz")
             }
         }
+
+        fun render(state: ScanState) {
+            progress.progress = state.progress
+            txt.text = "${state.processed} / ${state.total} • %${state.progress}"
+            status.text = when (state.status) {
+                ScanStatus.IDLE -> "Hazır"
+                ScanStatus.RUNNING -> "Tarama başladı • Başarılı: ${state.successful} • Atlanan: ${state.skipped} • Toplam: ${state.total}"
+                ScanStatus.COMPLETED -> "Tarama tamamlandı • Başarılı: ${state.successful} • Atlanan: ${state.skipped} • Toplam: ${state.total} • Fırsat: ${state.results.size}"
+                ScanStatus.ERROR -> state.errorMessage ?: "Tarama başlatılamadı."
+                ScanStatus.CANCELLED -> "Tarama durduruldu."
+            }
+            btn.text = if (state.status == ScanStatus.RUNNING) "DURDUR" else "TARAMAYI BAŞLAT"
+        }
+
         refreshSourceLabel()
+        render(ScanState())
 
         btn.setOnClickListener {
-            btn.isEnabled = false
-            status.text = "Ana BIST veri sağlayıcısından dinamik sembol evreni alınıyor..."
-            lifecycleScope.launch {
-                try {
-                    var universeTotal = 0
-                    val stocks = ProviderRouter(this@BistScanActivity).scan { done, total ->
-                        universeTotal = total
-                        runOnUiThread {
-                            val pct = if (total == 0) 0 else done * 100 / total
-                            progress.progress = pct
-                            txt.text = "$done / $total • %$pct"
-                            status.text = "BIST evreni: $total sembol • Taranan: $done"
-                        }
-                    }
-                    var ops = stocks.mapNotNull { OpportunityEngine.score(it) }
+            if (scanJob?.isActive == true) {
+                scanJob?.cancel()
+                return@setOnClickListener
+            }
+
+            AppSession.lastOpportunities = emptyList()
+            val scanner = BistScanner(ProviderRouter(this))
+            scanJob = lifecycleScope.launch {
+                val finalState = scanner.scan { state ->
+                    runOnUiThread { render(state) }
+                }
+                if (finalState.status == ScanStatus.COMPLETED) {
+                    var ops = finalState.results
                     if (findViewById<Chip>(R.id.chipTechnical).isChecked) ops = ops.filter { it.score >= 65 }
                     if (findViewById<Chip>(R.id.chipVolume).isChecked) ops = ops.filter { (it.technical.volumeRatio ?: 0.0) >= 1.2 }
                     if (findViewById<Chip>(R.id.chipBreakout).isChecked) ops = ops.filter { x ->
@@ -66,18 +84,16 @@ class BistScanActivity : BaseActivity() {
                     ops = ops.filter { (it.direction == "LONG" && longOn) || (it.direction == "SHORT" && shortOn) }
                         .sortedByDescending { it.score }
                     AppSession.lastOpportunities = ops
-                    val active = settings.lastProviderLabel
-                    val cached = settings.cachedBistSymbols.size
-                    val universe = if (universeTotal > 0) universeTotal else cached
-                    status.text = "BIST evreni: $universe sembol • Yeterli geçmiş verisi alınan: ${stocks.size} • Fırsat sonucu: ${ops.size} • Aktif kaynak: $active"
+                    render(finalState.copy(results = ops))
                     refreshSourceLabel()
                     startActivity(Intent(this@BistScanActivity, OpportunityActivity::class.java))
-                } catch (e: Exception) {
-                    status.text = e.message ?: "Veri sağlayıcıya bağlanılamadı."
-                } finally {
-                    btn.isEnabled = true
                 }
             }
         }
+    }
+
+    override fun onDestroy() {
+        scanJob?.cancel()
+        super.onDestroy()
     }
 }
