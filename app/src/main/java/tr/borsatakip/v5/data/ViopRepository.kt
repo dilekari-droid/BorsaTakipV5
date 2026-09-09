@@ -7,7 +7,6 @@ class ViopRepository(context: Context) {
     private val settings = SettingsStore(context)
     private val local = ViopLocalStore(context)
     private val backend = BackendProvider(context)
-    private val tradingView = TradingViewViopProvider()
 
     fun loadLocal(): List<ViopContract> = local.load()
 
@@ -16,42 +15,29 @@ class ViopRepository(context: Context) {
     fun removeManual(symbol: String) = local.remove(symbol)
 
     /**
-     * Üretim önceliği: HTTPS backend -> yalnız açıkça etkinse deneysel TradingView -> manuel kayıtlar.
-     * Hiçbir katman sahte fiyat üretmez.
+     * V5.1.25 üretim mimarisi: HTTPS backend + manuel kayıtlar.
+     * TradingView VİOP veri kaynağı değildir ve hiçbir katman sahte fiyat üretmez.
      */
     suspend fun refresh(): Pair<List<ViopContract>, String> {
         val localItems = local.load()
-        val hasBackend = settings.baseUrl.startsWith("https://")
+        if (!settings.baseUrl.startsWith("https://")) {
+            return localItems to
+                "Üretim VİOP backend'i yapılandırılmamış. Yalnız manuel kayıtlar gösteriliyor; TradingView veri kaynağı değildir."
+        }
 
-        if (hasBackend) {
-            val remote = backend.loadViop()
-            if (remote.isSuccess && remote.getOrDefault(emptyList()).isNotEmpty()) {
-                val remoteItems = remote.getOrDefault(emptyList())
+        val remote = backend.loadViop()
+        if (remote.isSuccess) {
+            val remoteItems = remote.getOrDefault(emptyList())
+            if (remoteItems.isNotEmpty()) {
                 return merge(localItems, remoteItems) to
                     "Üretim backend VİOP kaynağı: ${remoteItems.size} sözleşme."
             }
-            if (!settings.experimentalProvidersEnabled) {
-                val message = remote.exceptionOrNull()?.message ?: "Backend VİOP verisi yok."
-                return localItems to "$message • Deneysel TradingView fallback kapalı."
-            }
-        } else if (!settings.experimentalProvidersEnabled) {
             return localItems to
-                "Üretim VİOP backend'i yapılandırılmamış. Deneysel TradingView modu kapalı; yalnız manuel kayıtlar gösteriliyor."
+                "Üretim backend VİOP sözleşmesi döndürmedi. Yalnız manuel kayıtlar gösteriliyor."
         }
 
-        val tvResult = tradingView.load()
-        if (tvResult.isSuccess) {
-            val out = tvResult.getOrThrow()
-            if (out.contracts.isNotEmpty()) {
-                return merge(localItems, out.contracts) to
-                    "DENEYSEL TradingView VİOP: ${out.message}"
-            }
-        }
-
-        val tvMessage = tvResult.exceptionOrNull()?.message
-            ?: tvResult.getOrNull()?.message
-            ?: "TradingView VİOP veri alınamadı."
-        return localItems to "$tvMessage • Sahte fiyat üretilmedi."
+        val message = remote.exceptionOrNull()?.message ?: "Backend VİOP verisi alınamadı."
+        return localItems to "$message • TradingView fallback kullanılmadı."
     }
 
     private fun merge(localItems: List<ViopContract>, remoteItems: List<ViopContract>): List<ViopContract> {
