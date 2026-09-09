@@ -41,11 +41,11 @@ jobs:
         run: |
           gradle :app:assembleDebug
           mkdir -p app/build/outputs/final
-          cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/final/BorsaTakipV5.1.14-debug.apk
+          cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/final/BorsaTakipV5.1.15-debug.apk
 
       - name: Verify APK strings
         run: |
-          APK=app/build/outputs/final/BorsaTakipV5.1.14-debug.apk
+          APK=app/build/outputs/final/BorsaTakipV5.1.15-debug.apk
           rm -f /tmp/all.dex
           for dex in $(zipinfo -1 "$APK" | grep -E '^classes([0-9]+)?\.dex$'); do
             unzip -p "$APK" "$dex" >> /tmp/all.dex
@@ -66,7 +66,7 @@ jobs:
           AAPT=$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)
           test -x "$AAPT"
           "$AAPT" dump badging "$APK" | tee /tmp/badging.txt
-          grep -Fq "versionName='5.1.14'" /tmp/badging.txt
+          grep -Fq "versionName='5.1.15'" /tmp/badging.txt
           echo 'APK stale/test string and version verification passed.'
 
       - name: Check release secrets
@@ -99,16 +99,16 @@ jobs:
           BORSA_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           gradle :app:assembleRelease
-          cp app/build/outputs/apk/release/app-release.apk app/build/outputs/final/BorsaTakipV5.1.14-release.apk
+          cp app/build/outputs/apk/release/app-release.apk app/build/outputs/final/BorsaTakipV5.1.15-release.apk
           APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)
           test -x "$APKSIGNER"
-          "$APKSIGNER" verify --verbose --print-certs app/build/outputs/final/BorsaTakipV5.1.14-release.apk | tee /tmp/apksigner.txt
+          "$APKSIGNER" verify --verbose --print-certs app/build/outputs/final/BorsaTakipV5.1.15-release.apk | tee /tmp/apksigner.txt
           grep -q "Verified using v2 scheme (APK Signature Scheme v2): true" /tmp/apksigner.txt
           grep -Eq "Verified using v3 scheme \(APK Signature Scheme v3\): true|Verified using v3.1 scheme \(APK Signature Scheme v3.1\): true" /tmp/apksigner.txt
 
       - name: Upload APK artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: BorsaTakipV5.1.14-apk
+          name: BorsaTakipV5.1.15-apk
           path: app/build/outputs/final/*.apk
           if-no-files-found: error
