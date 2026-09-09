@@ -17,18 +17,18 @@
             android:padding="18dp">
 
             <TextView style="@style/Title" android:text="Ayarlar" />
-            <TextView style="@style/Sub" android:text="BIST ana kaynak: TradingView Scanner • backend isteğe bağlı • Yahoo yedek" />
+            <TextView style="@style/Sub" android:text="Üretim modu: HTTPS backend ana kaynak • TradingView/Yahoo yalnız deneysel modda" />
 
             <TextView
                 style="@style/Sub"
                 android:layout_marginTop="14dp"
-                android:text="İsteğe bağlı BIST/VİOP backend" />
+                android:text="Üretim BIST/VİOP backend" />
 
             <EditText
                 android:id="@+id/baseUrl"
                 android:layout_width="match_parent"
                 android:layout_height="52dp"
-                android:hint="Backend HTTPS adresi (boş bırakılabilir)"
+                android:hint="Gerçek backend HTTPS adresi"
                 android:inputType="textUri"
                 android:textColor="@color/text_primary"
                 android:textColorHint="@color/text_secondary" />
@@ -42,10 +42,18 @@
                 android:textColor="@color/text_primary"
                 android:textColorHint="@color/text_secondary" />
 
+            <Switch
+                android:id="@+id/experimentalProviders"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:layout_marginTop="12dp"
+                android:text="DENEYSEL sağlayıcıları etkinleştir (TradingView/Yahoo)"
+                android:textColor="@color/text_primary" />
+
             <TextView
                 style="@style/Sub"
                 android:layout_marginTop="18dp"
-                android:text="TradingView üyelik testi (isteğe bağlı / deneysel; Scanner için zorunlu değil)" />
+                android:text="TradingView üyelik testi (yalnız deneysel mod)" />
 
             <EditText
                 android:id="@+id/tradingViewUsername"
@@ -70,7 +78,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="52dp"
                 android:background="@drawable/bg_card_blue"
-                android:text="TRADINGVIEW ÜYELİK OTURUMUNU TEST ET"
+                android:text="TRADINGVIEW TARAYICI GİRİŞİ"
                 android:textColor="@color/white" />
 
             <Button
@@ -89,7 +97,7 @@
                 android:layout_marginTop="10dp"
                 android:background="@drawable/bg_card"
                 android:padding="12dp"
-                android:text="TradingView üyelik oturumu: yok • Scanner ayrı çalışabilir"
+                android:text="TradingView üyelik oturumu: yok"
                 android:textColor="@color/text_secondary" />
 
             <EditText
@@ -106,7 +114,7 @@
                 android:id="@+id/yahooFallback"
                 android:layout_width="match_parent"
                 android:layout_height="52dp"
-                android:text="Yahoo Finance yedek/gecikmeli kaynak"
+                android:text="Yahoo Finance deneysel yedek/gecikmeli kaynak"
                 android:textColor="@color/text_primary" />
 
             <Switch
@@ -130,7 +138,7 @@
                 android:layout_height="52dp"
                 android:layout_marginTop="10dp"
                 android:background="@drawable/bg_card"
-                android:text="İSTEĞE BAĞLI BACKEND BAĞLANTISINI TEST ET"
+                android:text="ÜRETİM BACKEND BAĞLANTISINI TEST ET"
                 android:textColor="@color/text_primary" />
 
             <TextView
