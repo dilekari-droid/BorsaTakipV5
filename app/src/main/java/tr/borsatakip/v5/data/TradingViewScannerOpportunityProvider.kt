@@ -8,6 +8,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
+import tr.borsatakip.v5.BuildConfig
 import tr.borsatakip.v5.analysis.TradingViewSnapshotScorer
 import tr.borsatakip.v5.model.Opportunity
 import java.util.concurrent.TimeUnit
@@ -164,7 +165,7 @@ class TradingViewScannerOpportunityProvider {
 
     companion object {
         private const val SCANNER_URL = "https://scanner.tradingview.com/turkey/scan"
-        private const val USER_AGENT = "BorsaTakip/5.1.12 Android"
+        private val USER_AGENT = "BorsaTakip/${BuildConfig.VERSION_NAME} Android"
         const val SOURCE_LABEL = "TradingView Scanner • gecikme/erişim TradingView koşullarına bağlı"
         private val JSON_MEDIA = "application/json; charset=utf-8".toMediaType()
     }
