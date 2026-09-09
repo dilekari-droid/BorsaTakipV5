@@ -7,27 +7,40 @@ class FavoriteRepository private constructor(private val context: Context) {
 
     suspend fun getAll(): List<FavoriteStock> = dao.getAll()
 
-    suspend fun symbols(): Set<String> = dao.getAll().map { it.symbol }.toSet()
+    suspend fun getByMarket(market: String): List<FavoriteStock> =
+        dao.getByMarket(normalizeMarket(market))
 
-    suspend fun isFavorite(rawSymbol: String): Boolean = dao.contains(normalizeSymbol(rawSymbol))
+    suspend fun symbols(market: String = "BIST"): Set<String> =
+        getByMarket(market).map { it.symbol }.toSet()
+
+    suspend fun isFavorite(rawSymbol: String, market: String = "BIST"): Boolean =
+        dao.contains(normalizeSymbol(rawSymbol), normalizeMarket(market))
 
     suspend fun add(rawSymbol: String, displayName: String? = null, market: String = "BIST") {
         val symbol = normalizeSymbol(rawSymbol)
-        require(symbol.matches(Regex("[A-Z0-9]{3,12}"))) { "Geçersiz sembol" }
-        dao.upsert(FavoriteStock(symbol = symbol, displayName = displayName?.trim()?.takeIf { it.isNotBlank() }, market = market))
+        val normalizedMarket = normalizeMarket(market)
+        require(symbol.matches(Regex("[A-Z0-9]{3,20}"))) { "Geçersiz sembol" }
+        dao.upsert(
+            FavoriteStock(
+                symbol = symbol,
+                displayName = displayName?.trim()?.takeIf { it.isNotBlank() },
+                market = normalizedMarket
+            )
+        )
     }
 
-    suspend fun remove(rawSymbol: String) {
-        dao.deleteBySymbol(normalizeSymbol(rawSymbol))
+    suspend fun remove(rawSymbol: String, market: String = "BIST") {
+        dao.delete(normalizeSymbol(rawSymbol), normalizeMarket(market))
     }
 
     suspend fun toggle(rawSymbol: String, displayName: String? = null, market: String = "BIST"): Boolean {
         val symbol = normalizeSymbol(rawSymbol)
-        return if (dao.contains(symbol)) {
-            dao.deleteBySymbol(symbol)
+        val normalizedMarket = normalizeMarket(market)
+        return if (dao.contains(symbol, normalizedMarket)) {
+            dao.delete(symbol, normalizedMarket)
             false
         } else {
-            add(symbol, displayName, market)
+            add(symbol, displayName, normalizedMarket)
             true
         }
     }
@@ -36,9 +49,7 @@ class FavoriteRepository private constructor(private val context: Context) {
         val prefs = context.getSharedPreferences("favorites", Context.MODE_PRIVATE)
         if (prefs.getBoolean("room_migrated", false)) return
         val legacy = prefs.getStringSet("bist", emptySet()).orEmpty()
-        legacy.forEach { raw ->
-            runCatching { add(raw) }
-        }
+        legacy.forEach { raw -> runCatching { add(raw, market = "BIST") } }
         prefs.edit().remove("bist").putBoolean("room_migrated", true).apply()
     }
 
@@ -55,5 +66,10 @@ class FavoriteRepository private constructor(private val context: Context) {
             .removePrefix("BIST:")
             .removeSuffix(".IS")
             .trim()
+
+        fun normalizeMarket(raw: String): String = when (raw.trim().uppercase()) {
+            "VIOP", "VİOP" -> "VIOP"
+            else -> "BIST"
+        }
     }
 }
