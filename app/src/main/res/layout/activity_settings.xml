@@ -17,14 +17,18 @@
             android:padding="18dp">
 
             <TextView style="@style/Title" android:text="Ayarlar" />
-            <TextView style="@style/Sub" android:text="Ana sağlayıcı • TradingView oturumu • yedek kaynak • sürüm" />
+            <TextView style="@style/Sub" android:text="BIST ana kaynak: TradingView Scanner • backend isteğe bağlı • Yahoo yedek" />
+
+            <TextView
+                style="@style/Sub"
+                android:layout_marginTop="14dp"
+                android:text="İsteğe bağlı BIST/VİOP backend" />
 
             <EditText
                 android:id="@+id/baseUrl"
                 android:layout_width="match_parent"
                 android:layout_height="52dp"
-                android:layout_marginTop="14dp"
-                android:hint="Ana backend HTTPS adresi (isteğe bağlı)"
+                android:hint="Backend HTTPS adresi (boş bırakılabilir)"
                 android:inputType="textUri"
                 android:textColor="@color/text_primary"
                 android:textColorHint="@color/text_secondary" />
@@ -33,7 +37,7 @@
                 android:id="@+id/apiKey"
                 android:layout_width="match_parent"
                 android:layout_height="52dp"
-                android:hint="API Key / Bearer Token"
+                android:hint="Backend API Key / Bearer Token (varsa)"
                 android:inputType="textPassword"
                 android:textColor="@color/text_primary"
                 android:textColorHint="@color/text_secondary" />
@@ -41,7 +45,7 @@
             <TextView
                 style="@style/Sub"
                 android:layout_marginTop="18dp"
-                android:text="TradingView üyelik testi (deneysel / resmî geliştirici API'si değildir)" />
+                android:text="TradingView üyelik testi (isteğe bağlı / deneysel; Scanner için zorunlu değil)" />
 
             <EditText
                 android:id="@+id/tradingViewUsername"
@@ -66,7 +70,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="52dp"
                 android:background="@drawable/bg_card_blue"
-                android:text="TRADINGVIEW OTURUMUNU TEST ET"
+                android:text="TRADINGVIEW ÜYELİK OTURUMUNU TEST ET"
                 android:textColor="@color/white" />
 
             <Button
@@ -85,7 +89,7 @@
                 android:layout_marginTop="10dp"
                 android:background="@drawable/bg_card"
                 android:padding="12dp"
-                android:text="TradingView: Oturum yok"
+                android:text="TradingView üyelik oturumu: yok • Scanner ayrı çalışabilir"
                 android:textColor="@color/text_secondary" />
 
             <EditText
@@ -126,7 +130,7 @@
                 android:layout_height="52dp"
                 android:layout_marginTop="10dp"
                 android:background="@drawable/bg_card"
-                android:text="ANA BAĞLANTIYI TEST ET"
+                android:text="İSTEĞE BAĞLI BACKEND BAĞLANTISINI TEST ET"
                 android:textColor="@color/text_primary" />
 
             <TextView
