@@ -6,8 +6,8 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import tr.borsatakip.v5.data.DemoMarketDataProvider
 import tr.borsatakip.v5.data.MarketDataProvider
+import tr.borsatakip.v5.model.Candle
 import tr.borsatakip.v5.model.Stock
 
 class BistScannerTest {
@@ -58,10 +58,38 @@ class BistScannerTest {
     }
 
     @Test
-    fun demoScan_completesWithoutNetwork() = runBlocking {
-        val state = BistScanner(DemoMarketDataProvider()).scan { }
+    fun deterministicProvider_completesWithoutNetwork() = runBlocking {
+        val stocks = (1..4).map { idx ->
+            Stock(
+                symbol = "T$idx",
+                companyName = "Test $idx",
+                candles = List(240) { i ->
+                    val close = 20.0 + idx + i * 0.03
+                    Candle(
+                        timestamp = i.toLong() + 1,
+                        open = close,
+                        high = close + 0.4,
+                        low = close - 0.4,
+                        close = close,
+                        volume = 1000.0 + i
+                    )
+                },
+                source = "unit",
+                dataTimestamp = 240L
+            )
+        }
+        val provider = object : MarketDataProvider {
+            override val id = "deterministic"
+            override val displayName = "deterministic"
+            override suspend fun scan(onProgress: (Int, Int) -> Unit): List<Stock> {
+                stocks.indices.forEach { onProgress(it + 1, stocks.size) }
+                return stocks
+            }
+            override suspend fun fetchOne(symbol: String): Stock? = stocks.firstOrNull { it.symbol == symbol }
+        }
+        val state = BistScanner(provider).scan { }
         assertEquals(ScanStatus.COMPLETED, state.status)
-        assertEquals(8, state.total)
+        assertEquals(4, state.total)
         assertTrue(state.successful > 0)
         assertTrue(state.results.isNotEmpty())
     }
