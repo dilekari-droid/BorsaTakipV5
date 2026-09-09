@@ -4,6 +4,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.widget.Button
 import android.widget.TextView
+import android.widget.Toast
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -14,36 +15,34 @@ import tr.borsatakip.v5.R
 import tr.borsatakip.v5.data.ProviderRouter
 import tr.borsatakip.v5.data.SettingsStore
 import tr.borsatakip.v5.data.TradingViewScannerOpportunityProvider
+import tr.borsatakip.v5.data.favorites.FavoriteRepository
+import tr.borsatakip.v5.model.Opportunity
 import tr.borsatakip.v5.scan.BistScanner
 import tr.borsatakip.v5.scan.ScanStatus
 
 class OpportunityActivity : BaseActivity() {
     private var scanJob: Job? = null
+    private lateinit var favoriteRepository: FavoriteRepository
+    private var favoriteSymbols: Set<String> = emptySet()
+    private lateinit var summary: TextView
+    private lateinit var list: RecyclerView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_opportunity)
         setupBottomNav()
 
-        val summary = findViewById<TextView>(R.id.txtSummary)
-        val list = findViewById<RecyclerView>(R.id.list)
+        favoriteRepository = FavoriteRepository.get(this)
+        summary = findViewById(R.id.txtSummary)
+        list = findViewById(R.id.list)
         val scanButton = findViewById<Button>(R.id.btnRealOpportunityScan)
         list.layoutManager = LinearLayoutManager(this)
 
-        fun sort(items: List<tr.borsatakip.v5.model.Opportunity>) =
-            items.sortedWith(compareByDescending<tr.borsatakip.v5.model.Opportunity> { it.finalSignalScore }.thenByDescending { it.score })
-
-        fun showExisting() {
-            val existing = sort(AppSession.lastOpportunities)
-            if (existing.isEmpty()) {
-                summary.text = "GERÇEK FIRSAT KONTROLÜ • BIST ana tarama kaynağı TradingView Scanner • backend isteğe bağlı • demo yok"
-                list.adapter = OpportunityAdapter(emptyList()) { }
-            } else {
-                bind(existing, summary, list, "GERÇEK FIRSAT KONTROLÜ • ${existing.size} sonuç • sıralama: Nihai Sinyal")
-            }
+        lifecycleScope.launch {
+            favoriteRepository.migrateLegacyIfNeeded()
+            refreshFavoriteSymbols()
+            showExisting()
         }
-
-        showExisting()
 
         scanButton.setOnClickListener {
             if (scanJob?.isActive == true) {
@@ -51,7 +50,7 @@ class OpportunityActivity : BaseActivity() {
                 return@setOnClickListener
             }
 
-            list.adapter = OpportunityAdapter(emptyList()) { }
+            list.adapter = null
             scanButton.text = "DURDUR"
             scanJob = lifecycleScope.launch {
                 try {
@@ -70,14 +69,11 @@ class OpportunityActivity : BaseActivity() {
                         AppSession.lastOpportunities = results
                         bind(
                             results,
-                            summary,
-                            list,
                             "GERÇEK FIRSAT TARAMASI tamamlandı • ${results.size} sonuç • ${output.receivedRows} BIST kaydı • Atlanan ${output.skippedRows} • Kaynak: ${output.sourceLabel} • Sıralama: Nihai Sinyal"
                         )
                         return@launch
                     }
 
-                    // TradingView Scanner erişilemezse backend yalnız kullanıcı gerçekten yapılandırdıysa denenir.
                     val settings = SettingsStore(this@OpportunityActivity)
                     if (settings.baseUrl.startsWith("https://")) {
                         summary.text = "TradingView Scanner erişilemedi • İsteğe bağlı backend deneniyor..."
@@ -99,7 +95,7 @@ class OpportunityActivity : BaseActivity() {
                             if (results.isEmpty()) {
                                 summary.text = "Gerçek veri alındı ancak uygun fırsat sonucu üretilemedi."
                             } else {
-                                bind(results, summary, list, "GERÇEK FIRSAT TARAMASI tamamlandı • ${results.size} sonuç • Kaynak: ${results.first().source}")
+                                bind(results, "GERÇEK FIRSAT TARAMASI tamamlandı • ${results.size} sonuç • Kaynak: ${results.first().source}")
                             }
                         }
                     } else {
@@ -118,16 +114,54 @@ class OpportunityActivity : BaseActivity() {
         }
     }
 
-    private fun bind(
-        items: List<tr.borsatakip.v5.model.Opportunity>,
-        summary: TextView,
-        list: RecyclerView,
-        title: String
-    ) {
+    private fun sort(items: List<Opportunity>) =
+        items.sortedWith(compareByDescending<Opportunity> { it.finalSignalScore }.thenByDescending { it.score })
+
+    private suspend fun refreshFavoriteSymbols() {
+        favoriteSymbols = favoriteRepository.symbols()
+    }
+
+    private suspend fun showExisting() {
+        val existing = sort(AppSession.lastOpportunities)
+        if (existing.isEmpty()) {
+            summary.text = "GERÇEK FIRSAT KONTROLÜ • BIST ana tarama kaynağı TradingView Scanner • backend isteğe bağlı • demo yok"
+            bind(emptyList(), summary.text.toString())
+        } else {
+            bind(existing, "GERÇEK FIRSAT KONTROLÜ • ${existing.size} sonuç • sıralama: Nihai Sinyal")
+        }
+    }
+
+    private suspend fun bind(items: List<Opportunity>, title: String) {
+        refreshFavoriteSymbols()
         summary.text = title
-        list.adapter = OpportunityAdapter(items) {
-            AppSession.selected = it
-            startActivity(Intent(this@OpportunityActivity, StockDetailActivity::class.java))
+        list.adapter = OpportunityAdapter(
+            items = items,
+            favoriteSymbols = favoriteSymbols,
+            click = {
+                AppSession.selected = it
+                startActivity(Intent(this@OpportunityActivity, StockDetailActivity::class.java))
+            },
+            toggleFavorite = { opportunity ->
+                lifecycleScope.launch {
+                    val added = favoriteRepository.toggle(opportunity.symbol, opportunity.companyName)
+                    Toast.makeText(
+                        this@OpportunityActivity,
+                        if (added) "${opportunity.symbol} favorilere eklendi" else "${opportunity.symbol} favorilerden çıkarıldı",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    bind(items, summary.text.toString())
+                }
+            }
+        )
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::favoriteRepository.isInitialized && ::list.isInitialized) {
+            lifecycleScope.launch {
+                refreshFavoriteSymbols()
+                showExisting()
+            }
         }
     }
 
