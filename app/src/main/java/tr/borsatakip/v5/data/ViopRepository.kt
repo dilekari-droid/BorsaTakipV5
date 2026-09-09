@@ -6,6 +6,7 @@ import tr.borsatakip.v5.model.ViopContract
 class ViopRepository(context: Context) {
     private val local = ViopLocalStore(context)
     private val backend = BackendProvider(context)
+    private val tradingView = TradingViewViopProvider()
 
     fun loadLocal(): List<ViopContract> = local.load()
 
@@ -13,14 +14,36 @@ class ViopRepository(context: Context) {
 
     fun removeManual(symbol: String) = local.remove(symbol)
 
+    /**
+     * Öncelik: TradingView VİOP (deneysel) -> isteğe bağlı backend -> manuel kayıtlar.
+     * Hiçbir katman sahte fiyat üretmez.
+     */
     suspend fun refresh(): Pair<List<ViopContract>, String> {
         val localItems = local.load()
-        val remote = backend.loadViop()
-        if (remote.isFailure) {
-            val msg = remote.exceptionOrNull()?.message ?: "VİOP sağlayıcısından veri alınamadı."
-            return localItems to msg
+
+        val tvResult = tradingView.load()
+        if (tvResult.isSuccess) {
+            val out = tvResult.getOrThrow()
+            if (out.contracts.isNotEmpty()) {
+                return merge(localItems, out.contracts) to out.message
+            }
         }
-        val remoteItems = remote.getOrDefault(emptyList())
+
+        val remote = backend.loadViop()
+        if (remote.isSuccess && remote.getOrDefault(emptyList()).isNotEmpty()) {
+            val remoteItems = remote.getOrDefault(emptyList())
+            return merge(localItems, remoteItems) to
+                "TradingView VİOP veri üretmedi • backend yedeği: ${remoteItems.size} sözleşme."
+        }
+
+        val tvMessage = tvResult.exceptionOrNull()?.message
+            ?: tvResult.getOrNull()?.message
+            ?: "TradingView VİOP veri alınamadı."
+        val backendMessage = remote.exceptionOrNull()?.message ?: "Backend verisi yok."
+        return localItems to "$tvMessage • $backendMessage"
+    }
+
+    private fun merge(localItems: List<ViopContract>, remoteItems: List<ViopContract>): List<ViopContract> {
         val merged = LinkedHashMap<String, ViopContract>()
         localItems.forEach { merged[it.symbol.uppercase()] = it }
         remoteItems.forEach { r ->
@@ -28,6 +51,6 @@ class ViopRepository(context: Context) {
             val manual = merged[key]
             merged[key] = if (manual != null) r.copy(isManual = true) else r
         }
-        return merged.values.toList() to "${remoteItems.size} uzak, ${localItems.size} manuel sözleşme yüklendi."
+        return merged.values.toList()
     }
 }
