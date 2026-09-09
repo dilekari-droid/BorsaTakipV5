@@ -1,32 +1,30 @@
 package tr.borsatakip.v5.ui
 
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.widget.Button
 import android.widget.EditText
 import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
-import androidx.activity.result.contract.ActivityResultContracts
+import androidx.browser.customtabs.CustomTabsIntent
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import tr.borsatakip.v5.BuildConfig
 import tr.borsatakip.v5.R
 import tr.borsatakip.v5.data.BackendHealthClient
 import tr.borsatakip.v5.data.SettingsStore
-import tr.borsatakip.v5.data.TradingViewAuthClient
 
 class SettingsActivity : BaseActivity() {
-    private val tradingViewBrowserLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-        recreate()
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_settings)
         setupBottomNav()
 
         val s = SettingsStore(this)
+        s.purgeLegacyTradingViewState()
+
         val base = findViewById<EditText>(R.id.baseUrl)
         val key = findViewById<EditText>(R.id.apiKey)
         val refresh = findViewById<EditText>(R.id.refreshMinutes)
@@ -34,8 +32,7 @@ class SettingsActivity : BaseActivity() {
         val yahooFallback = findViewById<Switch>(R.id.yahooFallback)
         val notifications = findViewById<Switch>(R.id.notifications)
         val dataStatus = findViewById<TextView>(R.id.dataStatus)
-        val tvStatus = findViewById<TextView>(R.id.tradingViewStatus)
-        val tvLoginButton = findViewById<Button>(R.id.testTradingViewLogin)
+        val tradingViewStatus = findViewById<TextView>(R.id.tradingViewStatus)
 
         base.setText(s.baseUrl)
         key.setText(s.apiKey)
@@ -50,38 +47,30 @@ class SettingsActivity : BaseActivity() {
             if (!enabled) yahooFallback.isChecked = false
         }
 
-        fun showTvStatus(extra: String? = null) {
-            val hasSession = s.tradingViewSessionId.isNotBlank()
-            val hasToken = s.tradingViewAuthToken.isNotBlank()
-            tvStatus.text = buildString {
-                append("TradingView: DENEYSEL kaynak\n")
-                append("Deneysel mod: ${if (s.experimentalProvidersEnabled) "AÇIK" else "KAPALI"}\n")
-                append("Üyelik oturumu: ${if (hasSession) "KAYITLI" else "YOK"}\n")
-                append("Giriş yöntemi: Kimlik bilgileri yalnız TradingView sayfasına yazılır\n")
-                append("WebSocket auth token: ${if (hasToken) "MEVCUT" else "YOK"}")
-                if (s.tradingViewAuthenticatedAt > 0L) append("\nSon doğrulama: ${s.tradingViewAuthenticatedAt}")
-                if (!extra.isNullOrBlank()) append("\n$extra")
-            }
+        tradingViewStatus.text = buildString {
+            append("TradingView: yalnız harici grafik/görüntüleme\n")
+            append("BIST/VİOP veri kaynağı: HAYIR\n")
+            append("WebView/OAuth girişi: KULLANILMIYOR\n")
+            append("Tarayıcı cookie/oturum aktarımı: YAPILMIYOR\n")
+            append("TradingView hesabı yalnız güvenli tarayıcı sekmesinde kullanıcı tarafından yönetilir.")
         }
 
         fun showStatus(extra: String? = null) {
             val backend = if (s.baseUrl.isBlank()) "YAPILANDIRILMAMIŞ" else s.baseUrl
-            val exp = if (s.experimentalProvidersEnabled) "AÇIK" else "KAPALI"
-            val fallback = if (s.experimentalProvidersEnabled && s.yahooFallbackEnabled) {
-                "Yahoo Finance • deneysel/yedek • açık"
+            val yahoo = if (s.experimentalProvidersEnabled && s.yahooFallbackEnabled) {
+                "Yahoo Finance • deneysel/yedek/gecikmeli • AÇIK"
             } else {
-                "kapalı"
+                "KAPALI"
             }
             val universe = s.cachedBistSymbols.size
             val last = if (s.lastProviderTimestamp > 0L) s.lastProviderLabel else "henüz veri alınmadı"
             dataStatus.text = buildString {
-                append("VERİ MODU: ${if (s.experimentalProvidersEnabled) "ÜRETİM + DENEYSEL FALLBACK" else "ÜRETİM"}\n")
+                append("VERİ MİMARİSİ: BACKEND-FIRST\n")
                 append("Ana BIST/VİOP kaynağı: HTTPS backend\n")
                 append("Üretim backend: $backend\n")
-                append("Deneysel sağlayıcılar: $exp\n")
-                append("TradingView: yalnız deneysel modda\n")
-                append("Yahoo: $fallback\n")
-                append("Son aktif kaynak: $last\n")
+                append("Yahoo BIST yedeği: $yahoo\n")
+                append("TradingView: yalnız harici görüntüleme; veri sağlayıcısı değil\n")
+                append("Son aktif veri kaynağı: $last\n")
                 append("Dinamik BIST evren önbelleği: $universe sembol\n")
                 append("Backend sözleşmesi: /v1/health, /v1/bist/symbols, /v1/bist/history/{symbol}, /v1/viop/contracts\n")
                 append("Uygulama sürümü: ${BuildConfig.VERSION_NAME}")
@@ -89,29 +78,10 @@ class SettingsActivity : BaseActivity() {
             }
         }
 
-        showTvStatus()
         showStatus()
 
-        tvLoginButton.setOnClickListener {
-            if (!experimentalProviders.isChecked) {
-                Toast.makeText(
-                    this,
-                    "TradingView yalnız deneysel modda kullanılabilir. Önce DENEYSEL sağlayıcıları etkinleştirin.",
-                    Toast.LENGTH_LONG
-                ).show()
-                return@setOnClickListener
-            }
-            Toast.makeText(
-                this,
-                "Giriş bilgilerini yalnız açılan TradingView sayfasına yazın. CAPTCHA/2FA varsa normal şekilde tamamlayın.",
-                Toast.LENGTH_LONG
-            ).show()
-            tradingViewBrowserLauncher.launch(Intent(this, TradingViewBrowserLoginActivity::class.java))
-        }
-
-        findViewById<Button>(R.id.clearTradingViewSession).setOnClickListener {
-            TradingViewAuthClient(this).logoutLocal()
-            showTvStatus("Yerel TradingView oturumu temizlendi.")
+        findViewById<Button>(R.id.testTradingViewLogin).setOnClickListener {
+            openTradingView()
         }
 
         findViewById<Button>(R.id.save).setOnClickListener {
@@ -128,7 +98,7 @@ class SettingsActivity : BaseActivity() {
             s.notifications = notifications.isChecked
             Toast.makeText(
                 this,
-                if (url.isBlank() && !s.experimentalProvidersEnabled) {
+                if (url.isBlank() && !s.yahooFallbackEnabled) {
                     "Ayarlar kaydedildi. Üretim backend yapılandırılana kadar piyasa taraması başlamaz."
                 } else {
                     "Ayarlar kaydedildi"
@@ -136,7 +106,6 @@ class SettingsActivity : BaseActivity() {
                 Toast.LENGTH_LONG
             ).show()
             showStatus()
-            showTvStatus()
         }
 
         findViewById<Button>(R.id.testConnection).setOnClickListener {
@@ -160,5 +129,23 @@ class SettingsActivity : BaseActivity() {
                 showStatus("$state • Sağlayıcı: ${health.provider} • Gecikme: ${health.latencyMs} ms • ${health.message}")
             }
         }
+    }
+
+    private fun openTradingView() {
+        val uri = Uri.parse(TRADINGVIEW_URL)
+        try {
+            CustomTabsIntent.Builder().setShowTitle(true).build().launchUrl(this, uri)
+        } catch (_: Exception) {
+            val fallback = Intent(Intent.ACTION_VIEW, uri)
+            if (fallback.resolveActivity(packageManager) != null) {
+                startActivity(fallback)
+            } else {
+                Toast.makeText(this, "Bu cihazda web sayfasını açabilecek bir tarayıcı bulunamadı.", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    companion object {
+        private const val TRADINGVIEW_URL = "https://www.tradingview.com/"
     }
 }
