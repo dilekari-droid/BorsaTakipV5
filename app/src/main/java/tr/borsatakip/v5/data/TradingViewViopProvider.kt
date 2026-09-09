@@ -9,16 +9,15 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
+import tr.borsatakip.v5.BuildConfig
 import tr.borsatakip.v5.model.ViopContract
 import java.util.concurrent.TimeUnit
 
 /**
  * Deneysel VİOP sağlayıcısı.
- *
  * 1) TradingView symbol-search üzerinden BIST futures sözleşmelerini keşfeder.
  * 2) Bulunan gerçek sözleşme kodlarını TradingView Turkey Scanner'a göndererek
- *    son fiyat / günlük değişim / hacim snapshot'ı almaya çalışır.
- *
+ * son fiyat / günlük değişim / hacim snapshot'ı almaya çalışır.
  * Bu akış resmî TradingView geliştirici API'si değildir. Veri bulunamazsa sahte fiyat üretmez.
  */
 class TradingViewViopProvider {
@@ -47,17 +46,10 @@ class TradingViewViopProvider {
     suspend fun load(): Result<Output> = withContext(Dispatchers.IO) {
         runCatching {
             val discovered = LinkedHashMap<String, Discovered>()
-            BASE_SYMBOLS.forEach { base ->
-                discoverBase(base).forEach { d -> discovered[d.symbol] = d }
-            }
+            BASE_SYMBOLS.forEach { base -> discoverBase(base).forEach { d -> discovered[d.symbol] = d } }
 
             if (discovered.isEmpty()) {
-                return@runCatching Output(
-                    contracts = emptyList(),
-                    discovered = 0,
-                    snapshots = 0,
-                    message = "TradingView Symbol Search BIST futures sözleşmesi döndürmedi."
-                )
+                return@runCatching Output(emptyList(), 0, 0, "TradingView Symbol Search BIST futures sözleşmesi döndürmedi.")
             }
 
             val snapshot = loadSnapshots(discovered.values.toList())
@@ -127,8 +119,6 @@ class TradingViewViopProvider {
                     addDiscovered(out, c.optString("symbol"), base, c.optString("description"))
                 }
             }
-
-            // Bazı cevaplarda kontratlar nested değil doğrudan sonuç olarak gelir.
             if (itemSymbol.startsWith(base) && item.optString("type", "futures").contains("future", true)) {
                 addDiscovered(out, itemSymbol, base, item.optString("description"))
             }
@@ -136,16 +126,9 @@ class TradingViewViopProvider {
         return out.values.toList()
     }
 
-    private fun addDiscovered(
-        out: MutableMap<String, Discovered>,
-        rawSymbol: String,
-        base: String,
-        description: String
-    ) {
+    private fun addDiscovered(out: MutableMap<String, Discovered>, rawSymbol: String, base: String, description: String) {
         val symbol = rawSymbol.trim().uppercase()
-        if (symbol.isBlank() || symbol == base) return
-        // Sürekli kontratlar teşhis amacıyla yararlı olsa da vade listesinde gerçek vadeli kontrat istiyoruz.
-        if (symbol.endsWith("!")) return
+        if (symbol.isBlank() || symbol == base || symbol.endsWith("!")) return
         val expiry = parseExpiry(base, symbol) ?: return
         out[symbol] = Discovered(symbol, base, description, expiry)
     }
@@ -157,14 +140,8 @@ class TradingViewViopProvider {
         val tickers = JSONArray()
         items.take(MAX_SNAPSHOT_SYMBOLS).forEach { tickers.put("BIST:${it.symbol}") }
 
-        val columns = JSONArray().apply {
-            put("name")
-            put("close")
-            put("change")
-            put("volume")
-        }
         val payload = JSONObject().apply {
-            put("columns", columns)
+            put("columns", JSONArray().apply { put("name"); put("close"); put("change"); put("volume") })
             put("markets", JSONArray().put("turkey"))
             put("symbols", JSONObject().apply {
                 put("query", JSONObject().put("types", JSONArray()))
@@ -201,7 +178,7 @@ class TradingViewViopProvider {
                     else -> null
                 }?.takeIf { it.isFinite() }
             }
-            val q = Quote(price = num(1), change = num(2), volume = num(3))
+            val q = Quote(num(1), num(2), num(3))
             if (symbol.isNotBlank() && q.price != null) result[symbol] = q
         }
         return result
@@ -219,7 +196,7 @@ class TradingViewViopProvider {
     companion object {
         private const val SEARCH_URL = "https://symbol-search.tradingview.com/symbol_search/"
         private const val SCANNER_URL = "https://scanner.tradingview.com/turkey/scan"
-        private const val USER_AGENT = "BorsaTakip/5.1.13 Android"
+        private val USER_AGENT = "BorsaTakip/${BuildConfig.VERSION_NAME} Android"
         private const val MAX_SNAPSHOT_SYMBOLS = 200
         private val JSON_MEDIA = "application/json; charset=utf-8".toMediaType()
 
