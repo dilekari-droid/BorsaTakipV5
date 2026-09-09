@@ -66,11 +66,16 @@ jobs:
               exit 1
             fi
           done
-          strings /tmp/all.dex | grep -Fq 'favorite_stocks'
-          strings /tmp/all.dex | grep -Fq 'FavoriteRepository'
-          strings /tmp/all.dex | grep -Fq 'favorite_stocks_new'
-          strings /tmp/all.dex | grep -Fq 'experimental_providers_enabled'
-          strings /tmp/all.dex | grep -Fq 'Üretim veri sağlayıcısı yapılandırılmamış'
+          for required in \
+            'favorite_stocks' \
+            'FavoriteRepository' \
+            'favorite_stocks_new' \
+            'experimental_providers_enabled'; do
+            if ! strings /tmp/all.dex | grep -Fq "$required"; then
+              echo "Required production/favorites marker missing from APK: $required"
+              exit 1
+            fi
+          done
           AAPT=$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)
           test -x "$AAPT"
           "$AAPT" dump badging "$APK" | tee /tmp/badging.txt
