@@ -10,7 +10,10 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import tr.borsatakip.v5.R
-import tr.borsatakip.v5.data.TradingViewScannerOpportunityProvider
+import tr.borsatakip.v5.data.ProviderRouter
+import tr.borsatakip.v5.data.SettingsStore
+import tr.borsatakip.v5.scan.BistScanner
+import tr.borsatakip.v5.scan.ScanStatus
 
 class BistScanActivity : BaseActivity() {
     private var scanJob: Job? = null
@@ -26,11 +29,22 @@ class BistScanActivity : BaseActivity() {
         val btn = findViewById<Button>(R.id.btnStartScan)
         val source = findViewById<TextView>(R.id.txtSource)
         val debug = findViewById<TextView>(R.id.txtDebugState)
+        val settings = SettingsStore(this)
 
-        source.text = "Kaynak: TradingView BIST Scanner • Gerçek veri • Demo/test provider yok"
+        fun refreshSourceLabel() {
+            source.text = if (settings.baseUrl.startsWith("https://")) {
+                "Kaynak: HTTPS BorsaTakip backend • Yahoo yalnız açıkça etkinse yedek"
+            } else if (settings.experimentalProvidersEnabled && settings.yahooFallbackEnabled) {
+                "Kaynak: Backend yapılandırılmamış • Yahoo deneysel/gecikmeli yedek"
+            } else {
+                "Kaynak: Üretim backend yapılandırılmamış"
+            }
+        }
+
+        refreshSourceLabel()
         status.text = "Hazır"
         txt.text = "0 / 0 • %0"
-        debug.text = "Tarama gerçek TradingView Scanner üzerinden yapılır."
+        debug.text = "TradingView BIST veri sağlayıcısı değildir. Tarama ProviderRouter üzerinden yürütülür."
 
         btn.setOnClickListener {
             if (scanJob?.isActive == true) {
@@ -40,40 +54,47 @@ class BistScanActivity : BaseActivity() {
 
             progress.progress = 0
             btn.text = "DURDUR"
-            status.text = "TradingView BIST Scanner'a bağlanılıyor..."
+            status.text = "BIST veri kaynağına bağlanılıyor..."
             AppSession.lastOpportunities = emptyList()
+            refreshSourceLabel()
 
             scanJob = lifecycleScope.launch {
                 try {
-                    val result = TradingViewScannerOpportunityProvider().scan { done, total ->
+                    val scanner = BistScanner(ProviderRouter(this@BistScanActivity))
+                    val finalState = scanner.scan { state ->
                         runOnUiThread {
-                            val pct = if (total <= 0) 0 else ((done * 100L) / total).toInt().coerceIn(0, 100)
-                            progress.progress = pct
-                            txt.text = "$done / $total • %$pct"
-                            status.text = "GERÇEK BIST TARAMASI çalışıyor"
-                            debug.text = "Kaynak: TradingView Scanner\nİşlenen: $done/$total"
+                            progress.progress = state.progress
+                            txt.text = "${state.processed} / ${state.total} • %${state.progress}"
+                            when (state.status) {
+                                ScanStatus.IDLE -> status.text = "Hazır"
+                                ScanStatus.RUNNING -> {
+                                    status.text = "BIST taraması çalışıyor"
+                                    debug.text = "ProviderRouter • İşlenen ${state.processed}/${state.total} • Atlanan ${state.skipped}"
+                                }
+                                ScanStatus.COMPLETED -> status.text = "BIST taraması tamamlandı • ${state.results.size} sonuç"
+                                ScanStatus.ERROR -> status.text = "BIST taraması başarısız • ${state.errorMessage ?: "Veri alınamadı"}"
+                                ScanStatus.CANCELLED -> status.text = "Tarama durduruldu"
+                            }
                         }
                     }
 
-                    result.onSuccess { output ->
-                        AppSession.lastOpportunities = output.opportunities
+                    if (finalState.status == ScanStatus.COMPLETED) {
+                        AppSession.lastOpportunities = finalState.results.sortedByDescending { it.finalSignalScore }
                         progress.progress = 100
-                        txt.text = "${output.receivedRows} / ${output.receivedRows} • %100"
-                        status.text = "GERÇEK BIST TARAMASI tamamlandı • ${output.opportunities.size} sonuç • Atlanan ${output.skippedRows}"
-                        debug.text = "Kaynak: ${output.sourceLabel}\nDemo/test provider kullanılmadı."
+                        txt.text = "${finalState.processed} / ${finalState.total} • %100"
+                        status.text = "BIST taraması tamamlandı • ${finalState.results.size} sonuç • Atlanan ${finalState.skipped}"
+                        debug.text = "Aktif kaynak: ${settings.lastProviderLabel}\nTradingView veri kaynağı kullanılmadı."
                         startActivity(Intent(this@BistScanActivity, OpportunityActivity::class.java))
-                    }.onFailure { error ->
-                        status.text = "GERÇEK BIST TARAMASI başarısız • ${error.message ?: "Veri alınamadı"}"
-                        debug.text = "Demo/test verisine geçilmedi."
                     }
                 } catch (ce: CancellationException) {
                     status.text = "Tarama durduruldu"
                     throw ce
                 } catch (t: Throwable) {
-                    status.text = "GERÇEK BIST TARAMASI başarısız • ${t.message ?: "Beklenmeyen hata"}"
-                    debug.text = "Demo/test verisine geçilmedi."
+                    status.text = "BIST taraması başarısız • ${t.message ?: "Beklenmeyen hata"}"
+                    debug.text = "Sahte/demo/TradingView verisine geçilmedi."
                 } finally {
-                    btn.text = "GERÇEK BIST TARAMASINI BAŞLAT"
+                    btn.text = "BIST TARAMASINI BAŞLAT"
+                    refreshSourceLabel()
                 }
             }
         }
