@@ -1,34 +1,64 @@
 package tr.borsatakip.v5.ui
 
+import android.content.Intent
 import android.os.Bundle
-import android.widget.Button
-import android.widget.EditText
 import android.widget.TextView
+import android.widget.Toast
+import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+import kotlinx.coroutines.launch
 import tr.borsatakip.v5.R
+import tr.borsatakip.v5.data.favorites.FavoriteRepository
 
 class FavoritesActivity : BaseActivity() {
+    private lateinit var repository: FavoriteRepository
+    private lateinit var list: RecyclerView
+    private lateinit var summary: TextView
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_favorites)
         setupBottomNav()
-        val prefs = getSharedPreferences("favorites", MODE_PRIVATE)
-        val input = findViewById<EditText>(R.id.input)
-        val text = findViewById<TextView>(R.id.listText)
-        fun draw() {
-            val symbols = prefs.getStringSet("bist", emptySet())!!.sorted()
-            val bist = if (symbols.isEmpty()) "Henüz favori yok." else symbols.joinToString("\n")
-            text.text = "BIST FAVORİLER\n$bist\n\nVİOP favorileri backend sözleşme kimlikleriyle ayrı tutulmalıdır."
+
+        repository = FavoriteRepository.get(this)
+        list = findViewById(R.id.favoriteList)
+        summary = findViewById(R.id.favoriteSummary)
+        list.layoutManager = LinearLayoutManager(this)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        lifecycleScope.launch {
+            repository.migrateLegacyIfNeeded()
+            refresh()
         }
-        draw()
-        findViewById<Button>(R.id.add).setOnClickListener {
-            val symbol = input.text.toString().trim().uppercase()
-            if (symbol.matches(Regex("[A-Z0-9]{3,7}"))) {
-                val set = prefs.getStringSet("bist", emptySet())!!.toMutableSet()
-                set += symbol
-                prefs.edit().putStringSet("bist", set).apply()
-                input.text.clear()
-                draw()
+    }
+
+    private suspend fun refresh() {
+        val favorites = repository.getAll()
+        val latestBySymbol = AppSession.lastOpportunities.associateBy { FavoriteRepository.normalizeSymbol(it.symbol) }
+        val rows = favorites.map { it to latestBySymbol[it.symbol] }
+
+        summary.text = if (rows.isEmpty()) {
+            "Henüz favori yok. Fırsat Kontrol kartındaki ☆ simgesine dokunarak ekleyin."
+        } else {
+            "${rows.size} kalıcı favori • Son Fırsat taramasındaki skor/risk verileri eşleştirildi"
+        }
+
+        list.adapter = FavoriteAdapter(
+            rows,
+            onRemove = { favorite ->
+                lifecycleScope.launch {
+                    repository.remove(favorite.symbol)
+                    Toast.makeText(this@FavoritesActivity, "${favorite.symbol} favorilerden çıkarıldı", Toast.LENGTH_SHORT).show()
+                    refresh()
+                }
+            },
+            onOpen = { opportunity ->
+                AppSession.selected = opportunity
+                startActivity(Intent(this@FavoritesActivity, StockDetailActivity::class.java))
             }
-        }
+        )
     }
 }
