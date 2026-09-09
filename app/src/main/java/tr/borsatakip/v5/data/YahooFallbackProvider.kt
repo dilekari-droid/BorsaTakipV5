@@ -18,6 +18,10 @@ import java.net.URLEncoder
 /**
  * Yalnızca yedek/gecikmeli veri sağlayıcısıdır. Ana sağlayıcı başarısız olduğunda ve kullanıcı
  * Ayarlar'da yedeği açık bıraktığında devreye girer. Canlı veri olarak etiketlenmez.
+ *
+ * Önemli: Sabit 28 hisselik bir evren kullanmaz. Yalnızca ana sağlayıcıdan daha önce başarıyla
+ * alınmış dinamik BIST sembol önbelleğini kullanır. Böylece yedek kaynak da ana sağlayıcının
+ * gerçek sembol evrenine bağlı kalır.
  */
 class YahooFallbackProvider(context: Context) : MarketDataProvider {
     private val settings = SettingsStore(context)
@@ -25,7 +29,11 @@ class YahooFallbackProvider(context: Context) : MarketDataProvider {
     override val displayName = "Yahoo Finance • YEDEK / GECİKMELİ"
 
     override suspend fun scan(onProgress: (done: Int, total: Int) -> Unit): List<Stock> = coroutineScope {
-        val symbols = settings.cachedBistSymbols.toList().ifEmpty { BistUniverse.safetyFallback }
+        val symbols = settings.cachedBistSymbols.toList().sorted()
+        require(symbols.isNotEmpty()) {
+            "Dinamik BIST sembol önbelleği boş. Önce ana mobil veri sağlayıcısından /v1/bist/symbols alınmalıdır."
+        }
+
         val semaphore = Semaphore(6)
         var done = 0
         symbols.map { symbol ->
@@ -50,7 +58,7 @@ class YahooFallbackProvider(context: Context) : MarketDataProvider {
             .openConnection() as HttpURLConnection
         con.connectTimeout = 7000
         con.readTimeout = 7000
-        con.setRequestProperty("User-Agent", "Mozilla/5.0 BorsaTakip/5.1")
+        con.setRequestProperty("User-Agent", "Mozilla/5.0 BorsaTakip/5.1.2")
         return try {
             if (con.responseCode !in 200..299) return null
             parse(con.inputStream.bufferedReader().use { it.readText() }, symbol)
