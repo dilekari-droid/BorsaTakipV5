@@ -1,9 +1,41 @@
 package tr.borsatakip.v5.ui
+
 import android.os.Bundle
-import android.widget.*
+import android.widget.Button
+import android.widget.EditText
+import android.widget.Switch
+import android.widget.TextView
+import android.widget.Toast
 import tr.borsatakip.v5.BuildConfig
 import tr.borsatakip.v5.R
 import tr.borsatakip.v5.data.SettingsStore
-class SettingsActivity:BaseActivity(){override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState);setContentView(R.layout.activity_settings);setupBottomNav();val s=SettingsStore(this);val b=findViewById<EditText>(R.id.baseUrl);val k=findViewById<EditText>(R.id.apiKey);val r=findViewById<EditText>(R.id.refreshMinutes);val n=findViewById<Switch>(R.id.notifications);b.setText(s.baseUrl);k.setText(s.apiKey);r.setText(s.refreshMinutes.toString());n.isChecked=s.notifications;fun status(){findViewById<TextView>(R.id.dataStatus).text="BIST: Yahoo Finance gecikmeli veri • VİOP: ${if(s.baseUrl.isBlank())"sağlayıcı tanımsız" else s.baseUrl}
-Tema: koyu lacivert referans tema
-Uygulama sürümü: ${BuildConfig.VERSION_NAME}"};status();findViewById<Button>(R.id.save).setOnClickListener{s.baseUrl=b.text.toString();s.apiKey=k.text.toString();s.refreshMinutes=(r.text.toString().toIntOrNull()?:60).coerceAtLeast(15);s.notifications=n.isChecked;Toast.makeText(this,"Ayarlar kaydedildi",Toast.LENGTH_SHORT).show();status()}}}
+
+class SettingsActivity : BaseActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_settings)
+        setupBottomNav()
+        val s = SettingsStore(this)
+        val base = findViewById<EditText>(R.id.baseUrl)
+        val key = findViewById<EditText>(R.id.apiKey)
+        val refresh = findViewById<EditText>(R.id.refreshMinutes)
+        val notifications = findViewById<Switch>(R.id.notifications)
+        base.setText(s.baseUrl)
+        key.setText(s.apiKey)
+        refresh.setText(s.refreshMinutes.toString())
+        notifications.isChecked = s.notifications
+        fun status() {
+            val viop = if (s.baseUrl.isBlank()) "sağlayıcı tanımsız" else s.baseUrl
+            findViewById<TextView>(R.id.dataStatus).text = "BIST: Yahoo Finance gecikmeli veri • VİOP: $viop\nTema: koyu lacivert referans tema\nUygulama sürümü: ${BuildConfig.VERSION_NAME}"
+        }
+        status()
+        findViewById<Button>(R.id.save).setOnClickListener {
+            s.baseUrl = base.text.toString()
+            s.apiKey = key.text.toString()
+            s.refreshMinutes = (refresh.text.toString().toIntOrNull() ?: 60).coerceAtLeast(15)
+            s.notifications = notifications.isChecked
+            Toast.makeText(this, "Ayarlar kaydedildi", Toast.LENGTH_SHORT).show()
+            status()
+        }
+    }
+}
