@@ -5,8 +5,8 @@ import kotlinx.coroutines.CancellationException
 import tr.borsatakip.v5.model.Stock
 
 /**
- * Sağlayıcı yönlendirici: ana kaynak mobil backend'dir. Yahoo yalnızca isteğe bağlı gecikmeli
- * yedektir. CancellationException hiçbir zaman fallback'e çevrilmez; iptal normal lifecycle akışıdır.
+ * Üretim yönlendiricisi: ana kaynak her zaman yapılandırılmış HTTPS backend'dir.
+ * Yahoo yalnızca kullanıcı deneysel sağlayıcıları ve Yahoo yedeğini açıkça etkinleştirirse çalışır.
  */
 class ProviderRouter(context: Context) : MarketDataProvider {
     private val settings = SettingsStore(context)
@@ -17,6 +17,15 @@ class ProviderRouter(context: Context) : MarketDataProvider {
     override val displayName: String get() = settings.lastProviderLabel
 
     override suspend fun scan(onProgress: (done: Int, total: Int) -> Unit): List<Stock> {
+        if (!settings.baseUrl.startsWith("https://")) {
+            if (!allowExperimentalFallback()) {
+                throw IllegalStateException(
+                    "Üretim veri sağlayıcısı yapılandırılmamış. Ayarlar'da gerçek HTTPS backend tanımlayın veya yalnız test için deneysel sağlayıcı modunu açın."
+                )
+            }
+            return fallbackScan(onProgress)
+        }
+
         val primaryResult = try {
             primary.scan(onProgress)
         } catch (ce: CancellationException) {
@@ -28,36 +37,49 @@ class ProviderRouter(context: Context) : MarketDataProvider {
             mark(primary.id, primaryResult.firstOrNull()?.source ?: primary.displayName)
             return primaryResult
         }
-        if (!settings.yahooFallbackEnabled) {
-            throw IllegalStateException("Canlı veri sağlayıcısı yapılandırılmamış veya veri alınamadı.")
+
+        if (!allowExperimentalFallback()) {
+            throw IllegalStateException("Üretim backend'i veri döndürmedi; deneysel fallback kapalı.")
         }
+        return fallbackScan(onProgress)
+    }
+
+    override suspend fun fetchOne(symbol: String): Stock? {
+        if (settings.baseUrl.startsWith("https://")) {
+            val primaryResult = try {
+                primary.fetchOne(symbol)
+            } catch (ce: CancellationException) {
+                throw ce
+            } catch (_: Throwable) {
+                null
+            }
+            if (primaryResult != null) {
+                mark(primary.id, primaryResult.source)
+                return primaryResult
+            }
+        }
+
+        if (!allowExperimentalFallback()) return null
+        val fallbackResult = fallback.fetchOne(symbol)
+        if (fallbackResult != null) mark(fallback.id, fallback.displayName)
+        return fallbackResult
+    }
+
+    private suspend fun fallbackScan(onProgress: (done: Int, total: Int) -> Unit): List<Stock> {
         val fallbackResult = try {
             fallback.scan(onProgress)
         } catch (ce: CancellationException) {
             throw ce
         }
-        if (fallbackResult.isEmpty()) throw IllegalStateException("Ana ve yedek veri sağlayıcılarından veri alınamadı.")
-        mark(fallback.id, fallback.displayName)
+        if (fallbackResult.isEmpty()) {
+            throw IllegalStateException("Deneysel Yahoo yedeğinden veri alınamadı.")
+        }
+        mark(fallback.id, "${fallback.displayName} • DENEYSEL/YEDEK")
         return fallbackResult
     }
 
-    override suspend fun fetchOne(symbol: String): Stock? {
-        val primaryResult = try {
-            primary.fetchOne(symbol)
-        } catch (ce: CancellationException) {
-            throw ce
-        } catch (_: Throwable) {
-            null
-        }
-        if (primaryResult != null) {
-            mark(primary.id, primaryResult.source)
-            return primaryResult
-        }
-        if (!settings.yahooFallbackEnabled) return null
-        val fallbackResult = fallback.fetchOne(symbol)
-        if (fallbackResult != null) mark(fallback.id, fallback.displayName)
-        return fallbackResult
-    }
+    private fun allowExperimentalFallback(): Boolean =
+        settings.experimentalProvidersEnabled && settings.yahooFallbackEnabled
 
     private fun mark(providerId: String, label: String) {
         settings.lastProviderId = providerId
