@@ -48,11 +48,11 @@ class SettingsActivity : BaseActivity() {
         }
 
         tradingViewStatus.text = buildString {
-            append("TradingView: yalnız harici grafik/görüntüleme\n")
+            append("TradingView: yalnız güvenli tarayıcı/Custom Tab üzerinden görüntüleme\n")
             append("BIST/VİOP veri kaynağı: HAYIR\n")
-            append("WebView/OAuth girişi: KULLANILMIYOR\n")
+            append("Uygulama içi TradingView kimlik doğrulaması: KULLANILMIYOR\n")
             append("Tarayıcı cookie/oturum aktarımı: YAPILMIYOR\n")
-            append("TradingView hesabı yalnız güvenli tarayıcı sekmesinde kullanıcı tarafından yönetilir.")
+            append("TradingView hesabı yalnız açılan güvenli tarayıcı sekmesinde kullanıcı tarafından yönetilir.")
         }
 
         fun showStatus(extra: String? = null) {
