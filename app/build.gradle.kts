@@ -12,13 +12,8 @@ android {
         applicationId = "tr.borsatakip.v5"
         minSdk = 26
         targetSdk = 35
-        versionCode = 72
-        versionName = "5.1.22"
-
-        val tvTestUser = System.getenv("TRADINGVIEW_TEST_USERNAME") ?: ""
-        val tvTestPass = System.getenv("TRADINGVIEW_TEST_PASSWORD") ?: ""
-        buildConfigField("String", "TV_TEST_USERNAME", "\"${tvTestUser.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
-        buildConfigField("String", "TV_TEST_PASSWORD", "\"${tvTestPass.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
+        versionCode = 73
+        versionName = "5.1.23"
     }
 
     val releaseStorePath = System.getenv("BORSA_KEYSTORE_PATH")
@@ -68,6 +63,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("androidx.work:work-runtime-ktx:2.10.0")
+    implementation("androidx.browser:browser:1.8.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("androidx.room:room-runtime:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")
