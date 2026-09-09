@@ -13,9 +13,8 @@ import tr.borsatakip.v5.model.Opportunity
 import java.util.concurrent.TimeUnit
 
 /**
- * TradingView'in web screener endpoint'inden BIST snapshot alan sağlayıcı.
- * Bu endpoint resmî/garantili TradingView geliştirici API'si değildir; kullanıcı hesabı veya
- * session token APK içine konulmaz. Verinin gecikmesi/erişilebilirliği TradingView tarafına bağlıdır.
+ * TradingView web screener endpoint'inden BIST snapshot alan sağlayıcı.
+ * Bu endpoint resmî/garantili geliştirici API'si değildir; gecikme ve erişilebilirlik sağlayıcı koşullarına bağlıdır.
  */
 class TradingViewScannerOpportunityProvider {
 
@@ -43,44 +42,20 @@ class TradingViewScannerOpportunityProvider {
     suspend fun scan(onProgress: (done: Int, total: Int) -> Unit): Result<ScanOutput> = withContext(Dispatchers.IO) {
         runCatching {
             val columns = listOf(
-                "name",
-                "description",
-                "close",
-                "change",
-                "volume",
-                "relative_volume_10d_calc",
-                "RSI",
-                "MACD.macd",
-                "MACD.signal",
-                "EMA20",
-                "EMA50",
-                "EMA200",
-                "ATR",
-                "VWMA",
-                "Recommend.All"
+                "name", "description", "close", "change", "volume", "relative_volume_10d_calc",
+                "RSI", "MACD.macd", "MACD.signal", "EMA20", "EMA50", "EMA200", "ATR", "VWMA", "Recommend.All"
             )
 
             val payload = JSONObject().apply {
                 put("columns", JSONArray(columns))
                 put("filter", JSONArray().apply {
-                    put(JSONObject().apply {
-                        put("left", "exchange")
-                        put("operation", "equal")
-                        put("right", "BIST")
-                    })
-                    put(JSONObject().apply {
-                        put("left", "type")
-                        put("operation", "equal")
-                        put("right", "stock")
-                    })
+                    put(JSONObject().apply { put("left", "exchange"); put("operation", "equal"); put("right", "BIST") })
+                    put(JSONObject().apply { put("left", "type"); put("operation", "equal"); put("right", "stock") })
                 })
                 put("options", JSONObject().put("lang", "tr"))
                 put("markets", JSONArray().put("turkey"))
                 put("range", JSONArray().put(0).put(900))
-                put("sort", JSONObject().apply {
-                    put("sortBy", "volume")
-                    put("sortOrder", "desc")
-                })
+                put("sort", JSONObject().apply { put("sortBy", "volume"); put("sortOrder", "desc") })
                 put("symbols", JSONObject().apply {
                     put("query", JSONObject().put("types", JSONArray()))
                     put("tickers", JSONArray())
@@ -91,7 +66,7 @@ class TradingViewScannerOpportunityProvider {
                 .url(SCANNER_URL)
                 .header("Accept", "application/json")
                 .header("Content-Type", "application/json")
-                .header("User-Agent", "BorsaTakip/5.1.8 Android")
+                .header("User-Agent", USER_AGENT)
                 .post(payload.toString().toRequestBody(JSON_MEDIA))
                 .build()
 
@@ -106,9 +81,7 @@ class TradingViewScannerOpportunityProvider {
                 val body = r.body?.string().orEmpty()
                 if (body.isBlank()) throw ScanFailure.Empty()
 
-                val json = try {
-                    JSONObject(body)
-                } catch (e: Exception) {
+                val json = try { JSONObject(body) } catch (_: Exception) {
                     throw ScanFailure.InvalidJson("TradingView Scanner cevabı geçerli JSON değil.")
                 }
                 val data = json.optJSONArray("data") ?: throw ScanFailure.Empty()
@@ -121,22 +94,17 @@ class TradingViewScannerOpportunityProvider {
 
                 for (i in 0 until data.length()) {
                     val row = data.optJSONObject(i)
-                    if (row == null) {
-                        skipped++
-                        onProgress(i + 1, data.length())
-                        continue
-                    }
-                    val values = row.optJSONArray("d")
-                    val rawSymbol = row.optString("s")
+                    val values = row?.optJSONArray("d")
+                    val rawSymbol = row?.optString("s").orEmpty()
                     val symbol = rawSymbol.substringAfter("BIST:", rawSymbol).trim().uppercase()
-                    if (values == null || symbol.isBlank() || !symbol.matches(Regex("[A-Z0-9]{3,12}"))) {
+                    if (row == null || values == null || symbol.isBlank() || !symbol.matches(Regex("[A-Z0-9]{3,12}"))) {
                         skipped++
                         onProgress(i + 1, data.length())
                         continue
                     }
 
                     fun num(index: Int): Double? {
-                        if (index < 0 || index >= values.length() || values.isNull(index)) return null
+                        if (index !in 0 until values.length() || values.isNull(index)) return null
                         val value = values.opt(index)
                         val n = when (value) {
                             is Number -> value.toDouble()
@@ -147,7 +115,7 @@ class TradingViewScannerOpportunityProvider {
                     }
 
                     fun text(index: Int): String? {
-                        if (index < 0 || index >= values.length() || values.isNull(index)) return null
+                        if (index !in 0 until values.length() || values.isNull(index)) return null
                         return values.optString(index).takeIf { it.isNotBlank() && it != "null" }
                     }
 
@@ -185,7 +153,7 @@ class TradingViewScannerOpportunityProvider {
 
                 if (opportunities.isEmpty()) throw ScanFailure.Empty()
                 ScanOutput(
-                    opportunities = opportunities.sortedByDescending { it.score },
+                    opportunities = opportunities.sortedByDescending { it.finalSignalScore },
                     receivedRows = data.length(),
                     skippedRows = skipped,
                     sourceLabel = SOURCE_LABEL
@@ -196,6 +164,7 @@ class TradingViewScannerOpportunityProvider {
 
     companion object {
         private const val SCANNER_URL = "https://scanner.tradingview.com/turkey/scan"
+        private const val USER_AGENT = "BorsaTakip/5.1.12 Android"
         const val SOURCE_LABEL = "TradingView Scanner • gecikme/erişim TradingView koşullarına bağlı"
         private val JSON_MEDIA = "application/json; charset=utf-8".toMediaType()
     }
