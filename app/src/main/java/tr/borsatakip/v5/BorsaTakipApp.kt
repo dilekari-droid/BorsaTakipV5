@@ -3,7 +3,6 @@ package tr.borsatakip.v5
 import android.app.Application
 import android.util.Log
 import androidx.work.*
-import tr.borsatakip.v5.scan.CrashDiagnostics
 import tr.borsatakip.v5.worker.OpportunityWorker
 import java.util.concurrent.TimeUnit
 
@@ -19,8 +18,7 @@ class BorsaTakipApp : Application() {
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
             Log.e(
                 "BIST_CRASH",
-                "[BIST_CRASH] thread=${thread.name} stage=${CrashDiagnostics.stage} symbol=${CrashDiagnostics.symbol} " +
-                    "exception=${throwable::class.java.name} message=${throwable.message}",
+                "[BIST_CRASH] thread=${thread.name} exception=${throwable::class.java.name} message=${throwable.message}",
                 throwable
             )
             previous?.uncaughtException(thread, throwable)
