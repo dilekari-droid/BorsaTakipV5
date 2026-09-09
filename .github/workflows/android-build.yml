@@ -41,11 +41,11 @@ jobs:
         run: |
           gradle :app:assembleDebug
           mkdir -p app/build/outputs/final
-          cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/final/BorsaTakipV5.1.17-debug.apk
+          cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/final/BorsaTakipV5.1.18-debug.apk
 
       - name: Verify APK strings
         run: |
-          APK=app/build/outputs/final/BorsaTakipV5.1.17-debug.apk
+          APK=app/build/outputs/final/BorsaTakipV5.1.18-debug.apk
           rm -f /tmp/all.dex
           for dex in $(zipinfo -1 "$APK" | grep -E '^classes([0-9]+)?\.dex$'); do
             unzip -p "$APK" "$dex" >> /tmp/all.dex
@@ -65,11 +65,15 @@ jobs:
           done
           strings /tmp/all.dex | grep -Fq 'favorite_stocks'
           strings /tmp/all.dex | grep -Fq 'FavoriteRepository'
+          strings /tmp/all.dex | grep -Fq 'BAYAT VERİ'
+          strings /tmp/all.dex | grep -Fq 'PRIMARY KEY(symbol, market)'
           AAPT=$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)
           test -x "$AAPT"
           "$AAPT" dump badging "$APK" | tee /tmp/badging.txt
-          grep -Fq "versionName='5.1.17'" /tmp/badging.txt
-          echo 'APK stale/test string, favorites Room and version verification passed.'
+          grep -Fq "versionName='5.1.18'" /tmp/badging.txt
+          "$AAPT" dump xmltree "$APK" AndroidManifest.xml | tee /tmp/manifest.txt
+          grep -A20 'E: application' /tmp/manifest.txt | grep -Fq 'android:allowBackup(0x01010280)=(type 0x12)0x0'
+          echo 'APK favorites migration, data freshness, backup policy and version verification passed.'
 
       - name: Check release secrets
         if: github.event_name != 'pull_request'
@@ -101,16 +105,16 @@ jobs:
           BORSA_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           gradle :app:assembleRelease
-          cp app/build/outputs/apk/release/app-release.apk app/build/outputs/final/BorsaTakipV5.1.17-release.apk
+          cp app/build/outputs/apk/release/app-release.apk app/build/outputs/final/BorsaTakipV5.1.18-release.apk
           APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)
           test -x "$APKSIGNER"
-          "$APKSIGNER" verify --verbose --print-certs app/build/outputs/final/BorsaTakipV5.1.17-release.apk | tee /tmp/apksigner.txt
+          "$APKSIGNER" verify --verbose --print-certs app/build/outputs/final/BorsaTakipV5.1.18-release.apk | tee /tmp/apksigner.txt
           grep -q "Verified using v2 scheme (APK Signature Scheme v2): true" /tmp/apksigner.txt
           grep -Eq "Verified using v3 scheme \(APK Signature Scheme v3\): true|Verified using v3.1 scheme \(APK Signature Scheme v3.1\): true" /tmp/apksigner.txt
 
       - name: Upload APK artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: BorsaTakipV5.1.17-apk
+          name: BorsaTakipV5.1.18-apk
           path: app/build/outputs/final/*.apk
           if-no-files-found: error
