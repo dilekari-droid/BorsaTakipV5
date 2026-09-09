@@ -1,11 +1,12 @@
 package tr.borsatakip.v5.data
 
 import android.content.Context
+import kotlinx.coroutines.CancellationException
 import tr.borsatakip.v5.model.Stock
 
 /**
- * Sağlayıcı yönlendirici: ana kaynak her zaman mobil backend'dir. Yahoo yalnızca isteğe bağlı
- * gecikmeli yedektir. UI ve analiz motoru somut sağlayıcı sınıfını bilmez.
+ * Sağlayıcı yönlendirici: ana kaynak mobil backend'dir. Yahoo yalnızca isteğe bağlı gecikmeli
+ * yedektir. CancellationException hiçbir zaman fallback'e çevrilmez; iptal normal lifecycle akışıdır.
  */
 class ProviderRouter(context: Context) : MarketDataProvider {
     private val settings = SettingsStore(context)
@@ -16,22 +17,38 @@ class ProviderRouter(context: Context) : MarketDataProvider {
     override val displayName: String get() = settings.lastProviderLabel
 
     override suspend fun scan(onProgress: (done: Int, total: Int) -> Unit): List<Stock> {
-        val primaryResult = runCatching { primary.scan(onProgress) }.getOrNull().orEmpty()
+        val primaryResult = try {
+            primary.scan(onProgress)
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (_: Throwable) {
+            emptyList()
+        }
         if (primaryResult.isNotEmpty()) {
             mark(primary.id, primaryResult.firstOrNull()?.source ?: primary.displayName)
             return primaryResult
         }
         if (!settings.yahooFallbackEnabled) {
-            throw IllegalStateException("Ana veri sağlayıcısından veri alınamadı ve gecikmeli yedek kaynak kapalı.")
+            throw IllegalStateException("Canlı veri sağlayıcısı yapılandırılmamış veya veri alınamadı.")
         }
-        val fallbackResult = fallback.scan(onProgress)
+        val fallbackResult = try {
+            fallback.scan(onProgress)
+        } catch (ce: CancellationException) {
+            throw ce
+        }
         if (fallbackResult.isEmpty()) throw IllegalStateException("Ana ve yedek veri sağlayıcılarından veri alınamadı.")
         mark(fallback.id, fallback.displayName)
         return fallbackResult
     }
 
     override suspend fun fetchOne(symbol: String): Stock? {
-        val primaryResult = runCatching { primary.fetchOne(symbol) }.getOrNull()
+        val primaryResult = try {
+            primary.fetchOne(symbol)
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (_: Throwable) {
+            null
+        }
         if (primaryResult != null) {
             mark(primary.id, primaryResult.source)
             return primaryResult
