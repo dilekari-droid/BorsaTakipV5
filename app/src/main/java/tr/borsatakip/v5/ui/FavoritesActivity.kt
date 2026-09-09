@@ -2,6 +2,8 @@ package tr.borsatakip.v5.ui
 
 import android.content.Intent
 import android.os.Bundle
+import android.view.View
+import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
 import androidx.lifecycle.lifecycleScope
@@ -15,6 +17,7 @@ class FavoritesActivity : BaseActivity() {
     private lateinit var repository: FavoriteRepository
     private lateinit var list: RecyclerView
     private lateinit var summary: TextView
+    private lateinit var emptyState: View
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -24,7 +27,12 @@ class FavoritesActivity : BaseActivity() {
         repository = FavoriteRepository.get(this)
         list = findViewById(R.id.favoriteList)
         summary = findViewById(R.id.favoriteSummary)
+        emptyState = findViewById(R.id.favoriteEmptyState)
         list.layoutManager = LinearLayoutManager(this)
+
+        findViewById<Button>(R.id.openOpportunities).setOnClickListener {
+            startActivity(Intent(this, OpportunityActivity::class.java))
+        }
     }
 
     override fun onResume() {
@@ -39,9 +47,12 @@ class FavoritesActivity : BaseActivity() {
         val favorites = repository.getAll()
         val latestBySymbol = AppSession.lastOpportunities.associateBy { FavoriteRepository.normalizeSymbol(it.symbol) }
         val rows = favorites.map { it to latestBySymbol[it.symbol] }
+        val isEmpty = rows.isEmpty()
 
-        summary.text = if (rows.isEmpty()) {
-            "Henüz favori yok. Fırsat Kontrol kartındaki ☆ simgesine dokunarak ekleyin."
+        emptyState.visibility = if (isEmpty) View.VISIBLE else View.GONE
+        list.visibility = if (isEmpty) View.GONE else View.VISIBLE
+        summary.text = if (isEmpty) {
+            "Favoriler Room veritabanında kalıcı olarak saklanır."
         } else {
             "${rows.size} kalıcı favori • Son Fırsat taramasındaki skor/risk verileri eşleştirildi"
         }
@@ -50,7 +61,7 @@ class FavoritesActivity : BaseActivity() {
             rows,
             onRemove = { favorite ->
                 lifecycleScope.launch {
-                    repository.remove(favorite.symbol)
+                    repository.remove(favorite.symbol, favorite.market)
                     Toast.makeText(this@FavoritesActivity, "${favorite.symbol} favorilerden çıkarıldı", Toast.LENGTH_SHORT).show()
                     refresh()
                 }
