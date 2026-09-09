@@ -17,14 +17,14 @@
             android:padding="18dp">
 
             <TextView style="@style/Title" android:text="Ayarlar" />
-            <TextView style="@style/Sub" android:text="Mobil veri servisi • API • canlı bağlantı • sürüm" />
+            <TextView style="@style/Sub" android:text="Ana sağlayıcı • yedek kaynak • canlı bağlantı • sürüm" />
 
             <EditText
                 android:id="@+id/baseUrl"
                 android:layout_width="match_parent"
                 android:layout_height="52dp"
                 android:layout_marginTop="14dp"
-                android:hint="https://api.ornek.com"
+                android:hint="Ana sağlayıcı: https://api.ornek.com"
                 android:inputType="textUri"
                 android:textColor="@color/text_primary"
                 android:textColorHint="@color/text_secondary" />
@@ -48,6 +48,13 @@
                 android:textColorHint="@color/text_secondary" />
 
             <Switch
+                android:id="@+id/yahooFallback"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:text="Yahoo Finance yedek/gecikmeli kaynak"
+                android:textColor="@color/text_primary" />
+
+            <Switch
                 android:id="@+id/notifications"
                 android:layout_width="match_parent"
                 android:layout_height="52dp"
@@ -68,7 +75,7 @@
                 android:layout_height="52dp"
                 android:layout_marginTop="10dp"
                 android:background="@drawable/bg_card"
-                android:text="BAĞLANTIYI TEST ET"
+                android:text="ANA BAĞLANTIYI TEST ET"
                 android:textColor="@color/text_primary" />
 
             <TextView
