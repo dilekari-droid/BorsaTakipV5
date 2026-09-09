@@ -30,20 +30,28 @@ class BistScanActivity : BaseActivity() {
             val primary = if (settings.baseUrl.startsWith("https://")) settings.baseUrl else "tanımlı değil"
             val fallback = if (settings.yahooFallbackEnabled) "açık" else "kapalı"
             val cached = settings.cachedBistSymbols.size
-            source.text = "Ana kaynak: $primary\nYedek/gecikmeli kaynak: Yahoo Finance ($fallback)\nDinamik BIST evren önbelleği: $cached sembol"
+            source.text = buildString {
+                append("Ana kaynak: $primary\n")
+                append("Yedek/gecikmeli kaynak: Yahoo Finance ($fallback)\n")
+                append("Yüklenen dinamik BIST sembolü: $cached")
+                if (cached == 0) append(" • Sabit 28 hisse listesi kullanılmaz")
+            }
         }
         refreshSourceLabel()
 
         btn.setOnClickListener {
             btn.isEnabled = false
-            status.text = "Ana BIST veri sağlayıcısına bağlanılıyor..."
+            status.text = "Ana BIST veri sağlayıcısından dinamik sembol evreni alınıyor..."
             lifecycleScope.launch {
                 try {
+                    var universeTotal = 0
                     val stocks = ProviderRouter(this@BistScanActivity).scan { done, total ->
+                        universeTotal = total
                         runOnUiThread {
                             val pct = if (total == 0) 0 else done * 100 / total
                             progress.progress = pct
                             txt.text = "$done / $total • %$pct"
+                            status.text = "BIST evreni: $total sembol • Taranan: $done"
                         }
                     }
                     var ops = stocks.mapNotNull { OpportunityEngine.score(it) }
@@ -59,7 +67,9 @@ class BistScanActivity : BaseActivity() {
                         .sortedByDescending { it.score }
                     AppSession.lastOpportunities = ops
                     val active = settings.lastProviderLabel
-                    status.text = "${stocks.size} hisse analiz edildi. ${ops.size} sonuç kriterleri karşıladı. Aktif kaynak: $active"
+                    val cached = settings.cachedBistSymbols.size
+                    val universe = if (universeTotal > 0) universeTotal else cached
+                    status.text = "BIST evreni: $universe sembol • Yeterli geçmiş verisi alınan: ${stocks.size} • Fırsat sonucu: ${ops.size} • Aktif kaynak: $active"
                     refreshSourceLabel()
                     startActivity(Intent(this@BistScanActivity, OpportunityActivity::class.java))
                 } catch (e: Exception) {
