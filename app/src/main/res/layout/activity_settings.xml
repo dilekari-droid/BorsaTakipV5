@@ -53,32 +53,24 @@
             <TextView
                 style="@style/Sub"
                 android:layout_marginTop="18dp"
-                android:text="TradingView üyelik testi (yalnız deneysel mod)" />
+                android:text="TradingView oturumu (yalnız deneysel mod)" />
 
-            <EditText
-                android:id="@+id/tradingViewUsername"
+            <TextView
                 android:layout_width="match_parent"
-                android:layout_height="52dp"
-                android:hint="TradingView e-posta / kullanıcı adı"
-                android:inputType="textEmailAddress"
-                android:textColor="@color/text_primary"
-                android:textColorHint="@color/text_secondary" />
-
-            <EditText
-                android:id="@+id/tradingViewPassword"
-                android:layout_width="match_parent"
-                android:layout_height="52dp"
-                android:hint="TradingView şifre"
-                android:inputType="textPassword"
-                android:textColor="@color/text_primary"
-                android:textColorHint="@color/text_secondary" />
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:background="@drawable/bg_card"
+                android:padding="12dp"
+                android:text="Güvenlik: Kullanıcı adı ve şifre BorsaTakip ekranına yazılmaz ve APK içine gömülmez. Giriş bilgilerini yalnız TradingView'in açılan web sayfasına girin."
+                android:textColor="@color/text_secondary" />
 
             <Button
                 android:id="@+id/testTradingViewLogin"
                 android:layout_width="match_parent"
                 android:layout_height="52dp"
+                android:layout_marginTop="10dp"
                 android:background="@drawable/bg_card_blue"
-                android:text="TRADINGVIEW TARAYICI GİRİŞİ"
+                android:text="TRADINGVIEW GİRİŞ YARDIMCISI"
                 android:textColor="@color/white" />
 
             <Button
