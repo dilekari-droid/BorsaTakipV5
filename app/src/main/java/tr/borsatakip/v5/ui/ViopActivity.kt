@@ -14,6 +14,7 @@ import androidx.recyclerview.widget.RecyclerView
 import kotlinx.coroutines.launch
 import tr.borsatakip.v5.R
 import tr.borsatakip.v5.data.SettingsStore
+import tr.borsatakip.v5.data.TradingViewViopProvider
 import tr.borsatakip.v5.data.ViopRepository
 import tr.borsatakip.v5.model.ViopContract
 
@@ -36,7 +37,9 @@ class ViopActivity : BaseActivity() {
 
         refreshProviderLabel()
         render(repo.loadLocal())
-        if (repo.loadLocal().isEmpty()) status.text = "Henüz kayıtlı VİOP sözleşmesi yok. Manuel ekleyebilir veya backend'den yenileyebilirsiniz."
+        if (repo.loadLocal().isEmpty()) {
+            status.text = "Henüz VİOP kaydı yok. TradingView BIST futures kontrat keşfini başlatın."
+        }
 
         findViewById<Button>(R.id.refresh).setOnClickListener { refreshContracts() }
         findViewById<Button>(R.id.addContract).setOnClickListener { showAddDialog() }
@@ -44,19 +47,22 @@ class ViopActivity : BaseActivity() {
 
     private fun refreshProviderLabel() {
         val s = SettingsStore(this)
-        providerStatus.text = if (s.baseUrl.startsWith("https://")) {
-            "Provider: Ana Backend • Canlı veri: yapılandırılmış"
-        } else {
-            "Provider: yapılandırılmamış • Canlı veri: BAĞLI DEĞİL"
+        providerStatus.text = buildString {
+            append("Ana VİOP kaynağı: TradingView Symbol Search + Turkey Scanner (deneysel)\n")
+            append("Aranan tabanlar: ${TradingViewViopProvider.BASE_SYMBOLS.joinToString()}\n")
+            append("Backend yedeği: ")
+            append(if (s.baseUrl.startsWith("https://")) "yapılandırılmış" else "yapılandırılmamış / isteğe bağlı")
         }
     }
 
     private fun refreshContracts() {
-        status.text = "VİOP sözleşmeleri yenileniyor..."
+        status.text = "TradingView VİOP sözleşmeleri keşfediliyor ve snapshot deneniyor..."
         lifecycleScope.launch {
             val (items, message) = repo.refresh()
             render(items)
-            status.text = if (items.isEmpty()) "$message\nKayıtlı sözleşme yok." else message
+            status.text = if (items.isEmpty()) {
+                "$message\nGerçek sözleşme/snapshot alınamadı; sahte veri üretilmedi."
+            } else message
             refreshProviderLabel()
         }
     }
