@@ -31,8 +31,6 @@ class SettingsActivity : BaseActivity() {
         val tvPass = findViewById<EditText>(R.id.tradingViewPassword)
         val tvStatus = findViewById<TextView>(R.id.tradingViewStatus)
 
-        if (s.baseUrl.equals("https://api.ornek.com", ignoreCase = true)) s.baseUrl = ""
-
         base.setText(s.baseUrl)
         key.setText(s.apiKey)
         refresh.setText(s.refreshMinutes.toString())
@@ -48,10 +46,11 @@ class SettingsActivity : BaseActivity() {
             val hasSession = s.tradingViewSessionId.isNotBlank()
             val hasToken = s.tradingViewAuthToken.isNotBlank()
             tvStatus.text = buildString {
-                append("TradingView: ")
-                append(if (hasSession) "OTURUM KAYITLI" else "OTURUM YOK")
+                append("TradingView üyelik oturumu: ")
+                append(if (hasSession) "KAYITLI" else "YOK (Fırsat Kontrol için zorunlu değil)")
                 append("\nWebSocket auth token: ")
                 append(if (hasToken) "MEVCUT" else "YOK")
+                append("\nBIST Fırsat ana kaynağı: TradingView Scanner")
                 if (BuildConfig.DEBUG) {
                     append("\nDEBUG test hesabı: ")
                     append(if (injectedUser.isNotBlank() && injectedPass.isNotBlank()) "YÜKLÜ" else "CI secret tanımlı değil")
@@ -62,18 +61,18 @@ class SettingsActivity : BaseActivity() {
         }
 
         fun showStatus(extra: String? = null) {
-            val provider = if (s.baseUrl.isBlank()) "tanımlı değil" else s.baseUrl
+            val backend = if (s.baseUrl.isBlank()) "YAPILANDIRILMAMIŞ (isteğe bağlı)" else s.baseUrl
             val fallback = if (s.yahooFallbackEnabled) "Yahoo Finance • yedek/gecikmeli • açık" else "kapalı"
             val universe = s.cachedBistSymbols.size
             val last = if (s.lastProviderTimestamp > 0L) s.lastProviderLabel else "henüz veri alınmadı"
             dataStatus.text = buildString {
-                append("Ana BIST/VİOP sağlayıcısı: $provider\n")
-                append("TradingView Scanner: doğrudan snapshot tarama\n")
-                append("TradingView üyelik oturumu: ${if (s.tradingViewSessionId.isNotBlank()) "kayıtlı" else "yok"}\n")
+                append("BIST Fırsat ana kaynağı: TradingView Scanner\n")
+                append("İsteğe bağlı BIST/VİOP backend: $backend\n")
+                append("TradingView üyelik girişi: ${if (s.tradingViewSessionId.isNotBlank()) "kayıtlı" else "isteğe bağlı / oturum yok"}\n")
                 append("Yedek/gecikmeli kaynak: $fallback\n")
                 append("Son aktif kaynak: $last\n")
                 append("Dinamik BIST evren önbelleği: $universe sembol\n")
-                append("REST: /v1/bist/symbols, /v1/bist/history/{symbol}, /v1/viop/contracts\n")
+                append("Backend tanımlanırsa: /v1/health, /v1/bist/symbols, /v1/bist/history/{symbol}, /v1/viop/contracts\n")
                 append("Uygulama sürümü: ${BuildConfig.VERSION_NAME}")
                 if (!extra.isNullOrBlank()) append("\n$extra")
             }
@@ -92,10 +91,10 @@ class SettingsActivity : BaseActivity() {
                 else -> ""
             }
             if (username.isBlank() || password.isBlank()) {
-                Toast.makeText(this, "TradingView test hesabı CI secret olarak tanımlı değil veya alanlar boş.", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "TradingView üyelik testi için e-posta/kullanıcı adı ve şifre girin.", Toast.LENGTH_LONG).show()
                 return@setOnClickListener
             }
-            tvStatus.text = "TradingView: giriş deneniyor..."
+            tvStatus.text = "TradingView üyelik girişi deneniyor..."
             lifecycleScope.launch {
                 val result = TradingViewAuthClient(this@SettingsActivity).login(username, password)
                 if (result.ok) {
@@ -106,7 +105,7 @@ class SettingsActivity : BaseActivity() {
                 showTvStatus(result.message)
                 Toast.makeText(
                     this@SettingsActivity,
-                    if (result.ok) "TradingView oturumu doğrulandı" else "TradingView girişi başarısız",
+                    if (result.ok) "TradingView oturumu doğrulandı" else "TradingView üyelik girişi başarısız; Scanner yine ayrı çalışabilir",
                     Toast.LENGTH_LONG
                 ).show()
             }
@@ -122,10 +121,10 @@ class SettingsActivity : BaseActivity() {
         findViewById<Button>(R.id.save).setOnClickListener {
             val url = base.text.toString().trim().removeSuffix("/")
             if (url.isNotBlank() && !url.startsWith("https://")) {
-                Toast.makeText(this, "Ana mobil veri servisi için HTTPS adresi kullanın.", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "İsteğe bağlı backend kullanacaksanız HTTPS adresi girin; boş bırakabilirsiniz.", Toast.LENGTH_LONG).show()
                 return@setOnClickListener
             }
-            s.baseUrl = if (url.equals("https://api.ornek.com", ignoreCase = true)) "" else url
+            s.baseUrl = url
             s.apiKey = key.text.toString()
             s.refreshMinutes = (refresh.text.toString().toIntOrNull() ?: 15).coerceAtLeast(1)
             s.yahooFallbackEnabled = yahooFallback.isChecked
@@ -138,16 +137,22 @@ class SettingsActivity : BaseActivity() {
 
         findViewById<Button>(R.id.testConnection).setOnClickListener {
             val url = base.text.toString().trim().removeSuffix("/")
-            if (url.isBlank() || !url.startsWith("https://") || url.equals("https://api.ornek.com", ignoreCase = true)) {
-                Toast.makeText(this, "Gerçek bir ana HTTPS sağlayıcı adresi girin.", Toast.LENGTH_LONG).show()
+            if (url.isBlank()) {
+                s.baseUrl = ""
+                showStatus("Ana veri sunucusu yapılandırılmamış. Bu alan isteğe bağlıdır; Fırsat Kontrol TradingView Scanner ile çalışabilir.")
+                Toast.makeText(this, "Backend isteğe bağlıdır; TradingView Scanner için URL gerekmez.", Toast.LENGTH_LONG).show()
+                return@setOnClickListener
+            }
+            if (!url.startsWith("https://")) {
+                Toast.makeText(this, "Backend testi için HTTPS adresi kullanın.", Toast.LENGTH_LONG).show()
                 return@setOnClickListener
             }
             s.baseUrl = url
             s.apiKey = key.text.toString()
-            showStatus("Ana bağlantı test ediliyor...")
+            showStatus("İsteğe bağlı backend bağlantısı test ediliyor...")
             lifecycleScope.launch {
                 val health = BackendHealthClient(this@SettingsActivity).check()
-                val state = if (health.ok) "ANA BAĞLANTI BAŞARILI" else "ANA BAĞLANTI BAŞARISIZ"
+                val state = if (health.ok) "BACKEND BAĞLANTISI BAŞARILI" else "BACKEND BAĞLANTISI BAŞARISIZ"
                 showStatus("$state • Sağlayıcı: ${health.provider} • Gecikme: ${health.latencyMs} ms • ${health.message}")
             }
         }
