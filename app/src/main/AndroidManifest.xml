@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application
+        android:name=".BorsaTakipApp"
+        android:allowBackup="true"
+        android:label="BORSA TAKİP"
+        android:theme="@style/Theme.BorsaTakip">
+        <activity android:name=".ui.SettingsActivity" />
+        <activity android:name=".ui.FavoritesActivity" />
+        <activity android:name=".ui.ViopActivity" />
+        <activity android:name=".ui.StockDetailActivity" />
+        <activity android:name=".ui.OpportunityActivity" />
+        <activity android:name=".ui.BistScanActivity" />
+        <activity android:name=".ui.MainActivity" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

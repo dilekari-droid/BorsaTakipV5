@@ -8,10 +8,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Extract source
-        run: |
-          unzip -q BORSA-TAKIP-V5.0.0-KAYNAK-KOD.zip
-          cp -R BorsaTakipV5_Source/. .
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
