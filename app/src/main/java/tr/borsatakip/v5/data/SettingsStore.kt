@@ -22,43 +22,23 @@ class SettingsStore(c: Context) {
         set(v) = putEncrypted("api_key_encrypted", v)
 
     /**
-     * Üretim veri modu varsayılandır. TradingView/Yahoo gibi doğrudan dış kaynaklar ancak
-     * kullanıcı bu deneysel modu açıkça etkinleştirirse devreye girebilir.
+     * Üretim veri modu varsayılandır. Bu anahtar yalnız Yahoo'nun gecikmeli BIST yedeği
+     * gibi açıkça deneysel olarak etiketlenmiş fallback kaynaklarını etkinleştirir.
+     * TradingView BIST/VİOP veri sağlayıcısı değildir.
      */
     var experimentalProvidersEnabled: Boolean
         get() = p.getBoolean("experimental_providers_enabled", false)
         set(v) = p.edit().putBoolean("experimental_providers_enabled", v).apply()
 
-    var tradingViewUsername: String
-        get() = p.getString("tv_username", "") ?: ""
-        set(v) = p.edit().putString("tv_username", v.trim()).apply()
-
-    var tradingViewPassword: String
-        get() = getEncrypted("tv_password_encrypted")
-        set(v) = putEncrypted("tv_password_encrypted", v)
-
-    var tradingViewSessionId: String
-        get() = getEncrypted("tv_session_id_encrypted")
-        set(v) = putEncrypted("tv_session_id_encrypted", v)
-
-    var tradingViewSessionSign: String
-        get() = getEncrypted("tv_session_sign_encrypted")
-        set(v) = putEncrypted("tv_session_sign_encrypted", v)
-
-    var tradingViewAuthToken: String
-        get() = getEncrypted("tv_auth_token_encrypted")
-        set(v) = putEncrypted("tv_auth_token_encrypted", v)
-
-    var tradingViewAuthenticatedAt: Long
-        get() = p.getLong("tv_authenticated_at", 0L)
-        set(v) = p.edit().putLong("tv_authenticated_at", v).apply()
-
-    fun clearTradingViewSession() {
+    /** V5.1.24 ve öncesinden kalmış TradingView kimlik/oturum kayıtlarını siler. */
+    fun purgeLegacyTradingViewState() {
         p.edit()
+            .remove("tv_username")
+            .remove("tv_password_encrypted")
             .remove("tv_session_id_encrypted")
             .remove("tv_session_sign_encrypted")
             .remove("tv_auth_token_encrypted")
-            .putLong("tv_authenticated_at", 0L)
+            .remove("tv_authenticated_at")
             .apply()
     }
 
