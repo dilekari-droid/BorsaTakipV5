@@ -9,6 +9,7 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import tr.borsatakip.v5.BuildConfig
 import tr.borsatakip.v5.model.Candle
 import tr.borsatakip.v5.model.Stock
 import java.net.HttpURLConnection
@@ -58,7 +59,7 @@ class YahooFallbackProvider(context: Context) : MarketDataProvider {
             .openConnection() as HttpURLConnection
         con.connectTimeout = 7000
         con.readTimeout = 7000
-        con.setRequestProperty("User-Agent", "Mozilla/5.0 BorsaTakip/5.1.2")
+        con.setRequestProperty("User-Agent", "Mozilla/5.0 BorsaTakip/${BuildConfig.VERSION_NAME} Android")
         return try {
             if (con.responseCode !in 200..299) return null
             parse(con.inputStream.bufferedReader().use { it.readText() }, symbol)
