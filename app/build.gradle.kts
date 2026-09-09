@@ -11,8 +11,8 @@ android {
         applicationId = "tr.borsatakip.v5"
         minSdk = 26
         targetSdk = 35
-        versionCode = 52
-        versionName = "5.1.1"
+        versionCode = 53
+        versionName = "5.1.2"
     }
 
     val releaseStorePath = System.getenv("BORSA_KEYSTORE_PATH")
