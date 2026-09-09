@@ -1,2 +1,54 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:background="@color/bg"><LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="18dp"><TextView style="@style/Title" android:text="VİOP"/><TextView android:id="@+id/status" style="@style/Sub" android:text="VİOP verisi BIST'ten ayrı sağlayıcıdan alınır."/><Button android:id="@+id/refresh" android:layout_width="match_parent" android:layout_height="52dp" android:layout_marginTop="12dp" android:background="@drawable/bg_card_purple" android:textColor="@color/white" android:text="SÖZLEŞMELERİ YENİLE"/></LinearLayout><androidx.recyclerview.widget.RecyclerView android:id="@+id/list" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:paddingHorizontal="12dp"/><include layout="@layout/include_bottom_nav"/></LinearLayout>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/bg">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="18dp">
+
+        <TextView style="@style/Title" android:text="VİOP" />
+
+        <TextView
+            android:id="@+id/providerStatus"
+            style="@style/Sub"
+            android:text="Provider: kontrol ediliyor..." />
+
+        <TextView
+            android:id="@+id/status"
+            style="@style/Sub"
+            android:layout_marginTop="6dp"
+            android:text="VİOP verisi BIST'ten ayrı sağlayıcıdan alınır." />
+
+        <Button
+            android:id="@+id/refresh"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_card_purple"
+            android:textColor="@color/white"
+            android:text="SÖZLEŞMELERİ YENİLE" />
+
+        <Button
+            android:id="@+id/addContract"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/bg_card_blue"
+            android:textColor="@color/white"
+            android:text="+ SÖZLEŞME EKLE" />
+    </LinearLayout>
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/list"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:paddingHorizontal="12dp" />
+
+    <include layout="@layout/include_bottom_nav" />
+</LinearLayout>
