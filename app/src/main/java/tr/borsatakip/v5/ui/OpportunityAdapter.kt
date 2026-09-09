@@ -8,6 +8,9 @@ import androidx.recyclerview.widget.RecyclerView
 import tr.borsatakip.v5.R
 import tr.borsatakip.v5.data.favorites.FavoriteRepository
 import tr.borsatakip.v5.model.Opportunity
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class OpportunityAdapter(
     private var items: List<Opportunity>,
@@ -33,8 +36,9 @@ class OpportunityAdapter(
     override fun onBindViewHolder(holder: H, position: Int) {
         val x = items[position]
         val normalized = FavoriteRepository.normalizeSymbol(x.symbol)
-        holder.favorite.text = if (favoriteSymbols.contains(normalized)) "★" else "☆"
-        holder.favorite.contentDescription = if (favoriteSymbols.contains(normalized)) "Favorilerden çıkar" else "Favoriye ekle"
+        val favorite = favoriteSymbols.contains(normalized)
+        holder.favorite.text = if (favorite) "★" else "☆"
+        holder.favorite.contentDescription = if (favorite) "Favorilerden çıkar" else "Favoriye ekle"
         holder.favorite.setOnClickListener { toggleFavorite(x) }
 
         val riskLabel = when {
@@ -58,6 +62,25 @@ class OpportunityAdapter(
             .joinToString(" + ")
             .ifBlank { "Yeterli teknik bileşen açıklaması yok" }
 
+        val now = System.currentTimeMillis()
+        val ageMs = if (x.dataTimestamp > 0L) (now - x.dataTimestamp).coerceAtLeast(0L) else Long.MAX_VALUE
+        val ageText = when {
+            ageMs == Long.MAX_VALUE -> "bilinmiyor"
+            ageMs < 60_000L -> "${ageMs / 1000L} sn"
+            ageMs < 3_600_000L -> "${ageMs / 60_000L} dk"
+            else -> "${ageMs / 3_600_000L} sa"
+        }
+        val timeText = if (x.dataTimestamp > 0L) {
+            SimpleDateFormat("dd.MM.yyyy HH:mm:ss", Locale.getDefault()).format(Date(x.dataTimestamp))
+        } else {
+            "bilinmiyor"
+        }
+        val staleLabel = when {
+            ageMs == Long.MAX_VALUE -> " • TAZELİK BİLİNMİYOR"
+            ageMs > 15 * 60_000L -> " • BAYAT VERİ"
+            else -> ""
+        }
+
         holder.symbol.text = x.symbol
         holder.score.text = "${x.finalSignalScore}/100"
         holder.company.text = x.companyName ?: ""
@@ -66,7 +89,8 @@ class OpportunityAdapter(
             append("Snapshot Teknik Puanı ${x.score}/100 • Risk ${x.riskScore}/100 • Veri Güveni ${x.dataConfidenceScore}/100 (${x.dataConfidenceLabel})\n")
             append("Nihai Sinyal ${x.finalSignalScore}/100\n")
             append("Hacim ${x.volumeLabel} • ${x.volumeDirectionLabel} • Günlük değişim ${"%.2f".format(x.dailyChangePct)}%\n")
-            append("Kaynak: ${x.source} • KAP: ${x.kapLabel}\n")
+            append("Kaynak: ${x.source} • Veri: $timeText • Yaş: $ageText$staleLabel\n")
+            append("KAP: ${x.kapLabel}\n")
             append("${x.direction} nedeni: $reason\n")
             append(x.scoreBreakdown.joinToString(" • "))
         }
