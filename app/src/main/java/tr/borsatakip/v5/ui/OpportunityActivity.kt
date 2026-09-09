@@ -2,16 +2,21 @@ package tr.borsatakip.v5.ui
 
 import android.content.Intent
 import android.os.Bundle
+import android.widget.Button
 import android.widget.TextView
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import tr.borsatakip.v5.R
-import tr.borsatakip.v5.analysis.OpportunityEngine
-import tr.borsatakip.v5.data.DemoMarketDataProvider
+import tr.borsatakip.v5.data.ProviderRouter
+import tr.borsatakip.v5.scan.BistScanner
+import tr.borsatakip.v5.scan.ScanStatus
 
 class OpportunityActivity : BaseActivity() {
+    private var scanJob: Job? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_opportunity)
@@ -19,34 +24,55 @@ class OpportunityActivity : BaseActivity() {
 
         val summary = findViewById<TextView>(R.id.txtSummary)
         val list = findViewById<RecyclerView>(R.id.list)
+        val scanButton = findViewById<Button>(R.id.btnRealOpportunityScan)
         list.layoutManager = LinearLayoutManager(this)
 
-        val demoRequested = intent.getBooleanExtra("demo_scan", false)
-        val existing = AppSession.lastOpportunities.sortedByDescending { it.score }
-        if (!demoRequested && existing.isNotEmpty()) {
-            bind(existing, summary, list, "${existing.size} sonuç • Skor yüksekten düşüğe • Risk ayrı hesaplanır")
-            return
+        fun showExisting() {
+            val existing = AppSession.lastOpportunities.sortedByDescending { it.score }
+            if (existing.isEmpty()) {
+                summary.text = "GERÇEK FIRSAT KONTROLÜ • Henüz tarama yapılmadı. Ana kaynak mobil backend; Yahoo yalnız yedek/gecikmeli kaynaktır."
+                list.adapter = OpportunityAdapter(emptyList()) { }
+            } else {
+                bind(existing, summary, list, "GERÇEK FIRSAT KONTROLÜ • ${existing.size} sonuç • Skor bileşenleri aşağıda açıklanır")
+            }
         }
 
-        summary.text = "DEMO TARAMA hazırlanıyor • %0"
-        lifecycleScope.launch {
-            try {
-                val demoStocks = DemoMarketDataProvider().scan { done, total ->
-                    val pct = if (total == 0) 0 else done * 100 / total
-                    runOnUiThread { summary.text = "DEMO TARAMA • %$pct • $done/$total" }
+        showExisting()
+
+        scanButton.setOnClickListener {
+            if (scanJob?.isActive == true) {
+                scanJob?.cancel()
+                return@setOnClickListener
+            }
+
+            list.adapter = OpportunityAdapter(emptyList()) { }
+            scanButton.text = "DURDUR"
+            scanJob = lifecycleScope.launch {
+                val scanner = BistScanner(ProviderRouter(this@OpportunityActivity))
+                val finalState = scanner.scan { state ->
+                    runOnUiThread {
+                        summary.text = when (state.status) {
+                            ScanStatus.IDLE -> "Hazır"
+                            ScanStatus.RUNNING -> "GERÇEK FIRSAT TARAMASI • ${state.processed}/${state.total} • %${state.progress} • Atlanan ${state.skipped}"
+                            ScanStatus.COMPLETED -> "GERÇEK FIRSAT TARAMASI tamamlandı • ${state.results.size} sonuç"
+                            ScanStatus.ERROR -> "GERÇEK FIRSAT TARAMASI başarısız • ${state.errorMessage ?: "Veri alınamadı"}"
+                            ScanStatus.CANCELLED -> "GERÇEK FIRSAT TARAMASI durduruldu"
+                        }
+                    }
                 }
-                val results = demoStocks.mapNotNull { runCatching { OpportunityEngine.score(it) }.getOrNull() }
-                    .sortedByDescending { it.score }
-                AppSession.lastOpportunities = results
-                if (results.isEmpty()) {
-                    summary.text = "DEMO TARAMA tamamlandı • %100 • Sonuç üretilemedi"
-                    list.adapter = OpportunityAdapter(emptyList()) { }
-                } else {
-                    bind(results, summary, list, "DEMO TARAMA tamamlandı • %100 • ${results.size} sonuç • Yerel test verisi")
+
+                scanButton.text = "GERÇEK FIRSAT TARAMASINI BAŞLAT"
+                if (finalState.status == ScanStatus.COMPLETED) {
+                    val results = finalState.results.sortedByDescending { it.score }
+                    AppSession.lastOpportunities = results
+                    if (results.isEmpty()) {
+                        summary.text = "GERÇEK FIRSAT TARAMASI tamamlandı • Uygun sonuç bulunamadı"
+                        list.adapter = OpportunityAdapter(emptyList()) { }
+                    } else {
+                        val source = results.firstOrNull()?.source ?: "Bilinmeyen kaynak"
+                        bind(results, summary, list, "GERÇEK FIRSAT TARAMASI tamamlandı • ${results.size} sonuç • Kaynak: $source")
+                    }
                 }
-            } catch (e: Exception) {
-                summary.text = "DEMO TARAMA çalıştırılamadı • ${e.message ?: "Bilinmeyen hata"}"
-                list.adapter = OpportunityAdapter(emptyList()) { }
             }
         }
     }
@@ -62,5 +88,10 @@ class OpportunityActivity : BaseActivity() {
             AppSession.selected = it
             startActivity(Intent(this@OpportunityActivity, StockDetailActivity::class.java))
         }
+    }
+
+    override fun onDestroy() {
+        scanJob?.cancel()
+        super.onDestroy()
     }
 }
