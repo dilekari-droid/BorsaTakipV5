@@ -31,14 +31,18 @@ class SettingsActivity : BaseActivity() {
         val tvPass = findViewById<EditText>(R.id.tradingViewPassword)
         val tvStatus = findViewById<TextView>(R.id.tradingViewStatus)
 
+        if (s.baseUrl.equals("https://api.ornek.com", ignoreCase = true)) s.baseUrl = ""
+
         base.setText(s.baseUrl)
         key.setText(s.apiKey)
         refresh.setText(s.refreshMinutes.toString())
         yahooFallback.isChecked = s.yahooFallbackEnabled
         notifications.isChecked = s.notifications
-        tvUser.setText(s.tradingViewUsername)
-        // Never prefill the saved password into the UI.
-        tvPass.setText("")
+
+        val injectedUser = BuildConfig.TV_TEST_USERNAME.trim()
+        val injectedPass = BuildConfig.TV_TEST_PASSWORD
+        tvUser.setText(s.tradingViewUsername.ifBlank { injectedUser })
+        tvPass.setText(if (BuildConfig.DEBUG && injectedPass.isNotBlank()) injectedPass else "")
 
         fun showTvStatus(extra: String? = null) {
             val hasSession = s.tradingViewSessionId.isNotBlank()
@@ -48,6 +52,10 @@ class SettingsActivity : BaseActivity() {
                 append(if (hasSession) "OTURUM KAYITLI" else "OTURUM YOK")
                 append("\nWebSocket auth token: ")
                 append(if (hasToken) "MEVCUT" else "YOK")
+                if (BuildConfig.DEBUG) {
+                    append("\nDEBUG test hesabı: ")
+                    append(if (injectedUser.isNotBlank() && injectedPass.isNotBlank()) "YÜKLÜ" else "CI secret tanımlı değil")
+                }
                 if (s.tradingViewAuthenticatedAt > 0L) append("\nSon doğrulama: ${s.tradingViewAuthenticatedAt}")
                 if (!extra.isNullOrBlank()) append("\n$extra")
             }
@@ -75,11 +83,16 @@ class SettingsActivity : BaseActivity() {
         showStatus()
 
         findViewById<Button>(R.id.testTradingViewLogin).setOnClickListener {
-            val username = tvUser.text.toString().trim()
+            val username = tvUser.text.toString().trim().ifBlank { injectedUser }
             val enteredPassword = tvPass.text.toString()
-            val password = if (enteredPassword.isNotBlank()) enteredPassword else s.tradingViewPassword
+            val password = when {
+                enteredPassword.isNotBlank() -> enteredPassword
+                s.tradingViewPassword.isNotBlank() -> s.tradingViewPassword
+                BuildConfig.DEBUG && injectedPass.isNotBlank() -> injectedPass
+                else -> ""
+            }
             if (username.isBlank() || password.isBlank()) {
-                Toast.makeText(this, "TradingView e-posta/kullanıcı adı ve şifre gerekli.", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "TradingView test hesabı CI secret olarak tanımlı değil veya alanlar boş.", Toast.LENGTH_LONG).show()
                 return@setOnClickListener
             }
             tvStatus.text = "TradingView: giriş deneniyor..."
@@ -88,7 +101,7 @@ class SettingsActivity : BaseActivity() {
                 if (result.ok) {
                     s.tradingViewUsername = username
                     s.tradingViewPassword = password
-                    tvPass.setText("")
+                    if (!BuildConfig.DEBUG) tvPass.setText("")
                 }
                 showTvStatus(result.message)
                 Toast.makeText(
@@ -101,7 +114,8 @@ class SettingsActivity : BaseActivity() {
 
         findViewById<Button>(R.id.clearTradingViewSession).setOnClickListener {
             TradingViewAuthClient(this).logoutLocal()
-            tvPass.setText("")
+            tvUser.setText(injectedUser)
+            tvPass.setText(if (BuildConfig.DEBUG) injectedPass else "")
             showTvStatus("Yerel TradingView oturumu ve kayıtlı şifre temizlendi.")
         }
 
@@ -111,7 +125,7 @@ class SettingsActivity : BaseActivity() {
                 Toast.makeText(this, "Ana mobil veri servisi için HTTPS adresi kullanın.", Toast.LENGTH_LONG).show()
                 return@setOnClickListener
             }
-            s.baseUrl = url
+            s.baseUrl = if (url.equals("https://api.ornek.com", ignoreCase = true)) "" else url
             s.apiKey = key.text.toString()
             s.refreshMinutes = (refresh.text.toString().toIntOrNull() ?: 15).coerceAtLeast(1)
             s.yahooFallbackEnabled = yahooFallback.isChecked
@@ -124,8 +138,8 @@ class SettingsActivity : BaseActivity() {
 
         findViewById<Button>(R.id.testConnection).setOnClickListener {
             val url = base.text.toString().trim().removeSuffix("/")
-            if (url.isBlank() || !url.startsWith("https://")) {
-                Toast.makeText(this, "Önce geçerli bir ana HTTPS sağlayıcı adresi girin.", Toast.LENGTH_LONG).show()
+            if (url.isBlank() || !url.startsWith("https://") || url.equals("https://api.ornek.com", ignoreCase = true)) {
+                Toast.makeText(this, "Gerçek bir ana HTTPS sağlayıcı adresi girin.", Toast.LENGTH_LONG).show()
                 return@setOnClickListener
             }
             s.baseUrl = url
