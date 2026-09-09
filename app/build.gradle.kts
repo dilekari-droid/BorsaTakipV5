@@ -11,8 +11,13 @@ android {
         applicationId = "tr.borsatakip.v5"
         minSdk = 26
         targetSdk = 35
-        versionCode = 59
-        versionName = "5.1.9"
+        versionCode = 60
+        versionName = "5.1.10"
+
+        val tvTestUser = System.getenv("TRADINGVIEW_TEST_USERNAME") ?: ""
+        val tvTestPass = System.getenv("TRADINGVIEW_TEST_PASSWORD") ?: ""
+        buildConfigField("String", "TV_TEST_USERNAME", "\"${tvTestUser.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
+        buildConfigField("String", "TV_TEST_PASSWORD", "\"${tvTestPass.replace("\\", "\\\\").replace("\"", "\\\"")}\"")
     }
 
     val releaseStorePath = System.getenv("BORSA_KEYSTORE_PATH")
