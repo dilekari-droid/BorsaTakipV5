@@ -48,42 +48,65 @@ jobs:
 
       - name: Verify APK and quality markers
         run: |
+          set -euo pipefail
           APK=app/build/outputs/final/BorsaTakipV5.1.20-debug.apk
           test -f "$APK"
-          unzip -t "$APK"
+          unzip -t "$APK" >/tmp/apk-unzip-test.txt
+          tail -n 1 /tmp/apk-unzip-test.txt
+
           rm -f /tmp/all.dex
-          for dex in $(zipinfo -1 "$APK" | grep -E '^classes([0-9]+)?\.dex$'); do
+          while IFS= read -r dex; do
             unzip -p "$APK" "$dex" >> /tmp/all.dex
-          done
-          for forbidden in \
-            'api.ornek.com' \
-            'BorsaTakip/5.1.2 Android' \
-            'BorsaTakip/5.1.9 Android' \
-            'BorsaTakip/5.1.12 Android' \
-            'BorsaTakip/5.1.13 Android' \
-            'DemoMarketDataProvider' \
-            'LocalBistTestProvider'; do
+          done < <(zipinfo -1 "$APK" | grep -E '^classes([0-9]+)?\.dex$')
+
+          for forbidden in 'api.ornek.com' 'DemoMarketDataProvider' 'LocalBistTestProvider'; do
             if strings /tmp/all.dex | grep -Fq "$forbidden"; then
-              echo "Forbidden stale/test string found in APK: $forbidden"
+              echo "Forbidden production string found in APK: $forbidden"
               exit 1
             fi
           done
-          grep -Fq 'WindowInsetsCompat.Type.systemBars()' app/src/main/java/tr/borsatakip/v5/ui/BaseActivity.kt
-          grep -Fq 'MAX_SNAPSHOT_AGE_MS' app/src/main/java/tr/borsatakip/v5/analysis/TradingViewSnapshotScorer.kt
-          grep -Fq 'confidenceCap' app/src/main/java/tr/borsatakip/v5/analysis/TradingViewSnapshotScorer.kt
-          grep -Fq 'favoriteEmptyState' app/src/main/res/layout/activity_favorites.xml
-          grep -Fq 'ColorUtils.blendARGB' app/src/main/java/tr/borsatakip/v5/ui/OpportunityAdapter.kt
-          grep -Fq 'LONG' app/src/main/java/tr/borsatakip/v5/ui/OpportunityAdapter.kt
-          grep -Fq 'SHORT' app/src/main/java/tr/borsatakip/v5/ui/OpportunityAdapter.kt
-          grep -Fq 'strengthBar' app/src/main/res/layout/item_opportunity.xml
+          echo 'APK placeholder/demo checks passed.'
+
+          require_marker() {
+            local marker="$1"
+            local file="$2"
+            if ! grep -Fq "$marker" "$file"; then
+              echo "Required marker missing: $marker in $file"
+              exit 1
+            fi
+            echo "OK marker: $marker"
+          }
+
+          require_marker 'BuildConfig.VERSION_NAME' app/src/main/java/tr/borsatakip/v5/data/TradingViewScannerOpportunityProvider.kt
+          require_marker 'BuildConfig.VERSION_NAME' app/src/main/java/tr/borsatakip/v5/data/TradingViewAuthClient.kt
+          require_marker 'BuildConfig.VERSION_NAME' app/src/main/java/tr/borsatakip/v5/data/TradingViewViopProvider.kt
+          require_marker 'BuildConfig.VERSION_NAME' app/src/main/java/tr/borsatakip/v5/data/YahooFallbackProvider.kt
+          require_marker 'WindowInsetsCompat.Type.systemBars()' app/src/main/java/tr/borsatakip/v5/ui/BaseActivity.kt
+          require_marker 'MAX_SNAPSHOT_AGE_MS' app/src/main/java/tr/borsatakip/v5/analysis/TradingViewSnapshotScorer.kt
+          require_marker 'confidenceCap' app/src/main/java/tr/borsatakip/v5/analysis/TradingViewSnapshotScorer.kt
+          require_marker 'favoriteEmptyState' app/src/main/res/layout/activity_favorites.xml
+          require_marker 'ColorUtils.blendARGB' app/src/main/java/tr/borsatakip/v5/ui/OpportunityAdapter.kt
+          require_marker 'finalSignalScore.coerceIn(0, 100)' app/src/main/java/tr/borsatakip/v5/ui/OpportunityAdapter.kt
+          require_marker 'strengthBar' app/src/main/res/layout/item_opportunity.xml
+
           AAPT=$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)
-          test -x "$AAPT"
-          "$AAPT" dump badging "$APK" | tee /tmp/badging.txt
-          grep -Fq "versionName='5.1.20'" /tmp/badging.txt
-          "$AAPT" dump xmltree "$APK" AndroidManifest.xml | tee /tmp/manifest.txt
-          grep -Fq 'android:allowBackup(0x01010280)=(type 0x12)0x0' /tmp/manifest.txt
+          if [ -z "$AAPT" ] || [ ! -x "$AAPT" ]; then
+            echo 'Android aapt not found/executable.'
+            exit 1
+          fi
+          "$AAPT" dump badging "$APK" > /tmp/badging.txt
+          if ! grep -Fq "versionName='5.1.20'" /tmp/badging.txt; then
+            echo 'APK versionName is not 5.1.20.'
+            cat /tmp/badging.txt
+            exit 1
+          fi
+          "$AAPT" dump xmltree "$APK" AndroidManifest.xml > /tmp/manifest.txt
+          if ! grep -Fq 'android:allowBackup(0x01010280)=(type 0x12)0x0' /tmp/manifest.txt; then
+            echo 'allowBackup=false verification failed.'
+            exit 1
+          fi
           test -f app/build/outputs/mapping/release/mapping.txt
-          echo 'V5.1.20 insets, freshness, confidence, neon UI, backup and R8 verification passed.'
+          echo 'V5.1.20 APK, dynamic User-Agent, insets, freshness, confidence cap, neon UI, backup and R8 checks passed.'
 
       - name: Check release secrets
         if: github.event_name != 'pull_request'
