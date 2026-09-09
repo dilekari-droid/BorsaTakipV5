@@ -13,14 +13,14 @@ class MainActivity : BaseActivity() {
         setupBottomNav()
         findViewById<Button>(R.id.btnBist).setOnClickListener { startActivity(Intent(this, BistScanActivity::class.java)) }
         findViewById<Button>(R.id.btnOpportunity).setOnClickListener {
-            startActivity(Intent(this, OpportunityActivity::class.java).putExtra("demo_scan", true))
+            startActivity(Intent(this, OpportunityActivity::class.java))
         }
         findViewById<Button>(R.id.btnViop).setOnClickListener { startActivity(Intent(this, ViopActivity::class.java)) }
         findViewById<Button>(R.id.btnFav).setOnClickListener { startActivity(Intent(this, FavoritesActivity::class.java)) }
         findViewById<Button>(R.id.btnNotifications).setOnClickListener { startActivity(Intent(this, SettingsActivity::class.java)) }
         val top = AppSession.lastOpportunities.take(4)
         findViewById<TextView>(R.id.txtToday).text = if (top.isEmpty()) {
-            "Günün Fırsatları\nHenüz tarama yapılmadı."
+            "Günün Fırsatları\nHenüz gerçek tarama yapılmadı."
         } else {
             "Günün Fırsatları\n" + top.joinToString("\n") { "${it.symbol}  ${it.score}/100 • ${it.direction} • Risk ${it.riskScore}/100" }
         }
