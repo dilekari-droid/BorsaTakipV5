@@ -17,7 +17,7 @@
             android:padding="18dp">
 
             <TextView style="@style/Title" android:text="Ayarlar" />
-            <TextView style="@style/Sub" android:text="Ana sağlayıcı • yedek kaynak • canlı bağlantı • sürüm" />
+            <TextView style="@style/Sub" android:text="Ana sağlayıcı • TradingView oturumu • yedek kaynak • sürüm" />
 
             <EditText
                 android:id="@+id/baseUrl"
@@ -38,10 +38,61 @@
                 android:textColor="@color/text_primary"
                 android:textColorHint="@color/text_secondary" />
 
+            <TextView
+                style="@style/Sub"
+                android:layout_marginTop="18dp"
+                android:text="TradingView üyelik testi (deneysel / resmî geliştirici API'si değildir)" />
+
+            <EditText
+                android:id="@+id/tradingViewUsername"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:hint="TradingView e-posta / kullanıcı adı"
+                android:inputType="textEmailAddress"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_secondary" />
+
+            <EditText
+                android:id="@+id/tradingViewPassword"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:hint="TradingView şifre"
+                android:inputType="textPassword"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_secondary" />
+
+            <Button
+                android:id="@+id/testTradingViewLogin"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:background="@drawable/bg_card_blue"
+                android:text="TRADINGVIEW OTURUMUNU TEST ET"
+                android:textColor="@color/white" />
+
+            <Button
+                android:id="@+id/clearTradingViewSession"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/bg_card"
+                android:text="TRADINGVIEW OTURUMUNU TEMİZLE"
+                android:textColor="@color/text_primary" />
+
+            <TextView
+                android:id="@+id/tradingViewStatus"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_card"
+                android:padding="12dp"
+                android:text="TradingView: Oturum yok"
+                android:textColor="@color/text_secondary" />
+
             <EditText
                 android:id="@+id/refreshMinutes"
                 android:layout_width="match_parent"
                 android:layout_height="52dp"
+                android:layout_marginTop="14dp"
                 android:hint="Yenileme (dakika)"
                 android:inputType="number"
                 android:textColor="@color/text_primary"
