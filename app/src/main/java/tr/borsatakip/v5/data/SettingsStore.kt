@@ -18,29 +18,41 @@ class SettingsStore(c: Context) {
         set(v) = p.edit().putString("base_url", v.trim().removeSuffix("/")).apply()
 
     var apiKey: String
-        get() {
-            val encrypted = p.getString("api_key_encrypted", null)
-            if (!encrypted.isNullOrBlank()) return decrypt(encrypted).orEmpty()
+        get() = getEncrypted("api_key_encrypted")
+        set(v) = putEncrypted("api_key_encrypted", v)
 
-            // One-time migration from V5.0/V5.1 plaintext storage.
-            val legacy = p.getString("api_key", "").orEmpty()
-            if (legacy.isNotBlank()) {
-                apiKey = legacy
-                p.edit().remove("api_key").apply()
-            }
-            return legacy
-        }
-        set(v) {
-            val value = v.trim()
-            if (value.isBlank()) {
-                p.edit().remove("api_key_encrypted").remove("api_key").apply()
-            } else {
-                val encrypted = encrypt(value)
-                if (encrypted != null) {
-                    p.edit().putString("api_key_encrypted", encrypted).remove("api_key").apply()
-                }
-            }
-        }
+    var tradingViewUsername: String
+        get() = p.getString("tv_username", "") ?: ""
+        set(v) = p.edit().putString("tv_username", v.trim()).apply()
+
+    var tradingViewPassword: String
+        get() = getEncrypted("tv_password_encrypted")
+        set(v) = putEncrypted("tv_password_encrypted", v)
+
+    var tradingViewSessionId: String
+        get() = getEncrypted("tv_session_id_encrypted")
+        set(v) = putEncrypted("tv_session_id_encrypted", v)
+
+    var tradingViewSessionSign: String
+        get() = getEncrypted("tv_session_sign_encrypted")
+        set(v) = putEncrypted("tv_session_sign_encrypted", v)
+
+    var tradingViewAuthToken: String
+        get() = getEncrypted("tv_auth_token_encrypted")
+        set(v) = putEncrypted("tv_auth_token_encrypted", v)
+
+    var tradingViewAuthenticatedAt: Long
+        get() = p.getLong("tv_authenticated_at", 0L)
+        set(v) = p.edit().putLong("tv_authenticated_at", v).apply()
+
+    fun clearTradingViewSession() {
+        p.edit()
+            .remove("tv_session_id_encrypted")
+            .remove("tv_session_sign_encrypted")
+            .remove("tv_auth_token_encrypted")
+            .putLong("tv_authenticated_at", 0L)
+            .apply()
+    }
 
     var refreshMinutes: Int
         get() = p.getInt("refresh_minutes", 60)
@@ -70,6 +82,20 @@ class SettingsStore(c: Context) {
         get() = p.getStringSet("cached_bist_symbols", emptySet())?.toSet().orEmpty()
         set(v) = p.edit().putStringSet("cached_bist_symbols", v).apply()
 
+    private fun getEncrypted(key: String): String {
+        val encrypted = p.getString(key, null)
+        return if (encrypted.isNullOrBlank()) "" else decrypt(encrypted).orEmpty()
+    }
+
+    private fun putEncrypted(key: String, value: String) {
+        val normalized = value.trim()
+        if (normalized.isBlank()) {
+            p.edit().remove(key).apply()
+            return
+        }
+        encrypt(normalized)?.let { p.edit().putString(key, it).apply() }
+    }
+
     private fun getOrCreateKey(): SecretKey {
         val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         (keyStore.getKey(KEY_ALIAS, null) as? SecretKey)?.let { return it }
@@ -91,9 +117,7 @@ class SettingsStore(c: Context) {
     private fun encrypt(value: String): String? = runCatching {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
-        val iv = cipher.iv
-        val encrypted = cipher.doFinal(value.toByteArray(Charsets.UTF_8))
-        Base64.encodeToString(iv + encrypted, Base64.NO_WRAP)
+        Base64.encodeToString(cipher.iv + cipher.doFinal(value.toByteArray(Charsets.UTF_8)), Base64.NO_WRAP)
     }.getOrNull()
 
     private fun decrypt(value: String): String? = runCatching {
@@ -107,7 +131,7 @@ class SettingsStore(c: Context) {
     }.getOrNull()
 
     companion object {
-        private const val KEY_ALIAS = "borsa_takip_api_key"
+        private const val KEY_ALIAS = "borsa_takip_secure_store"
         private const val IV_SIZE = 12
     }
 }
