@@ -41,7 +41,7 @@ jobs:
         run: |
           gradle :app:assembleDebug
           mkdir -p app/build/outputs/final
-          cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/final/BorsaTakipV5.1.10-debug.apk
+          cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/final/BorsaTakipV5.1.11-debug.apk
 
       - name: Check release secrets
         if: github.event_name != 'pull_request'
@@ -73,16 +73,16 @@ jobs:
           BORSA_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           gradle :app:assembleRelease
-          cp app/build/outputs/apk/release/app-release.apk app/build/outputs/final/BorsaTakipV5.1.10-release.apk
+          cp app/build/outputs/apk/release/app-release.apk app/build/outputs/final/BorsaTakipV5.1.11-release.apk
           APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)
           test -x "$APKSIGNER"
-          "$APKSIGNER" verify --verbose --print-certs app/build/outputs/final/BorsaTakipV5.1.10-release.apk | tee /tmp/apksigner.txt
+          "$APKSIGNER" verify --verbose --print-certs app/build/outputs/final/BorsaTakipV5.1.11-release.apk | tee /tmp/apksigner.txt
           grep -q "Verified using v2 scheme (APK Signature Scheme v2): true" /tmp/apksigner.txt
           grep -Eq "Verified using v3 scheme \(APK Signature Scheme v3\): true|Verified using v3.1 scheme \(APK Signature Scheme v3.1\): true" /tmp/apksigner.txt
 
       - name: Upload APK artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: BorsaTakipV5.1.10-apk
+          name: BorsaTakipV5.1.11-apk
           path: app/build/outputs/final/*.apk
           if-no-files-found: error
