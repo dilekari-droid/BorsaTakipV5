@@ -3,23 +3,30 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="@color/bg"
-    android:paddingTop="8dp">
+    android:background="@drawable/bg_screen_gradient">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="18dp">
+        android:paddingStart="18dp"
+        android:paddingEnd="18dp"
+        android:paddingTop="16dp"
+        android:paddingBottom="12dp">
 
-        <TextView
-            style="@style/Title"
-            android:text="Fırsat Kontrol" />
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
+            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                <TextView style="@style/Title" android:text="Fırsat Kontrol" />
+                <TextView android:id="@+id/txtSummary" style="@style/Sub" android:text="LONG / SHORT sonuçları nihai sinyale göre sıralanır." android:layout_marginTop="2dp" />
+            </LinearLayout>
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Filtre" android:textColor="@color/blue" android:textStyle="bold" android:padding="8dp" />
+        </LinearLayout>
 
-        <TextView
-            android:id="@+id/txtSummary"
-            style="@style/Sub"
-            android:text="Gerçek BIST verisiyle tarama. KAP verisi yoksa açıkça 0 puan gösterilir." />
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginTop="12dp">
+            <TextView android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:layout_marginEnd="5dp" android:background="@drawable/bg_card" android:gravity="center" android:padding="10dp" android:text="LONG\nYeşil" android:textColor="@color/green" android:textStyle="bold" />
+            <TextView android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:layout_marginHorizontal="5dp" android:background="@drawable/bg_card" android:gravity="center" android:padding="10dp" android:text="SHORT\nKırmızı" android:textColor="@color/red" android:textStyle="bold" />
+            <TextView android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:layout_marginStart="5dp" android:background="@drawable/bg_card" android:gravity="center" android:padding="10dp" android:text="85+\nYüksek Güç" android:textColor="@color/yellow" android:textStyle="bold" />
+        </LinearLayout>
 
         <Button
             android:id="@+id/btnRealOpportunityScan"
@@ -27,8 +34,9 @@
             android:layout_height="52dp"
             android:layout_marginTop="12dp"
             android:background="@drawable/bg_card_blue"
-            android:text="GERÇEK FIRSAT TARAMASINI BAŞLAT"
-            android:textColor="@color/white" />
+            android:text="FIRSAT TARAMASINI BAŞLAT"
+            android:textColor="@color/white"
+            android:textStyle="bold" />
     </LinearLayout>
 
     <androidx.recyclerview.widget.RecyclerView
@@ -36,7 +44,10 @@
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:paddingHorizontal="12dp" />
+        android:clipToPadding="false"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
+        android:paddingBottom="8dp" />
 
     <include layout="@layout/include_bottom_nav" />
 </LinearLayout>
