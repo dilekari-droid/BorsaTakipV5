@@ -1,13 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/bottomNav" android:layout_width="match_parent" android:layout_height="72dp" android:orientation="horizontal" android:gravity="center" android:background="@color/surface">
-    <TextView android:id="@+id/navHome" style="@style/NavItem" android:text="⌂
-Ana Sayfa"/>
-    <TextView android:id="@+id/navBist" style="@style/NavItem" android:text="▥
-Hisseler"/>
-    <TextView android:id="@+id/navViop" style="@style/NavItem" android:text="▮▮
-VİOP"/>
-    <TextView android:id="@+id/navFav" style="@style/NavItem" android:text="★
-Favoriler"/>
-    <TextView android:id="@+id/navSettings" style="@style/NavItem" android:text="⚙
-Ayarlar"/>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/bottomNav"
+    android:layout_width="match_parent"
+    android:layout_height="72dp"
+    android:orientation="horizontal"
+    android:gravity="center"
+    android:background="@color/bottom_nav"
+    android:elevation="12dp">
+    <TextView android:id="@+id/navHome" style="@style/NavItem" android:text="⌂\nAna Sayfa" />
+    <TextView android:id="@+id/navBist" style="@style/NavItem" android:text="▥\nHisseler" />
+    <TextView android:id="@+id/navViop" style="@style/NavItem" android:text="▮▮\nVİOP" />
+    <TextView android:id="@+id/navFav" style="@style/NavItem" android:text="★\nFavoriler" />
+    <TextView android:id="@+id/navSettings" style="@style/NavItem" android:text="⚙\nAyarlar" />
 </LinearLayout>
