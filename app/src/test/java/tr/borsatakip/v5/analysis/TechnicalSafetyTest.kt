@@ -5,7 +5,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import tr.borsatakip.v5.data.DemoMarketDataProvider
 import tr.borsatakip.v5.data.MarketDataProvider
 import tr.borsatakip.v5.model.Candle
 import tr.borsatakip.v5.model.Stock
@@ -65,7 +64,7 @@ class TechnicalSafetyTest {
 
     @Test
     fun oneSymbolMissing_doesNotStopScan() = runBlocking {
-        val good = DemoMarketDataProvider().fetchOne("DEMO1")!!
+        val good = stockWith(List(240) { candle(it, 20.0 + it * 0.05) })
         val provider = object : MarketDataProvider {
             override val id = "partial"
             override val displayName = "partial"
