@@ -28,21 +28,15 @@ class OpportunityAdapter(
 
     override fun onBindViewHolder(holder: H, position: Int) {
         val x = items[position]
-        val reliability = dataReliability(x)
-        val volumeArrow = when {
-            x.dailyChangePct > 0.0 -> "↑"
-            x.dailyChangePct < 0.0 -> "↓"
-            else -> "→"
-        }
         val riskLabel = when {
             x.riskScore <= 30 -> "DÜŞÜK RİSK"
             x.riskScore <= 60 -> "ORTA RİSK"
             else -> "YÜKSEK RİSK"
         }
-        val signalLabel = when {
-            x.score >= 80 -> "GÜÇLÜ TEKNİK SİNYAL"
-            x.score >= 65 -> "ORTA TEKNİK SİNYAL"
-            else -> "ZAYIF/İZLEME SİNYALİ"
+        val finalLabel = when {
+            x.finalSignalScore >= 80 -> "GÜÇLÜ NİHAİ SİNYAL"
+            x.finalSignalScore >= 65 -> "ORTA NİHAİ SİNYAL"
+            else -> "İZLEME / ZAYIF SİNYAL"
         }
         val reason = x.scoreBreakdown
             .asSequence()
@@ -50,15 +44,16 @@ class OpportunityAdapter(
             .take(4)
             .map { it.substringBefore(":").trim() }
             .joinToString(" + ")
-            .ifBlank { "Yeterli pozitif teknik bileşen açıklaması yok" }
+            .ifBlank { "Yeterli teknik bileşen açıklaması yok" }
 
         holder.symbol.text = x.symbol
-        holder.score.text = "${x.score}/100"
+        holder.score.text = "${x.finalSignalScore}/100"
         holder.company.text = x.companyName ?: ""
         holder.meta.text = buildString {
-            append("${x.direction} • $signalLabel • $riskLabel\n")
-            append("Teknik Fırsat ${x.score}/100 • Risk ${x.riskScore}/100 • Veri Güveni $reliability/100\n")
-            append("Hacim ${x.volumeLabel} $volumeArrow • Günlük değişim ${"%.2f".format(x.dailyChangePct)}%\n")
+            append("${x.direction} • $finalLabel • $riskLabel\n")
+            append("Teknik Fırsat ${x.score}/100 • Risk ${x.riskScore}/100 • Veri Güveni ${x.dataConfidenceScore}/100 (${x.dataConfidenceLabel})\n")
+            append("Nihai Sinyal ${x.finalSignalScore}/100\n")
+            append("Hacim ${x.volumeLabel} • ${x.volumeDirectionLabel} • Günlük değişim ${"%.2f".format(x.dailyChangePct)}%\n")
             append("Kaynak: ${x.source} • KAP: ${x.kapLabel}\n")
             append("${x.direction} nedeni: $reason\n")
             append(x.scoreBreakdown.joinToString(" • "))
@@ -69,19 +64,5 @@ class OpportunityAdapter(
             if (x.technical.vwap == null) append(" • VWAP veri yok")
         }
         holder.itemView.setOnClickListener { click(x) }
-    }
-
-    private fun dataReliability(x: Opportunity): Int {
-        var score = 100
-        if (x.kapLabel.isBlank() || x.kapLabel.equals("Veri yok", ignoreCase = true)) score -= 10
-        if (x.technical.vwap == null) score -= 8
-        if (x.support == null) score -= 5
-        if (x.resistance == null) score -= 5
-        if (x.technical.rsi14 == null) score -= 8
-        if (x.technical.macd == null || x.technical.macdSignal == null) score -= 8
-        if (x.technical.ema20 == null || x.technical.ema50 == null || x.technical.ema200 == null) score -= 10
-        if (x.technical.volumeRatio == null) score -= 8
-        if (x.technical.atr14 == null) score -= 5
-        return score.coerceIn(0, 100)
     }
 }
