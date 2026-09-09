@@ -17,7 +17,7 @@
             android:padding="18dp">
 
             <TextView style="@style/Title" android:text="Ayarlar" />
-            <TextView style="@style/Sub" android:text="Üretim modu: HTTPS backend ana kaynak • TradingView/Yahoo yalnız deneysel modda" />
+            <TextView style="@style/Sub" android:text="Üretim modu: HTTPS backend ana kaynak • Yahoo yalnız isteğe bağlı deneysel BIST yedeği" />
 
             <TextView
                 style="@style/Sub"
@@ -47,13 +47,20 @@
                 android:layout_width="match_parent"
                 android:layout_height="52dp"
                 android:layout_marginTop="12dp"
-                android:text="DENEYSEL sağlayıcıları etkinleştir (TradingView/Yahoo)"
+                android:text="DENEYSEL yedek veri modunu etkinleştir (yalnız Yahoo BIST)"
+                android:textColor="@color/text_primary" />
+
+            <Switch
+                android:id="@+id/yahooFallback"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:text="Yahoo Finance gecikmeli BIST yedeğini kullan"
                 android:textColor="@color/text_primary" />
 
             <TextView
                 style="@style/Sub"
                 android:layout_marginTop="18dp"
-                android:text="TradingView oturumu (yalnız deneysel mod)" />
+                android:text="TradingView" />
 
             <TextView
                 android:layout_width="match_parent"
@@ -61,7 +68,7 @@
                 android:layout_marginTop="6dp"
                 android:background="@drawable/bg_card"
                 android:padding="12dp"
-                android:text="Güvenlik: Kullanıcı adı ve şifre BorsaTakip ekranına yazılmaz ve APK içine gömülmez. Giriş bilgilerini yalnız TradingView'in açılan web sayfasına girin."
+                android:text="TradingView yalnız harici grafik/görüntüleme amacıyla açılır. BorsaTakip TradingView'a WebView ile giriş yapmaz, TradingView cookie/oturumunu uygulamaya aktarmaz ve BIST/VİOP verisini TradingView'dan toplamaz."
                 android:textColor="@color/text_secondary" />
 
             <Button
@@ -70,17 +77,8 @@
                 android:layout_height="52dp"
                 android:layout_marginTop="10dp"
                 android:background="@drawable/bg_card_blue"
-                android:text="TRADINGVIEW GİRİŞ YARDIMCISI"
+                android:text="TRADINGVIEW'DA AÇ"
                 android:textColor="@color/white" />
-
-            <Button
-                android:id="@+id/clearTradingViewSession"
-                android:layout_width="match_parent"
-                android:layout_height="52dp"
-                android:layout_marginTop="8dp"
-                android:background="@drawable/bg_card"
-                android:text="TRADINGVIEW OTURUMUNU TEMİZLE"
-                android:textColor="@color/text_primary" />
 
             <TextView
                 android:id="@+id/tradingViewStatus"
@@ -89,7 +87,6 @@
                 android:layout_marginTop="10dp"
                 android:background="@drawable/bg_card"
                 android:padding="12dp"
-                android:text="TradingView üyelik oturumu: yok"
                 android:textColor="@color/text_secondary" />
 
             <EditText
@@ -101,13 +98,6 @@
                 android:inputType="number"
                 android:textColor="@color/text_primary"
                 android:textColorHint="@color/text_secondary" />
-
-            <Switch
-                android:id="@+id/yahooFallback"
-                android:layout_width="match_parent"
-                android:layout_height="52dp"
-                android:text="Yahoo Finance deneysel yedek/gecikmeli kaynak"
-                android:textColor="@color/text_primary" />
 
             <Switch
                 android:id="@+id/notifications"
