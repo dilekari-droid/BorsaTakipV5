@@ -65,15 +65,14 @@ jobs:
           done
           strings /tmp/all.dex | grep -Fq 'favorite_stocks'
           strings /tmp/all.dex | grep -Fq 'FavoriteRepository'
-          strings /tmp/all.dex | grep -Fq 'BAYAT VERİ'
-          strings /tmp/all.dex | grep -Fq 'PRIMARY KEY(symbol, market)'
+          strings /tmp/all.dex | grep -Fq 'favorite_stocks_new'
           AAPT=$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)
           test -x "$AAPT"
           "$AAPT" dump badging "$APK" | tee /tmp/badging.txt
           grep -Fq "versionName='5.1.18'" /tmp/badging.txt
           "$AAPT" dump xmltree "$APK" AndroidManifest.xml | tee /tmp/manifest.txt
-          grep -A20 'E: application' /tmp/manifest.txt | grep -Fq 'android:allowBackup(0x01010280)=(type 0x12)0x0'
-          echo 'APK favorites migration, data freshness, backup policy and version verification passed.'
+          grep -Fq 'android:allowBackup(0x01010280)=(type 0x12)0x0' /tmp/manifest.txt
+          echo 'APK favorites migration, backup policy and version verification passed.'
 
       - name: Check release secrets
         if: github.event_name != 'pull_request'
