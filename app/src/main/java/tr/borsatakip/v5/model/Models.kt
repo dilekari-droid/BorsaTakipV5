@@ -36,7 +36,11 @@ data class Opportunity(
     val dataTimestamp:Long,
     val candles:List<Candle>,
     val technical:TechnicalSnapshot,
-    val scoreBreakdown:List<String> = emptyList()
+    val scoreBreakdown:List<String> = emptyList(),
+    val dataConfidenceScore:Int = 100,
+    val dataConfidenceLabel:String = "Yüksek",
+    val finalSignalScore:Int = score,
+    val volumeDirectionLabel:String = "Yön verisi yok"
 )
 
 data class ViopContract(
