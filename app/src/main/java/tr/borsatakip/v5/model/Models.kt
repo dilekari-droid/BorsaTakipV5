@@ -33,7 +33,8 @@ data class Opportunity(
     val source:String,
     val dataTimestamp:Long,
     val candles:List<Candle>,
-    val technical:TechnicalSnapshot
+    val technical:TechnicalSnapshot,
+    val scoreBreakdown:List<String> = emptyList()
 )
 
 data class ViopContract(
