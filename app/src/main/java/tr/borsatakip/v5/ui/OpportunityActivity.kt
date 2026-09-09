@@ -30,13 +30,16 @@ class OpportunityActivity : BaseActivity() {
         val scanButton = findViewById<Button>(R.id.btnRealOpportunityScan)
         list.layoutManager = LinearLayoutManager(this)
 
+        fun sort(items: List<tr.borsatakip.v5.model.Opportunity>) =
+            items.sortedWith(compareByDescending<tr.borsatakip.v5.model.Opportunity> { it.finalSignalScore }.thenByDescending { it.score })
+
         fun showExisting() {
-            val existing = AppSession.lastOpportunities.sortedByDescending { it.score }
+            val existing = sort(AppSession.lastOpportunities)
             if (existing.isEmpty()) {
-                summary.text = "GERÇEK FIRSAT KONTROLÜ • Ana kaynak TradingView BIST Scanner. Demo verisi kullanılmaz."
+                summary.text = "GERÇEK FIRSAT KONTROLÜ • BIST ana tarama kaynağı TradingView Scanner • backend isteğe bağlı • demo yok"
                 list.adapter = OpportunityAdapter(emptyList()) { }
             } else {
-                bind(existing, summary, list, "GERÇEK FIRSAT KONTROLÜ • ${existing.size} sonuç • Skor bileşenleri aşağıda açıklanır")
+                bind(existing, summary, list, "GERÇEK FIRSAT KONTROLÜ • ${existing.size} sonuç • sıralama: Nihai Sinyal")
             }
         }
 
@@ -63,22 +66,21 @@ class OpportunityActivity : BaseActivity() {
 
                     if (tvResult.isSuccess) {
                         val output = tvResult.getOrThrow()
-                        val results = output.opportunities.sortedByDescending { it.score }
+                        val results = sort(output.opportunities)
                         AppSession.lastOpportunities = results
                         bind(
                             results,
                             summary,
                             list,
-                            "GERÇEK FIRSAT TARAMASI tamamlandı • ${results.size} sonuç • ${output.receivedRows} BIST kaydı • Atlanan ${output.skippedRows} • Kaynak: ${output.sourceLabel}"
+                            "GERÇEK FIRSAT TARAMASI tamamlandı • ${results.size} sonuç • ${output.receivedRows} BIST kaydı • Atlanan ${output.skippedRows} • Kaynak: ${output.sourceLabel} • Sıralama: Nihai Sinyal"
                         )
                         return@launch
                     }
 
-                    // TradingView scanner erişilemezse, yalnız kullanıcı gerçek HTTPS backend tanımladıysa
-                    // mevcut backend/Yahoo yönlendiricisine ikinci yol olarak geçilir. Demo'ya geçilmez.
+                    // TradingView Scanner erişilemezse backend yalnız kullanıcı gerçekten yapılandırdıysa denenir.
                     val settings = SettingsStore(this@OpportunityActivity)
                     if (settings.baseUrl.startsWith("https://")) {
-                        summary.text = "TradingView Scanner erişilemedi • Tanımlı backend deneniyor..."
+                        summary.text = "TradingView Scanner erişilemedi • İsteğe bağlı backend deneniyor..."
                         val scanner = BistScanner(ProviderRouter(this@OpportunityActivity))
                         val finalState = scanner.scan { state ->
                             runOnUiThread {
@@ -92,7 +94,7 @@ class OpportunityActivity : BaseActivity() {
                             }
                         }
                         if (finalState.status == ScanStatus.COMPLETED) {
-                            val results = finalState.results.sortedByDescending { it.score }
+                            val results = sort(finalState.results)
                             AppSession.lastOpportunities = results
                             if (results.isEmpty()) {
                                 summary.text = "Gerçek veri alındı ancak uygun fırsat sonucu üretilemedi."
@@ -102,7 +104,7 @@ class OpportunityActivity : BaseActivity() {
                         }
                     } else {
                         val error = tvResult.exceptionOrNull()
-                        summary.text = "GERÇEK FIRSAT TARAMASI başarısız • TradingView BIST Scanner'a ulaşılamadı: ${error?.message ?: "veri alınamadı"}. Demo verisine geçilmedi."
+                        summary.text = "GERÇEK FIRSAT TARAMASI başarısız • TradingView BIST Scanner'a ulaşılamadı: ${error?.message ?: "veri alınamadı"}. Backend yapılandırılmamış; demo verisine geçilmedi."
                     }
                 } catch (ce: CancellationException) {
                     summary.text = "GERÇEK FIRSAT TARAMASI durduruldu"
