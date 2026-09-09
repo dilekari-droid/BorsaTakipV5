@@ -38,7 +38,7 @@ jobs:
         run: |
           gradle :app:assembleDebug
           mkdir -p app/build/outputs/final
-          cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/final/BorsaTakipV5.1.24-debug.apk
+          cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/final/BorsaTakipV5.1.25-debug.apk
 
       - name: Release R8 smoke build
         run: gradle :app:assembleRelease
@@ -46,7 +46,7 @@ jobs:
       - name: Verify APK and quality markers
         run: |
           set -euo pipefail
-          APK=app/build/outputs/final/BorsaTakipV5.1.24-debug.apk
+          APK=app/build/outputs/final/BorsaTakipV5.1.25-debug.apk
           test -f "$APK"
           unzip -t "$APK" >/tmp/apk-unzip-test.txt
           tail -n 1 /tmp/apk-unzip-test.txt
@@ -56,16 +56,31 @@ jobs:
             unzip -p "$APK" "$dex" >> /tmp/all.dex
           done < <(zipinfo -1 "$APK" | grep -E '^classes([0-9]+)?\.dex$')
 
-          for forbidden in 'api.ornek.com' 'DemoMarketDataProvider' 'LocalBistTestProvider' 'TV_TEST_USERNAME' 'TV_TEST_PASSWORD'; do
+          for forbidden in \
+            'api.ornek.com' \
+            'DemoMarketDataProvider' \
+            'LocalBistTestProvider' \
+            'TV_TEST_USERNAME' \
+            'TV_TEST_PASSWORD' \
+            'TradingViewAuthClient' \
+            'TradingViewBrowserLoginActivity' \
+            'TradingViewScannerOpportunityProvider' \
+            'TradingViewViopProvider' \
+            'TradingViewSnapshotScorer'; do
             if strings /tmp/all.dex | grep -Fq "$forbidden"; then
-              echo "Forbidden production/test string found in APK: $forbidden"
+              echo "Forbidden legacy/test component found in APK: $forbidden"
               exit 1
             fi
           done
-          if grep -R -F -q -e 'TV_TEST_USERNAME' -e 'TV_TEST_PASSWORD' app/src app/build.gradle.kts; then
-            echo 'TradingView test credential field remains in app source.'
-            exit 1
-          fi
+
+          for removed in \
+            app/src/main/java/tr/borsatakip/v5/data/TradingViewAuthClient.kt \
+            app/src/main/java/tr/borsatakip/v5/data/TradingViewScannerOpportunityProvider.kt \
+            app/src/main/java/tr/borsatakip/v5/data/TradingViewViopProvider.kt \
+            app/src/main/java/tr/borsatakip/v5/analysis/TradingViewSnapshotScorer.kt \
+            app/src/main/java/tr/borsatakip/v5/ui/TradingViewBrowserLoginActivity.kt; do
+            test ! -e "$removed" || { echo "Removed TradingView component still exists: $removed"; exit 1; }
+          done
 
           require_marker() {
             local marker="$1"
@@ -73,37 +88,39 @@ jobs:
             grep -Fq "$marker" "$file" || { echo "Required marker missing: $marker in $file"; exit 1; }
           }
 
-          require_marker 'BuildConfig.VERSION_NAME' app/src/main/java/tr/borsatakip/v5/data/TradingViewScannerOpportunityProvider.kt
+          require_marker 'ProviderRouter(this@BistScanActivity)' app/src/main/java/tr/borsatakip/v5/ui/BistScanActivity.kt
+          require_marker 'BistScanner' app/src/main/java/tr/borsatakip/v5/ui/BistScanActivity.kt
+          require_marker 'BistScanner(ProviderRouter(this@OpportunityActivity))' app/src/main/java/tr/borsatakip/v5/ui/OpportunityActivity.kt
+          require_marker 'TradingView veri kaynağı değildir' app/src/main/java/tr/borsatakip/v5/ui/BistScanActivity.kt
+          require_marker 'CustomTabsIntent' app/src/main/java/tr/borsatakip/v5/ui/SettingsActivity.kt
+          require_marker 'Tarayıcı cookie/oturum aktarımı: YAPILMIYOR' app/src/main/java/tr/borsatakip/v5/ui/SettingsActivity.kt
+          require_marker 'purgeLegacyTradingViewState' app/src/main/java/tr/borsatakip/v5/data/SettingsStore.kt
+          require_marker '/v1/bist/symbols' app/src/main/java/tr/borsatakip/v5/data/MobileMarketDataProvider.kt
+          require_marker '/v1/viop/contracts' app/src/main/java/tr/borsatakip/v5/data/BackendProvider.kt
+          require_marker 'YahooFallbackProvider' app/src/main/java/tr/borsatakip/v5/data/ProviderRouter.kt
           require_marker 'WindowInsetsCompat.Type.systemBars()' app/src/main/java/tr/borsatakip/v5/ui/BaseActivity.kt
-          require_marker 'MAX_SNAPSHOT_AGE_MS' app/src/main/java/tr/borsatakip/v5/analysis/TradingViewSnapshotScorer.kt
           require_marker 'ColorUtils.blendARGB' app/src/main/java/tr/borsatakip/v5/ui/OpportunityAdapter.kt
           require_marker 'finalSignalScore.coerceIn(0, 100)' app/src/main/java/tr/borsatakip/v5/ui/OpportunityAdapter.kt
           require_marker 'VERİ KAPSAMI' app/src/main/java/tr/borsatakip/v5/ui/OpportunityAdapter.kt
-          require_marker 'onReceivedError' app/src/main/java/tr/borsatakip/v5/ui/TradingViewBrowserLoginActivity.kt
-          require_marker 'onReceivedHttpError' app/src/main/java/tr/borsatakip/v5/ui/TradingViewBrowserLoginActivity.kt
-          require_marker 'onReceivedSslError' app/src/main/java/tr/borsatakip/v5/ui/TradingViewBrowserLoginActivity.kt
-          require_marker 'onRenderProcessGone' app/src/main/java/tr/borsatakip/v5/ui/TradingViewBrowserLoginActivity.kt
-          require_marker 'onConsoleMessage' app/src/main/java/tr/borsatakip/v5/ui/TradingViewBrowserLoginActivity.kt
-          require_marker 'evaluateJavascript' app/src/main/java/tr/borsatakip/v5/ui/TradingViewBrowserLoginActivity.kt
-          require_marker 'WEBVIEW TANILAMA' app/src/main/java/tr/borsatakip/v5/ui/TradingViewBrowserLoginActivity.kt
-          require_marker 'RENDER_TIMEOUT_MS' app/src/main/java/tr/borsatakip/v5/ui/TradingViewBrowserLoginActivity.kt
-          require_marker 'CustomTabsIntent' app/src/main/java/tr/borsatakip/v5/ui/TradingViewBrowserLoginActivity.kt
-          require_marker 'WebView.getCurrentWebViewPackage' app/src/main/java/tr/borsatakip/v5/ui/TradingViewBrowserLoginActivity.kt
-          require_marker 'ConnectivityManager' app/src/main/java/tr/borsatakip/v5/ui/TradingViewBrowserLoginActivity.kt
           require_marker 'bg_screen_gradient' app/src/main/res/layout/activity_main.xml
           require_marker 'bg_screen_gradient' app/src/main/res/layout/activity_bist_scan.xml
           require_marker 'bg_screen_gradient' app/src/main/res/layout/activity_opportunity.xml
           require_marker 'bg_screen_gradient' app/src/main/res/layout/activity_stock_detail.xml
           require_marker 'bg_screen_gradient' app/src/main/res/layout/activity_viop.xml
 
+          if grep -R -E -q 'TradingViewAuthClient|TradingViewBrowserLoginActivity|TradingViewScannerOpportunityProvider|TradingViewViopProvider|TradingViewSnapshotScorer' app/src; then
+            echo 'Legacy TradingView auth/data component reference remains in app source.'
+            exit 1
+          fi
+
           AAPT=$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)
           test -x "$AAPT"
           "$AAPT" dump badging "$APK" > /tmp/badging.txt
-          grep -Fq "versionName='5.1.24'" /tmp/badging.txt
+          grep -Fq "versionName='5.1.25'" /tmp/badging.txt
           "$AAPT" dump xmltree "$APK" AndroidManifest.xml > /tmp/manifest.txt
           grep -Fq 'android:allowBackup(0x01010280)=(type 0x12)0x0' /tmp/manifest.txt
           test -f app/build/outputs/mapping/release/mapping.txt
-          echo 'V5.1.24 WebView render diagnostics, console/SSL/network telemetry, recovery, Custom Tabs, credential cleanup, data coverage and R8 checks passed.'
+          echo 'V5.1.25 backend-first, TradingView viewing-only, neon UI, insets, backup and R8 checks passed.'
 
       - name: Check release secrets
         if: github.event_name != 'pull_request'
@@ -135,14 +152,14 @@ jobs:
           BORSA_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           gradle :app:assembleRelease
-          cp app/build/outputs/apk/release/app-release.apk app/build/outputs/final/BorsaTakipV5.1.24-release.apk
+          cp app/build/outputs/apk/release/app-release.apk app/build/outputs/final/BorsaTakipV5.1.25-release.apk
           APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)
           test -x "$APKSIGNER"
-          "$APKSIGNER" verify --verbose --print-certs app/build/outputs/final/BorsaTakipV5.1.24-release.apk
+          "$APKSIGNER" verify --verbose --print-certs app/build/outputs/final/BorsaTakipV5.1.25-release.apk
 
       - name: Upload APK artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: BorsaTakipV5.1.24-apk
+          name: BorsaTakipV5.1.25-apk
           path: app/build/outputs/final/*.apk
           if-no-files-found: error
