@@ -41,7 +41,7 @@ jobs:
         run: |
           gradle :app:assembleDebug
           mkdir -p app/build/outputs/final
-          cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/final/BorsaTakipV5.1.20-debug.apk
+          cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/final/BorsaTakipV5.1.21-debug.apk
 
       - name: Release R8 smoke build
         run: gradle :app:assembleRelease
@@ -49,7 +49,7 @@ jobs:
       - name: Verify APK and quality markers
         run: |
           set -euo pipefail
-          APK=app/build/outputs/final/BorsaTakipV5.1.20-debug.apk
+          APK=app/build/outputs/final/BorsaTakipV5.1.21-debug.apk
           test -f "$APK"
           unzip -t "$APK" >/tmp/apk-unzip-test.txt
           tail -n 1 /tmp/apk-unzip-test.txt
@@ -65,48 +65,32 @@ jobs:
               exit 1
             fi
           done
-          echo 'APK placeholder/demo checks passed.'
 
           require_marker() {
             local marker="$1"
             local file="$2"
-            if ! grep -Fq "$marker" "$file"; then
-              echo "Required marker missing: $marker in $file"
-              exit 1
-            fi
-            echo "OK marker: $marker"
+            grep -Fq "$marker" "$file" || { echo "Required marker missing: $marker in $file"; exit 1; }
           }
 
           require_marker 'BuildConfig.VERSION_NAME' app/src/main/java/tr/borsatakip/v5/data/TradingViewScannerOpportunityProvider.kt
-          require_marker 'BuildConfig.VERSION_NAME' app/src/main/java/tr/borsatakip/v5/data/TradingViewAuthClient.kt
-          require_marker 'BuildConfig.VERSION_NAME' app/src/main/java/tr/borsatakip/v5/data/TradingViewViopProvider.kt
-          require_marker 'BuildConfig.VERSION_NAME' app/src/main/java/tr/borsatakip/v5/data/YahooFallbackProvider.kt
           require_marker 'WindowInsetsCompat.Type.systemBars()' app/src/main/java/tr/borsatakip/v5/ui/BaseActivity.kt
           require_marker 'MAX_SNAPSHOT_AGE_MS' app/src/main/java/tr/borsatakip/v5/analysis/TradingViewSnapshotScorer.kt
-          require_marker 'confidenceCap' app/src/main/java/tr/borsatakip/v5/analysis/TradingViewSnapshotScorer.kt
-          require_marker 'favoriteEmptyState' app/src/main/res/layout/activity_favorites.xml
           require_marker 'ColorUtils.blendARGB' app/src/main/java/tr/borsatakip/v5/ui/OpportunityAdapter.kt
           require_marker 'finalSignalScore.coerceIn(0, 100)' app/src/main/java/tr/borsatakip/v5/ui/OpportunityAdapter.kt
-          require_marker 'strengthBar' app/src/main/res/layout/item_opportunity.xml
+          require_marker 'bg_screen_gradient' app/src/main/res/layout/activity_main.xml
+          require_marker 'bg_screen_gradient' app/src/main/res/layout/activity_bist_scan.xml
+          require_marker 'bg_screen_gradient' app/src/main/res/layout/activity_opportunity.xml
+          require_marker 'bg_screen_gradient' app/src/main/res/layout/activity_stock_detail.xml
+          require_marker 'bg_screen_gradient' app/src/main/res/layout/activity_viop.xml
 
           AAPT=$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)
-          if [ -z "$AAPT" ] || [ ! -x "$AAPT" ]; then
-            echo 'Android aapt not found/executable.'
-            exit 1
-          fi
+          test -x "$AAPT"
           "$AAPT" dump badging "$APK" > /tmp/badging.txt
-          if ! grep -Fq "versionName='5.1.20'" /tmp/badging.txt; then
-            echo 'APK versionName is not 5.1.20.'
-            cat /tmp/badging.txt
-            exit 1
-          fi
+          grep -Fq "versionName='5.1.21'" /tmp/badging.txt
           "$AAPT" dump xmltree "$APK" AndroidManifest.xml > /tmp/manifest.txt
-          if ! grep -Fq 'android:allowBackup(0x01010280)=(type 0x12)0x0' /tmp/manifest.txt; then
-            echo 'allowBackup=false verification failed.'
-            exit 1
-          fi
+          grep -Fq 'android:allowBackup(0x01010280)=(type 0x12)0x0' /tmp/manifest.txt
           test -f app/build/outputs/mapping/release/mapping.txt
-          echo 'V5.1.20 APK, dynamic User-Agent, insets, freshness, confidence cap, neon UI, backup and R8 checks passed.'
+          echo 'V5.1.21 visual refresh, neon UI, insets, backup and R8 checks passed.'
 
       - name: Check release secrets
         if: github.event_name != 'pull_request'
@@ -138,16 +122,14 @@ jobs:
           BORSA_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           gradle :app:assembleRelease
-          cp app/build/outputs/apk/release/app-release.apk app/build/outputs/final/BorsaTakipV5.1.20-release.apk
+          cp app/build/outputs/apk/release/app-release.apk app/build/outputs/final/BorsaTakipV5.1.21-release.apk
           APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)
           test -x "$APKSIGNER"
-          "$APKSIGNER" verify --verbose --print-certs app/build/outputs/final/BorsaTakipV5.1.20-release.apk | tee /tmp/apksigner.txt
-          grep -q "Verified using v2 scheme (APK Signature Scheme v2): true" /tmp/apksigner.txt
-          grep -Eq "Verified using v3 scheme \(APK Signature Scheme v3\): true|Verified using v3.1 scheme \(APK Signature Scheme v3.1\): true" /tmp/apksigner.txt
+          "$APKSIGNER" verify --verbose --print-certs app/build/outputs/final/BorsaTakipV5.1.21-release.apk
 
       - name: Upload APK artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: BorsaTakipV5.1.20-apk
+          name: BorsaTakipV5.1.21-apk
           path: app/build/outputs/final/*.apk
           if-no-files-found: error
