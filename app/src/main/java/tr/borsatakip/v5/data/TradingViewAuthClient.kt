@@ -6,6 +6,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.FormBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import tr.borsatakip.v5.BuildConfig
 import java.util.concurrent.TimeUnit
 
 /**
@@ -166,6 +167,6 @@ class TradingViewAuthClient(context: Context) {
 
     companion object {
         private const val SIGN_IN_URL = "https://www.tradingview.com/accounts/signin/"
-        private const val USER_AGENT = "Mozilla/5.0 (Android) BorsaTakip/5.1.9"
+        private val USER_AGENT = "Mozilla/5.0 (Android) BorsaTakip/${BuildConfig.VERSION_NAME}"
     }
 }
