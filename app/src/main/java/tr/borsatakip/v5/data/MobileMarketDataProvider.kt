@@ -23,7 +23,7 @@ import java.util.concurrent.atomic.AtomicInteger
 class MobileMarketDataProvider(context: Context) : MarketDataProvider {
     private val settings = SettingsStore(context)
     override val id = "mobile_backend"
-    override val displayName = "Mobil canlı veri servisi"
+    override val displayName = "Üretim canlı veri servisi"
 
     override suspend fun scan(onProgress: (done: Int, total: Int) -> Unit): List<Stock> = supervisorScope {
         require(settings.baseUrl.startsWith("https://")) {
@@ -91,12 +91,18 @@ class MobileMarketDataProvider(context: Context) : MarketDataProvider {
         }
         if (candles.size < 220) return null
         val sorted = candles.sortedBy { it.timestamp }
+        val delaySeconds = if (json.has("delaySeconds") && !json.isNull("delaySeconds")) {
+            json.optInt("delaySeconds", Int.MAX_VALUE).takeIf { it != Int.MAX_VALUE }
+        } else null
         return Stock(
             symbol = json.optString("symbol").ifBlank { symbol },
             companyName = json.optString("name").takeIf { it.isNotBlank() },
             candles = sorted,
             source = json.optString("source").ifBlank { displayName },
-            dataTimestamp = json.optLong("dataTimestamp", sorted.last().timestamp)
+            dataTimestamp = json.optLong("dataTimestamp", 0L),
+            isRealtime = json.optBoolean("realtime", false),
+            delaySeconds = delaySeconds,
+            currentSessionIncluded = json.optBoolean("currentSessionIncluded", false)
         )
     }
 
