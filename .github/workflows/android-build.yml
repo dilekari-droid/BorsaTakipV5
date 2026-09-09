@@ -35,45 +35,48 @@ jobs:
         run: |
           gradle :app:assembleDebug
           mkdir -p app/build/outputs/final
-          cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/final/BorsaTakipV5-debug.apk
+          cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/final/BorsaTakipV5.1.2-debug.apk
 
       - name: Check release secrets
         if: github.event_name != 'pull_request'
         env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           if [ -n "$KEYSTORE_BASE64" ] && [ -n "$KEYSTORE_PASSWORD" ] && [ -n "$KEY_ALIAS" ] && [ -n "$KEY_PASSWORD" ]; then
             echo "RELEASE_SIGNING_AVAILABLE=true" >> "$GITHUB_ENV"
           else
             echo "RELEASE_SIGNING_AVAILABLE=false" >> "$GITHUB_ENV"
-            echo "Release APK skipped: signing secrets are incomplete."
+            echo "Signed release skipped: ANDROID_* signing secrets are incomplete."
           fi
 
       - name: Prepare release keystore
         if: env.RELEASE_SIGNING_AVAILABLE == 'true'
         env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/borsatakip-release.jks"
 
-      - name: Release build
+      - name: Signed release build and verification
         if: env.RELEASE_SIGNING_AVAILABLE == 'true'
         env:
           BORSA_KEYSTORE_PATH: ${{ runner.temp }}/borsatakip-release.jks
-          BORSA_STORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          BORSA_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          BORSA_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          BORSA_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          BORSA_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          BORSA_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           gradle :app:assembleRelease
-          cp app/build/outputs/apk/release/app-release.apk app/build/outputs/final/BorsaTakipV5-release.apk
+          cp app/build/outputs/apk/release/app-release.apk app/build/outputs/final/BorsaTakipV5.1.2-release.apk
           APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)
-          "$APKSIGNER" verify --verbose --print-certs app/build/outputs/final/BorsaTakipV5-release.apk
+          test -x "$APKSIGNER"
+          "$APKSIGNER" verify --verbose --print-certs app/build/outputs/final/BorsaTakipV5.1.2-release.apk | tee /tmp/apksigner.txt
+          grep -q "Verified using v2 scheme (APK Signature Scheme v2): true" /tmp/apksigner.txt
+          grep -Eq "Verified using v3 scheme \(APK Signature Scheme v3\): true|Verified using v3.1 scheme \(APK Signature Scheme v3.1\): true" /tmp/apksigner.txt
 
       - name: Upload APK artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: BorsaTakipV5-apk
+          name: BorsaTakipV5.1.2-apk
           path: app/build/outputs/final/*.apk
           if-no-files-found: error
