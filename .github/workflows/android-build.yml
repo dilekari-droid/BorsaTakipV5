@@ -35,13 +35,10 @@ jobs:
         run: gradle :app:lintDebug
 
       - name: Debug build
-        env:
-          TRADINGVIEW_TEST_USERNAME: ${{ secrets.TRADINGVIEW_TEST_USERNAME }}
-          TRADINGVIEW_TEST_PASSWORD: ${{ secrets.TRADINGVIEW_TEST_PASSWORD }}
         run: |
           gradle :app:assembleDebug
           mkdir -p app/build/outputs/final
-          cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/final/BorsaTakipV5.1.22-debug.apk
+          cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/final/BorsaTakipV5.1.23-debug.apk
 
       - name: Release R8 smoke build
         run: gradle :app:assembleRelease
@@ -49,7 +46,7 @@ jobs:
       - name: Verify APK and quality markers
         run: |
           set -euo pipefail
-          APK=app/build/outputs/final/BorsaTakipV5.1.22-debug.apk
+          APK=app/build/outputs/final/BorsaTakipV5.1.23-debug.apk
           test -f "$APK"
           unzip -t "$APK" >/tmp/apk-unzip-test.txt
           tail -n 1 /tmp/apk-unzip-test.txt
@@ -59,12 +56,16 @@ jobs:
             unzip -p "$APK" "$dex" >> /tmp/all.dex
           done < <(zipinfo -1 "$APK" | grep -E '^classes([0-9]+)?\.dex$')
 
-          for forbidden in 'api.ornek.com' 'DemoMarketDataProvider' 'LocalBistTestProvider'; do
+          for forbidden in 'api.ornek.com' 'DemoMarketDataProvider' 'LocalBistTestProvider' 'TV_TEST_USERNAME' 'TV_TEST_PASSWORD'; do
             if strings /tmp/all.dex | grep -Fq "$forbidden"; then
-              echo "Forbidden production string found in APK: $forbidden"
+              echo "Forbidden production/test string found in APK: $forbidden"
               exit 1
             fi
           done
+          if grep -R -F -q -e 'TV_TEST_USERNAME' -e 'TV_TEST_PASSWORD' app/src app/build.gradle.kts; then
+            echo 'TradingView test credential field remains in app source.'
+            exit 1
+          fi
 
           require_marker() {
             local marker="$1"
@@ -77,12 +78,13 @@ jobs:
           require_marker 'MAX_SNAPSHOT_AGE_MS' app/src/main/java/tr/borsatakip/v5/analysis/TradingViewSnapshotScorer.kt
           require_marker 'ColorUtils.blendARGB' app/src/main/java/tr/borsatakip/v5/ui/OpportunityAdapter.kt
           require_marker 'finalSignalScore.coerceIn(0, 100)' app/src/main/java/tr/borsatakip/v5/ui/OpportunityAdapter.kt
+          require_marker 'VERİ KAPSAMI' app/src/main/java/tr/borsatakip/v5/ui/OpportunityAdapter.kt
           require_marker 'onReceivedError' app/src/main/java/tr/borsatakip/v5/ui/TradingViewBrowserLoginActivity.kt
           require_marker 'onReceivedHttpError' app/src/main/java/tr/borsatakip/v5/ui/TradingViewBrowserLoginActivity.kt
           require_marker 'onRenderProcessGone' app/src/main/java/tr/borsatakip/v5/ui/TradingViewBrowserLoginActivity.kt
           require_marker 'LOAD_TIMEOUT_MS' app/src/main/java/tr/borsatakip/v5/ui/TradingViewBrowserLoginActivity.kt
-          require_marker 'TARAYICIDA AÇ' app/src/main/java/tr/borsatakip/v5/ui/TradingViewBrowserLoginActivity.kt
-          require_marker 'TEKRAR DENE' app/src/main/java/tr/borsatakip/v5/ui/TradingViewBrowserLoginActivity.kt
+          require_marker 'CustomTabsIntent' app/src/main/java/tr/borsatakip/v5/ui/TradingViewBrowserLoginActivity.kt
+          require_marker 'WebView.getCurrentWebViewPackage' app/src/main/java/tr/borsatakip/v5/ui/TradingViewBrowserLoginActivity.kt
           require_marker 'bg_screen_gradient' app/src/main/res/layout/activity_main.xml
           require_marker 'bg_screen_gradient' app/src/main/res/layout/activity_bist_scan.xml
           require_marker 'bg_screen_gradient' app/src/main/res/layout/activity_opportunity.xml
@@ -92,11 +94,11 @@ jobs:
           AAPT=$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)
           test -x "$AAPT"
           "$AAPT" dump badging "$APK" > /tmp/badging.txt
-          grep -Fq "versionName='5.1.22'" /tmp/badging.txt
+          grep -Fq "versionName='5.1.23'" /tmp/badging.txt
           "$AAPT" dump xmltree "$APK" AndroidManifest.xml > /tmp/manifest.txt
           grep -Fq 'android:allowBackup(0x01010280)=(type 0x12)0x0' /tmp/manifest.txt
           test -f app/build/outputs/mapping/release/mapping.txt
-          echo 'V5.1.22 TradingView WebView diagnostics, fallback, visual refresh, neon UI, insets, backup and R8 checks passed.'
+          echo 'V5.1.23 Custom Tabs, credential cleanup, data coverage, WebView diagnostics, neon UI, insets, backup and R8 checks passed.'
 
       - name: Check release secrets
         if: github.event_name != 'pull_request'
@@ -128,14 +130,14 @@ jobs:
           BORSA_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           gradle :app:assembleRelease
-          cp app/build/outputs/apk/release/app-release.apk app/build/outputs/final/BorsaTakipV5.1.22-release.apk
+          cp app/build/outputs/apk/release/app-release.apk app/build/outputs/final/BorsaTakipV5.1.23-release.apk
           APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)
           test -x "$APKSIGNER"
-          "$APKSIGNER" verify --verbose --print-certs app/build/outputs/final/BorsaTakipV5.1.22-release.apk
+          "$APKSIGNER" verify --verbose --print-certs app/build/outputs/final/BorsaTakipV5.1.23-release.apk
 
       - name: Upload APK artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: BorsaTakipV5.1.22-apk
+          name: BorsaTakipV5.1.23-apk
           path: app/build/outputs/final/*.apk
           if-no-files-found: error
