@@ -6,6 +6,7 @@
     <application
         android:name=".BorsaTakipApp"
         android:allowBackup="true"
+        android:usesCleartextTraffic="false"
         android:label="BORSA TAKİP"
         android:theme="@style/Theme.BorsaTakip">
         <activity android:name=".ui.SettingsActivity" />
