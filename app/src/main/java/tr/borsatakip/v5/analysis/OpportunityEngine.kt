@@ -81,10 +81,7 @@ object OpportunityEngine {
             atrPct in 4.0..6.0 -> { addLong("Volatilite", 2); addShort("Volatilite", 2) }
         }
 
-        // KAP puanı yalnız doğrulanmış bir KAP duygu/olay sağlayıcısı eklendiğinde verilir.
-        // "Veri yok" durumunda puan eklenmez ve kullanıcıya açıkça 0 gösterilir.
         val kapScore = 0
-
         val direction = if (longScore >= shortScore) "LONG" else "SHORT"
         val score = maxOf(longScore, shortScore).coerceIn(0, 100)
         val chosenParts = if (direction == "LONG") longParts else shortParts
@@ -136,7 +133,10 @@ object OpportunityEngine {
             dataTimestamp = stock.dataTimestamp,
             candles = c,
             technical = t,
-            scoreBreakdown = breakdown
+            scoreBreakdown = breakdown,
+            isRealtime = stock.isRealtime,
+            delaySeconds = stock.delaySeconds,
+            currentSessionIncluded = stock.currentSessionIncluded
         )
     }
 }
