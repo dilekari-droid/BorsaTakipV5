@@ -7,7 +7,10 @@ data class Stock(
     val companyName:String?,
     val candles:List<Candle>,
     val source:String,
-    val dataTimestamp:Long
+    val dataTimestamp:Long,
+    val isRealtime:Boolean = false,
+    val delaySeconds:Int? = null,
+    val currentSessionIncluded:Boolean = false
 )
 
 data class TechnicalSnapshot(
@@ -40,7 +43,10 @@ data class Opportunity(
     val dataConfidenceScore:Int = 100,
     val dataConfidenceLabel:String = "Yüksek",
     val finalSignalScore:Int = score,
-    val volumeDirectionLabel:String = "Yön verisi yok"
+    val volumeDirectionLabel:String = "Yön verisi yok",
+    val isRealtime:Boolean = false,
+    val delaySeconds:Int? = null,
+    val currentSessionIncluded:Boolean = false
 )
 
 data class ViopContract(
