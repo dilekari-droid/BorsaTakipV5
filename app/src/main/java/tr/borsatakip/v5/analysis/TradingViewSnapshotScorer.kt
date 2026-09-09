@@ -4,8 +4,8 @@ import tr.borsatakip.v5.model.Opportunity
 import tr.borsatakip.v5.model.TechnicalSnapshot
 
 /**
- * TradingView Scanner'ın tek seferlik gerçek piyasa snapshot'ını fırsat sonucuna dönüştürür.
- * Bu sınıf OHLC geçmişi uydurmaz; yalnız gerçekten dönen indikatör alanlarını puanlar.
+ * TradingView Scanner'ın tek seferlik piyasa snapshot'ını fırsat sonucuna dönüştürür.
+ * OHLC geçmişi, KAP, VWAP, destek/direnç veya alış-satış hacmi uydurulmaz.
  */
 object TradingViewSnapshotScorer {
 
@@ -100,14 +100,43 @@ object TradingViewSnapshotScorer {
         }
 
         val direction = if (longScore >= shortScore) "LONG" else "SHORT"
-        val score = maxOf(longScore, shortScore).coerceIn(0, 100)
+        val technicalScore = maxOf(longScore, shortScore).coerceIn(0, 100)
         val chosenParts = if (direction == "LONG") longParts else shortParts
 
         val lowVolumePenalty = if (relVol != null && relVol < 0.8) 15.0 else 0.0
-        val rsi = x.rsi ?: 50.0
-        val extremeRsiPenalty = if (rsi.isFinite() && (rsi > 75.0 || rsi < 25.0)) 12.0 else 0.0
+        val rsiForRisk = x.rsi ?: 50.0
+        val extremeRsiPenalty = if (rsiForRisk.isFinite() && (rsiForRisk > 75.0 || rsiForRisk < 25.0)) 12.0 else 0.0
         val atrPenalty = (atrPct ?: 5.0) * 10.0
         val risk = (atrPenalty + lowVolumePenalty + extremeRsiPenalty).coerceIn(0.0, 100.0).toInt()
+
+        var confidence = 100
+        // Scanner snapshot'ında bu veri sınıfları yok; eksiklik güven puanına açıkça yansır.
+        confidence -= 10 // KAP yok
+        confidence -= 10 // VWAP yok
+        confidence -= 5  // destek yok
+        confidence -= 5  // direnç yok
+        confidence -= 10 // tarihsel OHLCV yok
+        if (x.rsi?.isFinite() != true) confidence -= 8
+        if (x.macd?.isFinite() != true || x.macdSignal?.isFinite() != true) confidence -= 8
+        if (e20 == null || e50 == null || e200 == null) confidence -= 10
+        if (relVol == null) confidence -= 8
+        if (x.atr?.isFinite() != true) confidence -= 5
+        if (x.vwma?.isFinite() != true) confidence -= 4
+        if (x.recommendation?.isFinite() != true) confidence -= 4
+        confidence = confidence.coerceIn(0, 100)
+
+        val confidenceLabel = when {
+            confidence >= 80 -> "Yüksek"
+            confidence >= 60 -> "Orta"
+            else -> "Düşük"
+        }
+
+        // Nihai karar-destek skoru: teknik %55 + risk güvenliği %25 + veri güveni %20.
+        val finalSignal = (
+            technicalScore * 0.55 +
+                (100 - risk) * 0.25 +
+                confidence * 0.20
+            ).toInt().coerceIn(0, 100)
 
         val liquidity = when {
             relVol == null -> "Veri yok"
@@ -116,11 +145,16 @@ object TradingViewSnapshotScorer {
             else -> "Hacim aktivitesi düşük"
         }
         val technicalLabel = when {
-            score >= 80 -> "Güçlü"
-            score >= 65 -> "Pozitif"
+            technicalScore >= 80 -> "Güçlü"
+            technicalScore >= 65 -> "Pozitif"
             else -> "Nötr"
         }
         val volumeLabel = relVol?.let { "%.2fx".format(it) } ?: "Veri yok"
+        val volumeDirectionLabel = when {
+            x.changePct > 0.0 -> "Fiyat yönüyle hacim ↑"
+            x.changePct < 0.0 -> "Fiyat yönüyle hacim ↓"
+            else -> "Fiyat yönüyle hacim →"
+        }
 
         val technical = TechnicalSnapshot(
             ema20 = e20,
@@ -143,9 +177,12 @@ object TradingViewSnapshotScorer {
         val breakdown = buildList {
             addAll(chosenParts)
             add("KAP: +0 (veri yok)")
-            if (technical.vwap == null) add("VWAP: +0 (TradingView Scanner alanı kullanılmadı)")
-            add("Risk: $risk/100 (fırsat puanından ayrı)")
-            add("Toplam: $score/100 • $direction")
+            add("VWAP: +0 (Scanner snapshot alanı değil)")
+            add("Destek/Direnç: veri yok (tarihsel OHLCV gerekli)")
+            add("Teknik: $technicalScore/100")
+            add("Risk: $risk/100")
+            add("Veri Güveni: $confidence/100 ($confidenceLabel)")
+            add("Nihai Sinyal: $finalSignal/100 • $direction")
         }
 
         return Opportunity(
@@ -153,7 +190,7 @@ object TradingViewSnapshotScorer {
             companyName = x.companyName,
             price = x.price,
             dailyChangePct = x.changePct,
-            score = score,
+            score = technicalScore,
             riskScore = risk,
             direction = direction,
             technicalLabel = technicalLabel,
@@ -166,7 +203,11 @@ object TradingViewSnapshotScorer {
             dataTimestamp = x.receivedAt,
             candles = emptyList(),
             technical = technical,
-            scoreBreakdown = breakdown
+            scoreBreakdown = breakdown,
+            dataConfidenceScore = confidence,
+            dataConfidenceLabel = confidenceLabel,
+            finalSignalScore = finalSignal,
+            volumeDirectionLabel = volumeDirectionLabel
         )
     }
 }
