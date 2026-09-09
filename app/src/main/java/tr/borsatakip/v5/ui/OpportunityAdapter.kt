@@ -34,15 +34,18 @@ class OpportunityAdapter(
             else -> "YÜKSEK RİSK"
         }
         val finalLabel = when {
+            x.finalSignalScore >= 90 -> "ÇOK GÜÇLÜ NİHAİ SİNYAL"
             x.finalSignalScore >= 80 -> "GÜÇLÜ NİHAİ SİNYAL"
-            x.finalSignalScore >= 65 -> "ORTA NİHAİ SİNYAL"
-            else -> "İZLEME / ZAYIF SİNYAL"
+            x.finalSignalScore >= 70 -> "İZLE"
+            x.finalSignalScore >= 60 -> "ZAYIF SİNYAL"
+            else -> "FIRSAT YOK"
         }
         val reason = x.scoreBreakdown
             .asSequence()
-            .filter { it.contains("+") && !it.startsWith("KAP") && !it.startsWith("VWAP") }
-            .take(4)
+            .takeWhile { !it.startsWith("KAP:") }
+            .filter { it.contains(": +") }
             .map { it.substringBefore(":").trim() }
+            .distinct()
             .joinToString(" + ")
             .ifBlank { "Yeterli teknik bileşen açıklaması yok" }
 
@@ -51,7 +54,7 @@ class OpportunityAdapter(
         holder.company.text = x.companyName ?: ""
         holder.meta.text = buildString {
             append("${x.direction} • $finalLabel • $riskLabel\n")
-            append("Teknik Fırsat ${x.score}/100 • Risk ${x.riskScore}/100 • Veri Güveni ${x.dataConfidenceScore}/100 (${x.dataConfidenceLabel})\n")
+            append("Snapshot Teknik Puanı ${x.score}/100 • Risk ${x.riskScore}/100 • Veri Güveni ${x.dataConfidenceScore}/100 (${x.dataConfidenceLabel})\n")
             append("Nihai Sinyal ${x.finalSignalScore}/100\n")
             append("Hacim ${x.volumeLabel} • ${x.volumeDirectionLabel} • Günlük değişim ${"%.2f".format(x.dailyChangePct)}%\n")
             append("Kaynak: ${x.source} • KAP: ${x.kapLabel}\n")
