@@ -25,14 +25,19 @@ class SettingsActivity : BaseActivity() {
         refresh.setText(s.refreshMinutes.toString())
         notifications.isChecked = s.notifications
         fun status() {
-            val viop = if (s.baseUrl.isBlank()) "sağlayıcı tanımsız" else s.baseUrl
-            findViewById<TextView>(R.id.dataStatus).text = "BIST: Yahoo Finance gecikmeli veri • VİOP: $viop\nTema: koyu lacivert referans tema\nUygulama sürümü: ${BuildConfig.VERSION_NAME}"
+            val provider = if (s.baseUrl.isBlank()) "tanımlı değil" else s.baseUrl
+            findViewById<TextView>(R.id.dataStatus).text = "BIST/VİOP mobil veri servisi: $provider\nYahoo Finance ana veri kaynağı değildir.\nTema: koyu lacivert referans tema\nUygulama sürümü: ${BuildConfig.VERSION_NAME}"
         }
         status()
         findViewById<Button>(R.id.save).setOnClickListener {
-            s.baseUrl = base.text.toString()
+            val url = base.text.toString().trim()
+            if (url.isNotBlank() && !url.startsWith("https://")) {
+                Toast.makeText(this, "Mobil veri servisi için HTTPS adresi kullanın.", Toast.LENGTH_LONG).show()
+                return@setOnClickListener
+            }
+            s.baseUrl = url
             s.apiKey = key.text.toString()
-            s.refreshMinutes = (refresh.text.toString().toIntOrNull() ?: 60).coerceAtLeast(15)
+            s.refreshMinutes = (refresh.text.toString().toIntOrNull() ?: 15).coerceAtLeast(1)
             s.notifications = notifications.isChecked
             Toast.makeText(this, "Ayarlar kaydedildi", Toast.LENGTH_SHORT).show()
             status()
