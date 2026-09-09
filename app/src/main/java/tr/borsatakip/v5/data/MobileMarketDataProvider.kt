@@ -4,7 +4,7 @@ import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
@@ -22,20 +22,23 @@ class MobileMarketDataProvider(context: Context) : MarketDataProvider {
     override val id = "mobile_backend"
     override val displayName = "Mobil canlı veri servisi"
 
-    override suspend fun scan(onProgress: (done: Int, total: Int) -> Unit): List<Stock> = coroutineScope {
+    override suspend fun scan(onProgress: (done: Int, total: Int) -> Unit): List<Stock> = supervisorScope {
         require(settings.baseUrl.startsWith("https://")) {
             "Ana mobil veri servisi tanımlı değil. Ayarlar bölümünden HTTPS servis adresini girin."
         }
-        val symbols = loadSymbols()
+        val symbols = runCatching { loadSymbols() }.getOrElse { emptyList() }
         require(symbols.isNotEmpty()) { "Ana veri sağlayıcı BIST sembol listesi döndürmedi." }
+
         val semaphore = Semaphore(8)
         var done = 0
         symbols.map { symbol ->
             async(Dispatchers.IO) {
-                val stock = semaphore.withPermit { fetchHistory(symbol) }
+                val stock = runCatching {
+                    semaphore.withPermit { fetchHistory(symbol) }
+                }.getOrNull()
                 synchronized(this@MobileMarketDataProvider) {
                     done++
-                    onProgress(done, symbols.size)
+                    runCatching { onProgress(done, symbols.size) }
                 }
                 stock
             }
@@ -43,8 +46,8 @@ class MobileMarketDataProvider(context: Context) : MarketDataProvider {
     }
 
     override suspend fun fetchOne(symbol: String): Stock? = withContext(Dispatchers.IO) {
-        require(settings.baseUrl.startsWith("https://")) { "Ana mobil veri servisi tanımlı değil." }
-        fetchHistory(symbol.trim().uppercase())
+        if (!settings.baseUrl.startsWith("https://")) return@withContext null
+        runCatching { fetchHistory(symbol.trim().uppercase()) }.getOrNull()
     }
 
     private fun loadSymbols(): List<String> {
@@ -87,19 +90,20 @@ class MobileMarketDataProvider(context: Context) : MarketDataProvider {
     private fun getJson(path: String): JSONObject? {
         val base = settings.baseUrl.trim().removeSuffix("/")
         if (!base.startsWith("https://")) return null
-        val con = URL(base + path).openConnection() as HttpURLConnection
-        con.requestMethod = "GET"
-        con.connectTimeout = 8000
-        con.readTimeout = 12000
-        con.setRequestProperty("Accept", "application/json")
-        if (settings.apiKey.isNotBlank()) con.setRequestProperty("Authorization", "Bearer ${settings.apiKey}")
+        var con: HttpURLConnection? = null
         return try {
+            con = URL(base + path).openConnection() as HttpURLConnection
+            con.requestMethod = "GET"
+            con.connectTimeout = 8000
+            con.readTimeout = 12000
+            con.setRequestProperty("Accept", "application/json")
+            if (settings.apiKey.isNotBlank()) con.setRequestProperty("Authorization", "Bearer ${settings.apiKey}")
             if (con.responseCode !in 200..299) return null
             JSONObject(con.inputStream.bufferedReader().use { it.readText() })
         } catch (_: Exception) {
             null
         } finally {
-            con.disconnect()
+            runCatching { con?.disconnect() }
         }
     }
 }
