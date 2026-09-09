@@ -46,7 +46,10 @@ jobs:
       - name: Verify APK strings
         run: |
           APK=app/build/outputs/final/BorsaTakipV5.1.14-debug.apk
-          unzip -p "$APK" classes.dex > /tmp/classes.dex
+          rm -f /tmp/all.dex
+          for dex in $(zipinfo -1 "$APK" | grep -E '^classes([0-9]+)?\.dex$'); do
+            unzip -p "$APK" "$dex" >> /tmp/all.dex
+          done
           for forbidden in \
             'api.ornek.com' \
             'BorsaTakip/5.1.2' \
@@ -55,16 +58,16 @@ jobs:
             'BorsaTakip/5.1.13 Android' \
             'DemoMarketDataProvider' \
             'LocalBistTestProvider'; do
-            if strings /tmp/classes.dex | grep -Fq "$forbidden"; then
+            if strings /tmp/all.dex | grep -Fq "$forbidden"; then
               echo "Forbidden stale/test string found in APK: $forbidden"
               exit 1
             fi
           done
-          if ! strings /tmp/classes.dex | grep -Fq '5.1.14'; then
-            echo 'Current version marker 5.1.14 not found in APK.'
-            exit 1
-          fi
-          echo 'APK stale/test string verification passed.'
+          AAPT=$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)
+          test -x "$AAPT"
+          "$AAPT" dump badging "$APK" | tee /tmp/badging.txt
+          grep -Fq "versionName='5.1.14'" /tmp/badging.txt
+          echo 'APK stale/test string and version verification passed.'
 
       - name: Check release secrets
         if: github.event_name != 'pull_request'
