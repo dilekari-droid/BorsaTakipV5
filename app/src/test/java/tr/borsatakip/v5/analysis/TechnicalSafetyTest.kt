@@ -114,7 +114,10 @@ class TechnicalSafetyTest {
         companyName = "Test",
         candles = candles,
         source = "unit",
-        dataTimestamp = candles.lastOrNull()?.timestamp ?: 0L
+        dataTimestamp = System.currentTimeMillis(),
+        isRealtime = true,
+        delaySeconds = 0,
+        currentSessionIncluded = true
     )
 
     private fun candle(i: Int, close: Double) = Candle(
