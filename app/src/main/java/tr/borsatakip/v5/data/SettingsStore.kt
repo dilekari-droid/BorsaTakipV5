@@ -21,6 +21,14 @@ class SettingsStore(c: Context) {
         get() = getEncrypted("api_key_encrypted")
         set(v) = putEncrypted("api_key_encrypted", v)
 
+    /**
+     * Üretim veri modu varsayılandır. TradingView/Yahoo gibi doğrudan dış kaynaklar ancak
+     * kullanıcı bu deneysel modu açıkça etkinleştirirse devreye girebilir.
+     */
+    var experimentalProvidersEnabled: Boolean
+        get() = p.getBoolean("experimental_providers_enabled", false)
+        set(v) = p.edit().putBoolean("experimental_providers_enabled", v).apply()
+
     var tradingViewUsername: String
         get() = p.getString("tv_username", "") ?: ""
         set(v) = p.edit().putString("tv_username", v.trim()).apply()
@@ -63,7 +71,7 @@ class SettingsStore(c: Context) {
         set(v) = p.edit().putBoolean("notifications", v).apply()
 
     var yahooFallbackEnabled: Boolean
-        get() = p.getBoolean("yahoo_fallback_enabled", true)
+        get() = p.getBoolean("yahoo_fallback_enabled", false)
         set(v) = p.edit().putBoolean("yahoo_fallback_enabled", v).apply()
 
     var lastProviderId: String
@@ -131,7 +139,6 @@ class SettingsStore(c: Context) {
     }.getOrNull()
 
     companion object {
-        // Preserve the alias used by previous versions so existing encrypted API keys remain readable.
         private const val KEY_ALIAS = "borsa_takip_api_key"
         private const val IV_SIZE = 12
     }
