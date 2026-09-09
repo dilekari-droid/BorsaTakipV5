@@ -13,7 +13,9 @@ data class Stock(
 data class TechnicalSnapshot(
     val ema20:Double?, val ema50:Double?, val ema200:Double?, val rsi14:Double?,
     val macd:Double?, val macdSignal:Double?, val bbUpper:Double?, val bbLower:Double?,
-    val atr14:Double?, val vwap:Double?, val volumeRatio:Double?, val support:Double?, val resistance:Double?
+    val atr14:Double?, val vwap:Double?, val volumeRatio:Double?, val support:Double?, val resistance:Double?,
+    val vwma:Double? = null,
+    val recommendation:Double? = null
 )
 
 data class Opportunity(
