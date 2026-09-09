@@ -14,7 +14,6 @@ import androidx.recyclerview.widget.RecyclerView
 import kotlinx.coroutines.launch
 import tr.borsatakip.v5.R
 import tr.borsatakip.v5.data.SettingsStore
-import tr.borsatakip.v5.data.TradingViewViopProvider
 import tr.borsatakip.v5.data.ViopRepository
 import tr.borsatakip.v5.model.ViopContract
 
@@ -39,10 +38,10 @@ class ViopActivity : BaseActivity() {
         render(repo.loadLocal())
         if (repo.loadLocal().isEmpty()) {
             val s = SettingsStore(this)
-            status.text = when {
-                s.baseUrl.startsWith("https://") -> "Henüz VİOP kaydı yok. Üretim backend sözleşmelerini yenileyin."
-                s.experimentalProvidersEnabled -> "Üretim backend yok. Deneysel TradingView VİOP testi kullanılabilir."
-                else -> "Üretim VİOP backend'i yapılandırılmamış. Deneysel kaynaklar kapalı."
+            status.text = if (s.baseUrl.startsWith("https://")) {
+                "Henüz VİOP kaydı yok. Üretim backend sözleşmelerini yenileyin."
+            } else {
+                "Üretim VİOP backend'i yapılandırılmamış. Yalnız manuel kayıtlar kullanılabilir."
             }
         }
 
@@ -55,10 +54,7 @@ class ViopActivity : BaseActivity() {
         providerStatus.text = buildString {
             append("Ana VİOP kaynağı: HTTPS backend\n")
             append("Backend: ${if (s.baseUrl.startsWith("https://")) "YAPILANDIRILMIŞ" else "YAPILANDIRILMAMIŞ"}\n")
-            append("Deneysel TradingView VİOP: ${if (s.experimentalProvidersEnabled) "AÇIK" else "KAPALI"}\n")
-            if (s.experimentalProvidersEnabled) {
-                append("Deneysel tabanlar: ${TradingViewViopProvider.BASE_SYMBOLS.joinToString()}")
-            }
+            append("TradingView: yalnız harici görüntüleme • VİOP veri kaynağı değil")
         }
     }
 
@@ -66,8 +62,6 @@ class ViopActivity : BaseActivity() {
         val s = SettingsStore(this)
         status.text = if (s.baseUrl.startsWith("https://")) {
             "Üretim VİOP backend sözleşmeleri alınıyor..."
-        } else if (s.experimentalProvidersEnabled) {
-            "DENEYSEL TradingView VİOP sözleşmeleri keşfediliyor..."
         } else {
             "Üretim VİOP backend'i yapılandırılmamış."
         }
@@ -75,7 +69,7 @@ class ViopActivity : BaseActivity() {
             val (items, message) = repo.refresh()
             render(items)
             status.text = if (items.isEmpty()) {
-                "$message\nGerçek sözleşme/snapshot alınamadı; sahte veri üretilmedi."
+                "$message\nGerçek sözleşme verisi alınamadı; sahte veri üretilmedi."
             } else message
             refreshProviderLabel()
         }
