@@ -45,11 +45,12 @@ jobs:
           APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)
           "$APKSIGNER" verify --verbose --print-certs app/build/outputs/final/BorsaTakipV5.1.1-release.apk
 
-      - name: Build debug APK when release key is not configured
+      - name: Build unsigned release and debug APK when release key is not configured
         if: env.RELEASE_SIGNING_AVAILABLE != 'true'
         run: |
-          gradle :app:assembleDebug
+          gradle :app:assembleRelease :app:assembleDebug
           mkdir -p app/build/outputs/final
+          cp app/build/outputs/apk/release/app-release-unsigned.apk app/build/outputs/final/BorsaTakipV5.1.1-release-unsigned.apk
           cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/final/BorsaTakipV5.1.1-debug.apk
 
       - uses: actions/upload-artifact@v4
