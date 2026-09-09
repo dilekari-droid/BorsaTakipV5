@@ -12,7 +12,9 @@ class MainActivity : BaseActivity() {
         setContentView(R.layout.activity_main)
         setupBottomNav()
         findViewById<Button>(R.id.btnBist).setOnClickListener { startActivity(Intent(this, BistScanActivity::class.java)) }
-        findViewById<Button>(R.id.btnOpportunity).setOnClickListener { startActivity(Intent(this, OpportunityActivity::class.java)) }
+        findViewById<Button>(R.id.btnOpportunity).setOnClickListener {
+            startActivity(Intent(this, OpportunityActivity::class.java).putExtra("demo_scan", true))
+        }
         findViewById<Button>(R.id.btnViop).setOnClickListener { startActivity(Intent(this, ViopActivity::class.java)) }
         findViewById<Button>(R.id.btnFav).setOnClickListener { startActivity(Intent(this, FavoritesActivity::class.java)) }
         findViewById<Button>(R.id.btnNotifications).setOnClickListener { startActivity(Intent(this, SettingsActivity::class.java)) }
