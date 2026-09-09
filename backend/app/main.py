@@ -7,9 +7,9 @@ from urllib.parse import quote
 
 import httpx
 from fastapi import FastAPI, Header, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
-app = FastAPI(title="BorsaTakip Backend", version="1.0.0")
+app = FastAPI(title="BorsaTakip Backend", version="1.1.0")
 
 API_KEY = os.getenv("BORSA_BACKEND_API_KEY", "").strip()
 UPSTREAM_TOKEN = os.getenv("BORSA_UPSTREAM_TOKEN", "").strip()
@@ -17,6 +17,8 @@ SYMBOLS_URL = os.getenv("BORSA_SYMBOLS_URL", "").strip()
 HISTORY_URL_TEMPLATE = os.getenv("BORSA_HISTORY_URL_TEMPLATE", "").strip()
 VIOP_URL = os.getenv("BORSA_VIOP_URL", "").strip()
 UPSTREAM_NAME = os.getenv("BORSA_UPSTREAM_NAME", "licensed-upstream").strip() or "licensed-upstream"
+MAX_REALTIME_AGE_MS = int(os.getenv("BORSA_MAX_REALTIME_AGE_MS", "60000"))
+MAX_DECLARED_DELAY_SECONDS = int(os.getenv("BORSA_MAX_DECLARED_DELAY_SECONDS", "5"))
 
 
 class Health(BaseModel):
@@ -24,6 +26,9 @@ class Health(BaseModel):
     provider: str
     message: str
     timestamp: int
+    strictRealtime: bool = True
+    maxRealtimeAgeMs: int
+    maxDeclaredDelaySeconds: int
 
 
 class SymbolsResponse(BaseModel):
@@ -47,6 +52,9 @@ class HistoryResponse(BaseModel):
     candles: list[Candle]
     source: str
     dataTimestamp: int
+    realtime: bool
+    delaySeconds: int
+    currentSessionIncluded: bool
 
 
 class ViopContract(BaseModel):
@@ -114,9 +122,31 @@ def _normalize_symbols(payload: Any) -> list[str]:
     return out
 
 
+def _require_realtime_metadata(payload: dict[str, Any]) -> tuple[int, int]:
+    if payload.get("realtime") is not True:
+        raise HTTPException(status_code=409, detail="Upstream did not certify data as real-time")
+    if payload.get("currentSessionIncluded") is not True:
+        raise HTTPException(status_code=409, detail="Current trading session is not included in OHLCV")
+    try:
+        delay_seconds = int(payload["delaySeconds"])
+        data_ts = int(payload["dataTimestamp"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail="Real-time provenance metadata is incomplete") from exc
+    if delay_seconds < 0 or delay_seconds > MAX_DECLARED_DELAY_SECONDS:
+        raise HTTPException(status_code=409, detail=f"Declared provider delay is {delay_seconds}s; strict limit is {MAX_DECLARED_DELAY_SECONDS}s")
+    now = int(time.time() * 1000)
+    age = now - data_ts
+    if data_ts <= 0 or age > MAX_REALTIME_AGE_MS:
+        raise HTTPException(status_code=409, detail=f"Market data is stale; age={max(age, 0)}ms strict_limit={MAX_REALTIME_AGE_MS}ms")
+    if age < -15_000:
+        raise HTTPException(status_code=409, detail="Market timestamp is ahead of server clock")
+    return delay_seconds, data_ts
+
+
 def _normalize_candles(payload: Any, requested_symbol: str) -> HistoryResponse:
     if not isinstance(payload, dict):
         raise HTTPException(status_code=502, detail="Upstream history response must be an object")
+    delay_seconds, data_ts = _require_realtime_metadata(payload)
     rows = payload.get("candles")
     if not isinstance(rows, list):
         raise HTTPException(status_code=502, detail="Upstream history response must contain candles")
@@ -143,13 +173,15 @@ def _normalize_candles(payload: Any, requested_symbol: str) -> HistoryResponse:
         raise HTTPException(status_code=422, detail=f"Insufficient OHLCV history: {len(candles)} candles; minimum 220")
     symbol = str(payload.get("symbol") or requested_symbol).strip().upper()
     name = payload.get("name")
-    data_ts = int(payload.get("dataTimestamp") or candles[-1].timestamp)
     return HistoryResponse(
         symbol=symbol,
         name=str(name).strip() if name else None,
         candles=candles,
         source=UPSTREAM_NAME,
         dataTimestamp=data_ts,
+        realtime=True,
+        delaySeconds=delay_seconds,
+        currentSessionIncluded=True,
     )
 
 
@@ -163,8 +195,10 @@ async def health(authorization: str | None = Header(default=None)) -> Health:
     return Health(
         ok=configured,
         provider=UPSTREAM_NAME if configured else "unconfigured",
-        message="Production upstream configured" if configured else "Set BORSA_SYMBOLS_URL and BORSA_HISTORY_URL_TEMPLATE to licensed HTTPS endpoints",
+        message="Strict real-time production upstream configured" if configured else "Set licensed HTTPS BIST upstream endpoints",
         timestamp=int(time.time() * 1000),
+        maxRealtimeAgeMs=MAX_REALTIME_AGE_MS,
+        maxDeclaredDelaySeconds=MAX_DECLARED_DELAY_SECONDS,
     )
 
 
