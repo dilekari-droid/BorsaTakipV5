@@ -7,37 +7,119 @@ import kotlin.math.pow
 import kotlin.math.sqrt
 
 object TechnicalAnalyzer {
-    fun analyze(c: List<Candle>): TechnicalSnapshot {
-        val closes=c.map{it.close}; val vols=c.map{it.volume}
-        val e20=ema(closes,20); val e50=ema(closes,50); val e200=ema(closes,200)
-        val rsi=rsiWilder(closes,14)
-        val macdLine = if (closes.size>=26) emaSeries(closes,12).last()-emaSeries(closes,26).last() else null
-        val macdSignal = if (closes.size>=35) {
-            val fast=emaSeries(closes,12); val slow=emaSeries(closes,26)
-            val offset=fast.size-slow.size
-            val line=slow.indices.map { fast[it+offset]-slow[it] }
-            ema(line,9)
+    fun analyze(input: List<Candle>): TechnicalSnapshot {
+        val c = input.filter { candle ->
+            listOf(candle.open, candle.high, candle.low, candle.close, candle.volume).all { it.isFinite() } &&
+                candle.high >= candle.low && candle.volume >= 0.0
+        }
+        if (c.isEmpty()) return emptySnapshot()
+
+        val closes = c.map { it.close }
+        val vols = c.map { it.volume }
+        val e20 = ema(closes, 20).finiteOrNull()
+        val e50 = ema(closes, 50).finiteOrNull()
+        val e200 = ema(closes, 200).finiteOrNull()
+        val rsi = rsiWilder(closes, 14).finiteOrNull()
+        val macdLine = if (closes.size >= 26) {
+            val fast = emaSeries(closes, 12)
+            val slow = emaSeries(closes, 26)
+            if (fast.isNotEmpty() && slow.isNotEmpty()) (fast.last() - slow.last()).finiteOrNull() else null
         } else null
-        val bb=if(closes.size>=20){ val w=closes.takeLast(20); val m=w.average(); val sd=sqrt(w.sumOf{(it-m).pow(2)}/w.size); Pair(m+2*sd,m-2*sd)} else null
-        val atr=atr(c,14)
-        val vwap=if(c.isNotEmpty() && c.sumOf{it.volume}>0) c.sumOf{((it.high+it.low+it.close)/3.0)*it.volume}/c.sumOf{it.volume} else null
-        val vr=if(vols.size>=21){ val base=vols.dropLast(1).takeLast(20).average(); if(base>0) vols.last()/base else null } else null
-        val lows=c.takeLast(20).map{it.low}; val highs=c.takeLast(20).map{it.high}
-        return TechnicalSnapshot(e20,e50,e200,rsi,macdLine,macdSignal,bb?.first,bb?.second,atr,vwap,vr,lows.minOrNull(),highs.maxOrNull())
+        val macdSignal = if (closes.size >= 35) {
+            val fast = emaSeries(closes, 12)
+            val slow = emaSeries(closes, 26)
+            val offset = fast.size - slow.size
+            if (offset >= 0) {
+                val line = slow.indices.map { fast[it + offset] - slow[it] }
+                ema(line, 9).finiteOrNull()
+            } else null
+        } else null
+        val bb = if (closes.size >= 20) {
+            val w = closes.takeLast(20)
+            val m = w.average()
+            val variance = w.sumOf { (it - m).pow(2) } / w.size
+            val sd = sqrt(variance.coerceAtLeast(0.0))
+            Pair((m + 2 * sd).finiteOrNull(), (m - 2 * sd).finiteOrNull())
+        } else null
+        val atr = atr(c, 14).finiteOrNull()
+        val totalVolume = c.sumOf { it.volume }
+        val vwap = if (totalVolume > 0.0 && totalVolume.isFinite()) {
+            (c.sumOf { ((it.high + it.low + it.close) / 3.0) * it.volume } / totalVolume).finiteOrNull()
+        } else null
+        val vr = if (vols.size >= 21) {
+            val base = vols.dropLast(1).takeLast(20).average()
+            if (base > 0.0 && base.isFinite()) (vols.last() / base).finiteOrNull() else null
+        } else null
+        val lows = c.takeLast(20).map { it.low }
+        val highs = c.takeLast(20).map { it.high }
+        return TechnicalSnapshot(
+            e20, e50, e200, rsi, macdLine, macdSignal,
+            bb?.first, bb?.second, atr, vwap, vr,
+            lows.minOrNull().finiteOrNull(), highs.maxOrNull().finiteOrNull()
+        )
     }
 
-    private fun ema(values:List<Double>, period:Int):Double? = if(values.size<period) null else emaSeries(values,period).last()
-    private fun emaSeries(values:List<Double>, period:Int):List<Double>{
-        if(values.size<period) return emptyList(); val out=mutableListOf<Double>(); var e=values.take(period).average(); out+=e; val k=2.0/(period+1)
-        for(i in period until values.size){ e=values[i]*k+e*(1-k); out+=e }; return out
+    private fun emptySnapshot() = TechnicalSnapshot(
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null
+    )
+
+    private fun ema(values: List<Double>, period: Int): Double? =
+        if (values.size < period) null else emaSeries(values, period).lastOrNull()
+
+    private fun emaSeries(values: List<Double>, period: Int): List<Double> {
+        if (values.size < period || period <= 0) return emptyList()
+        val seed = values.take(period).average()
+        if (!seed.isFinite()) return emptyList()
+        val out = mutableListOf<Double>()
+        var e = seed
+        out += e
+        val k = 2.0 / (period + 1)
+        for (i in period until values.size) {
+            val x = values[i]
+            if (!x.isFinite()) return emptyList()
+            e = x * k + e * (1 - k)
+            if (!e.isFinite()) return emptyList()
+            out += e
+        }
+        return out
     }
-    private fun rsiWilder(v:List<Double>, p:Int):Double?{
-        if(v.size<p+1)return null; val d=(1 until v.size).map{v[it]-v[it-1]}; var g=d.take(p).sumOf{if(it>0)it else 0.0}/p; var l=d.take(p).sumOf{if(it<0)-it else 0.0}/p
-        for(i in p until d.size){ val x=d[i]; g=(g*(p-1)+(if(x>0)x else 0.0))/p; l=(l*(p-1)+(if(x<0)-x else 0.0))/p }
-        if(l==0.0)return 100.0; val rs=g/l; return 100-(100/(1+rs))
+
+    private fun rsiWilder(v: List<Double>, p: Int): Double? {
+        if (p <= 0 || v.size < p + 1) return null
+        val d = (1 until v.size).map { v[it] - v[it - 1] }
+        var g = d.take(p).sumOf { if (it > 0) it else 0.0 } / p
+        var l = d.take(p).sumOf { if (it < 0) -it else 0.0 } / p
+        for (i in p until d.size) {
+            val x = d[i]
+            g = (g * (p - 1) + (if (x > 0) x else 0.0)) / p
+            l = (l * (p - 1) + (if (x < 0) -x else 0.0)) / p
+        }
+        if (!g.isFinite() || !l.isFinite()) return null
+        if (l == 0.0) return 100.0
+        val rs = g / l
+        if (!rs.isFinite()) return null
+        return 100 - (100 / (1 + rs))
     }
-    private fun atr(c:List<Candle>,p:Int):Double?{
-        if(c.size<p+1)return null; val tr=(1 until c.size).map{ i -> maxOf(c[i].high-c[i].low, abs(c[i].high-c[i-1].close), abs(c[i].low-c[i-1].close)) }
-        var a=tr.take(p).average(); for(i in p until tr.size) a=(a*(p-1)+tr[i])/p; return a
+
+    private fun atr(c: List<Candle>, p: Int): Double? {
+        if (p <= 0 || c.size < p + 1) return null
+        val tr = (1 until c.size).map { i ->
+            maxOf(
+                c[i].high - c[i].low,
+                abs(c[i].high - c[i - 1].close),
+                abs(c[i].low - c[i - 1].close)
+            )
+        }
+        if (tr.size < p) return null
+        var a = tr.take(p).average()
+        if (!a.isFinite()) return null
+        for (i in p until tr.size) {
+            a = (a * (p - 1) + tr[i]) / p
+            if (!a.isFinite()) return null
+        }
+        return a
     }
+
+    private fun Double?.finiteOrNull(): Double? = this?.takeIf { it.isFinite() }
 }
