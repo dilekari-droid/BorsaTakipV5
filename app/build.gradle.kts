@@ -11,8 +11,8 @@ android {
         applicationId = "tr.borsatakip.v5"
         minSdk = 26
         targetSdk = 35
-        versionCode = 50
-        versionName = "5.0.0"
+        versionCode = 51
+        versionName = "5.1.0"
     }
 
     buildTypes {
@@ -38,4 +38,5 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("androidx.work:work-runtime-ktx:2.10.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 }
