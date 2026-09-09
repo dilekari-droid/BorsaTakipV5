@@ -63,8 +63,7 @@ class OpportunityAdapter(
             x.finalSignalScore >= 60 -> "ZAYIF SİNYAL"
             else -> "FIRSAT YOK"
         }
-        val reason = x.scoreBreakdown
-            .asSequence()
+        val reason = x.scoreBreakdown.asSequence()
             .takeWhile { !it.startsWith("KAP:") }
             .filter { it.contains(": +") }
             .map { it.substringBefore(":").trim() }
@@ -82,14 +81,20 @@ class OpportunityAdapter(
         }
         val timeText = if (x.dataTimestamp > 0L) {
             SimpleDateFormat("dd.MM.yyyy HH:mm:ss", Locale.getDefault()).format(Date(x.dataTimestamp))
-        } else {
-            "bilinmiyor"
-        }
+        } else "bilinmiyor"
         val staleLabel = when {
             ageMs == Long.MAX_VALUE -> " • TAZELİK BİLİNMİYOR"
             ageMs > 15 * 60_000L -> " • BAYAT VERİ"
             else -> ""
         }
+
+        val hasPrice = x.price.isFinite() && x.price > 0.0
+        val hasVolume = !x.volumeLabel.equals("Veri yok", true) && x.volumeLabel.isNotBlank()
+        val hasOhlcv = x.candles.isNotEmpty()
+        val hasKap = !x.kapLabel.equals("Veri yok", true) && x.kapLabel.isNotBlank()
+        val hasLevels = x.support != null && x.resistance != null
+        val hasVwap = x.technical.vwap != null
+        fun mark(ok: Boolean): String = if (ok) "✓" else "⚠ veri yok"
 
         holder.symbol.text = x.symbol
         holder.score.text = "${x.direction} $strength%"
@@ -102,7 +107,8 @@ class OpportunityAdapter(
             append("Nihai Sinyal ${x.finalSignalScore}/100\n")
             append("Hacim ${x.volumeLabel} • ${x.volumeDirectionLabel} • Günlük değişim ${"%.2f".format(x.dailyChangePct)}%\n")
             append("Kaynak: ${x.source} • Veri: $timeText • Yaş: $ageText$staleLabel\n")
-            append("KAP: ${x.kapLabel}\n")
+            append("VERİ KAPSAMI: Fiyat ${mark(hasPrice)} • Hacim ${mark(hasVolume)} • OHLCV ${mark(hasOhlcv)}\n")
+            append("KAP ${mark(hasKap)} • Destek/Direnç ${mark(hasLevels)} • VWAP ${mark(hasVwap)}\n")
             append("${x.direction} nedeni: $reason\n")
             append(x.scoreBreakdown.joinToString(" • "))
         }
@@ -117,14 +123,11 @@ class OpportunityAdapter(
     private fun applySignalVisuals(holder: H, direction: String, strength: Int) {
         val t = strength / 100f
         val isLong = direction.equals("LONG", ignoreCase = true)
-
         val darkBase = if (isLong) Color.rgb(0, 38, 22) else Color.rgb(48, 0, 8)
         val base = if (isLong) Color.rgb(0, 200, 83) else Color.rgb(213, 0, 0)
         val neon = if (isLong) Color.rgb(0, 255, 102) else Color.rgb(255, 23, 68)
-
         val accent = ColorUtils.blendARGB(base, neon, t)
-        val backgroundMix = 0.16f + (0.20f * t)
-        val background = ColorUtils.blendARGB(darkBase, accent, backgroundMix)
+        val background = ColorUtils.blendARGB(darkBase, accent, 0.16f + (0.20f * t))
         val border = ColorUtils.blendARGB(base, neon, 0.25f + (0.75f * t))
 
         holder.itemView.background = GradientDrawable().apply {
@@ -133,21 +136,17 @@ class OpportunityAdapter(
             setColor(background)
             setStroke(dp(holder.itemView, if (strength >= 85) 2.2f else 1.2f).toInt().coerceAtLeast(1), border)
         }
-
         holder.score.setTextColor(accent)
         holder.strengthValue.setTextColor(accent)
         holder.strengthBar.progressTintList = ColorStateList.valueOf(accent)
         holder.strengthBar.progressBackgroundTintList = ColorStateList.valueOf(ColorUtils.setAlphaComponent(accent, 42))
-
         val glowRadius = dp(holder.itemView, 1.5f + (5.5f * t))
         val glowAlpha = (90 + (150 * t)).toInt().coerceIn(0, 255)
         val glowColor = ColorUtils.setAlphaComponent(neon, glowAlpha)
         holder.score.setShadowLayer(glowRadius, 0f, 0f, glowColor)
         holder.strengthValue.setShadowLayer(glowRadius * 0.7f, 0f, 0f, glowColor)
-
         holder.itemView.elevation = dp(holder.itemView, if (strength >= 85) 8f else 2f + (4f * t))
     }
 
-    private fun dp(view: View, value: Float): Float =
-        value * view.resources.displayMetrics.density
+    private fun dp(view: View, value: Float): Float = value * view.resources.displayMetrics.density
 }
