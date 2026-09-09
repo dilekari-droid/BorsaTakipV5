@@ -16,13 +16,13 @@
         <TextView
             android:id="@+id/providerStatus"
             style="@style/Sub"
-            android:text="Provider: kontrol ediliyor..." />
+            android:text="TradingView VİOP kaynağı kontrol ediliyor..." />
 
         <TextView
             android:id="@+id/status"
             style="@style/Sub"
             android:layout_marginTop="6dp"
-            android:text="VİOP verisi BIST'ten ayrı sağlayıcıdan alınır." />
+            android:text="BIST futures sözleşmeleri TradingView üzerinden deneysel olarak keşfedilir. Veri yoksa sahte fiyat üretilmez." />
 
         <Button
             android:id="@+id/refresh"
@@ -31,7 +31,7 @@
             android:layout_marginTop="12dp"
             android:background="@drawable/bg_card_purple"
             android:textColor="@color/white"
-            android:text="SÖZLEŞMELERİ YENİLE" />
+            android:text="TRADINGVIEW VİOP TESTİNİ BAŞLAT" />
 
         <Button
             android:id="@+id/addContract"
@@ -40,7 +40,7 @@
             android:layout_marginTop="10dp"
             android:background="@drawable/bg_card_blue"
             android:textColor="@color/white"
-            android:text="+ SÖZLEŞME EKLE" />
+            android:text="+ MANUEL SÖZLEŞME EKLE" />
     </LinearLayout>
 
     <androidx.recyclerview.widget.RecyclerView
