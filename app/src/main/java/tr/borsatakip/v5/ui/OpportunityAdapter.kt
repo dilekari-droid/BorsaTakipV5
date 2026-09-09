@@ -11,6 +11,7 @@ import android.widget.TextView
 import androidx.core.graphics.ColorUtils
 import androidx.recyclerview.widget.RecyclerView
 import tr.borsatakip.v5.R
+import tr.borsatakip.v5.data.RealTimeIntegrityPolicy
 import tr.borsatakip.v5.data.favorites.FavoriteRepository
 import tr.borsatakip.v5.model.Opportunity
 import java.text.SimpleDateFormat
@@ -82,11 +83,11 @@ class OpportunityAdapter(
         val timeText = if (x.dataTimestamp > 0L) {
             SimpleDateFormat("dd.MM.yyyy HH:mm:ss", Locale.getDefault()).format(Date(x.dataTimestamp))
         } else "bilinmiyor"
-        val staleLabel = when {
-            ageMs == Long.MAX_VALUE -> " • TAZELİK BİLİNMİYOR"
-            ageMs > 15 * 60_000L -> " • BAYAT VERİ"
-            else -> ""
-        }
+        val realtimeOk = x.isRealtime && x.currentSessionIncluded &&
+            x.delaySeconds != null && x.delaySeconds in 0..RealTimeIntegrityPolicy.MAX_DECLARED_DELAY_SECONDS &&
+            ageMs <= RealTimeIntegrityPolicy.MAX_DATA_AGE_MS
+        val realtimeLabel = if (realtimeOk) "ANLIK ✓" else "ANLIK DOĞRULANMADI"
+        val providerDelay = x.delaySeconds?.let { "$it sn" } ?: "bilinmiyor"
 
         val hasPrice = x.price.isFinite() && x.price > 0.0
         val hasVolume = !x.volumeLabel.equals("Veri yok", true) && x.volumeLabel.isNotBlank()
@@ -102,11 +103,11 @@ class OpportunityAdapter(
         holder.strengthValue.text = "$strength%"
         holder.company.text = x.companyName ?: ""
         holder.meta.text = buildString {
-            append("${x.direction} • $finalLabel • $riskLabel\n")
+            append("$realtimeLabel • ${x.direction} • $finalLabel • $riskLabel\n")
+            append("Kaynak: ${x.source} • Veri zamanı: $timeText • Yaş: $ageText • Sağlayıcı gecikmesi: $providerDelay\n")
             append("Snapshot Teknik Puanı ${x.score}/100 • Risk ${x.riskScore}/100 • Veri Güveni ${x.dataConfidenceScore}/100 (${x.dataConfidenceLabel})\n")
             append("Nihai Sinyal ${x.finalSignalScore}/100\n")
             append("Hacim ${x.volumeLabel} • ${x.volumeDirectionLabel} • Günlük değişim ${"%.2f".format(x.dailyChangePct)}%\n")
-            append("Kaynak: ${x.source} • Veri: $timeText • Yaş: $ageText$staleLabel\n")
             append("VERİ KAPSAMI: Fiyat ${mark(hasPrice)} • Hacim ${mark(hasVolume)} • OHLCV ${mark(hasOhlcv)}\n")
             append("KAP ${mark(hasKap)} • Destek/Direnç ${mark(hasLevels)} • VWAP ${mark(hasVwap)}\n")
             append("${x.direction} nedeni: $reason\n")
