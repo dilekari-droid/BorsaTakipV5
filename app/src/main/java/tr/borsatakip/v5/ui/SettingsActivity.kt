@@ -34,8 +34,6 @@ class SettingsActivity : BaseActivity() {
         val yahooFallback = findViewById<Switch>(R.id.yahooFallback)
         val notifications = findViewById<Switch>(R.id.notifications)
         val dataStatus = findViewById<TextView>(R.id.dataStatus)
-        val tvUser = findViewById<EditText>(R.id.tradingViewUsername)
-        val tvPass = findViewById<EditText>(R.id.tradingViewPassword)
         val tvStatus = findViewById<TextView>(R.id.tradingViewStatus)
         val tvLoginButton = findViewById<Button>(R.id.testTradingViewLogin)
 
@@ -46,13 +44,6 @@ class SettingsActivity : BaseActivity() {
         yahooFallback.isChecked = s.yahooFallbackEnabled
         yahooFallback.isEnabled = s.experimentalProvidersEnabled
         notifications.isChecked = s.notifications
-
-        val injectedUser = BuildConfig.TV_TEST_USERNAME.trim()
-        val injectedPass = BuildConfig.TV_TEST_PASSWORD
-        tvUser.setText(s.tradingViewUsername.ifBlank { injectedUser })
-        tvPass.setText("")
-        tvPass.hint = "Tarayıcı girişinde şifreyi TradingView ekranına yazın"
-        tvLoginButton.text = "TRADINGVIEW TARAYICI GİRİŞİ"
 
         experimentalProviders.setOnCheckedChangeListener { _, enabled ->
             yahooFallback.isEnabled = enabled
@@ -66,12 +57,8 @@ class SettingsActivity : BaseActivity() {
                 append("TradingView: DENEYSEL kaynak\n")
                 append("Deneysel mod: ${if (s.experimentalProvidersEnabled) "AÇIK" else "KAPALI"}\n")
                 append("Üyelik oturumu: ${if (hasSession) "KAYITLI" else "YOK"}\n")
-                append("Giriş yöntemi: TradingView web sayfasında kullanıcı tarafından doğrulama\n")
+                append("Giriş yöntemi: Kimlik bilgileri yalnız TradingView sayfasına yazılır\n")
                 append("WebSocket auth token: ${if (hasToken) "MEVCUT" else "YOK"}")
-                if (BuildConfig.DEBUG) {
-                    append("\nDEBUG test hesabı: ")
-                    append(if (injectedUser.isNotBlank() && injectedPass.isNotBlank()) "CI'da tanımlı" else "CI secret tanımlı değil")
-                }
                 if (s.tradingViewAuthenticatedAt > 0L) append("\nSon doğrulama: ${s.tradingViewAuthenticatedAt}")
                 if (!extra.isNullOrBlank()) append("\n$extra")
             }
@@ -114,12 +101,9 @@ class SettingsActivity : BaseActivity() {
                 ).show()
                 return@setOnClickListener
             }
-            val username = tvUser.text.toString().trim().ifBlank { injectedUser }
-            if (username.isNotBlank()) s.tradingViewUsername = username
-            tvPass.setText("")
             Toast.makeText(
                 this,
-                "TradingView sayfası açılıyor. Girişi ve varsa CAPTCHA/2FA doğrulamasını TradingView ekranında tamamlayın.",
+                "Giriş bilgilerini yalnız açılan TradingView sayfasına yazın. CAPTCHA/2FA varsa normal şekilde tamamlayın.",
                 Toast.LENGTH_LONG
             ).show()
             tradingViewBrowserLauncher.launch(Intent(this, TradingViewBrowserLoginActivity::class.java))
@@ -127,8 +111,6 @@ class SettingsActivity : BaseActivity() {
 
         findViewById<Button>(R.id.clearTradingViewSession).setOnClickListener {
             TradingViewAuthClient(this).logoutLocal()
-            tvUser.setText(injectedUser)
-            tvPass.setText("")
             showTvStatus("Yerel TradingView oturumu temizlendi.")
         }
 
@@ -144,7 +126,6 @@ class SettingsActivity : BaseActivity() {
             s.experimentalProvidersEnabled = experimentalProviders.isChecked
             s.yahooFallbackEnabled = experimentalProviders.isChecked && yahooFallback.isChecked
             s.notifications = notifications.isChecked
-            if (tvUser.text.toString().isNotBlank()) s.tradingViewUsername = tvUser.text.toString()
             Toast.makeText(
                 this,
                 if (url.isBlank() && !s.experimentalProvidersEnabled) {
