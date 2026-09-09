@@ -54,12 +54,49 @@ class OpportunityActivity : BaseActivity() {
             scanButton.text = "DURDUR"
             scanJob = lifecycleScope.launch {
                 try {
-                    summary.text = "TradingView BIST Scanner'a bağlanılıyor..."
+                    val settings = SettingsStore(this@OpportunityActivity)
+                    val hasBackend = settings.baseUrl.startsWith("https://")
+
+                    if (hasBackend) {
+                        summary.text = "ÜRETİM BACKEND FIRSAT TARAMASI başlatılıyor..."
+                        val scanner = BistScanner(ProviderRouter(this@OpportunityActivity))
+                        val finalState = scanner.scan { state ->
+                            runOnUiThread {
+                                summary.text = when (state.status) {
+                                    ScanStatus.IDLE -> "Hazır"
+                                    ScanStatus.RUNNING -> "ÜRETİM BACKEND • ${state.processed}/${state.total} • %${state.progress} • Atlanan ${state.skipped}"
+                                    ScanStatus.COMPLETED -> "ÜRETİM BACKEND taraması tamamlandı • ${state.results.size} sonuç"
+                                    ScanStatus.ERROR -> "ÜRETİM BACKEND başarısız • ${state.errorMessage ?: "Veri alınamadı"}"
+                                    ScanStatus.CANCELLED -> "Fırsat taraması durduruldu"
+                                }
+                            }
+                        }
+
+                        if (finalState.status == ScanStatus.COMPLETED && finalState.results.isNotEmpty()) {
+                            val results = sort(finalState.results)
+                            AppSession.lastOpportunities = results
+                            bind(
+                                results,
+                                "ÜRETİM FIRSAT TARAMASI tamamlandı • ${results.size} sonuç • Kaynak: ${results.first().source} • Sıralama: Nihai Sinyal"
+                            )
+                            return@launch
+                        }
+
+                        if (!settings.experimentalProvidersEnabled) {
+                            summary.text = "ÜRETİM BACKEND veri üretmedi. Deneysel sağlayıcı modu kapalı; TradingView/Yahoo'ya geçilmedi."
+                            return@launch
+                        }
+                    } else if (!settings.experimentalProvidersEnabled) {
+                        summary.text = "ÜRETİM VERİ SAĞLAYICISI YAPILANDIRILMAMIŞ • Ayarlar'da gerçek HTTPS backend tanımlayın. Deneysel TradingView/Yahoo modu kapalı."
+                        return@launch
+                    }
+
+                    summary.text = "DENEYSEL TradingView BIST Scanner'a bağlanılıyor..."
                     val tv = TradingViewScannerOpportunityProvider()
                     val tvResult = tv.scan { done, total ->
                         runOnUiThread {
                             val pct = if (total <= 0) 0 else ((done * 100L) / total).toInt().coerceIn(0, 100)
-                            summary.text = "GERÇEK FIRSAT TARAMASI • TradingView • $done/$total • %$pct"
+                            summary.text = "DENEYSEL FIRSAT TARAMASI • TradingView • $done/$total • %$pct"
                         }
                     }
 
@@ -69,46 +106,19 @@ class OpportunityActivity : BaseActivity() {
                         AppSession.lastOpportunities = results
                         bind(
                             results,
-                            "GERÇEK FIRSAT TARAMASI tamamlandı • ${results.size} sonuç • ${output.receivedRows} BIST kaydı • Atlanan ${output.skippedRows} • Kaynak: ${output.sourceLabel} • Sıralama: Nihai Sinyal"
+                            "DENEYSEL FIRSAT TARAMASI tamamlandı • ${results.size} sonuç • ${output.receivedRows} BIST kaydı • Atlanan ${output.skippedRows} • Kaynak: ${output.sourceLabel} • ÜRETİM VERİSİ DEĞİL"
                         )
-                        return@launch
-                    }
-
-                    val settings = SettingsStore(this@OpportunityActivity)
-                    if (settings.baseUrl.startsWith("https://")) {
-                        summary.text = "TradingView Scanner erişilemedi • İsteğe bağlı backend deneniyor..."
-                        val scanner = BistScanner(ProviderRouter(this@OpportunityActivity))
-                        val finalState = scanner.scan { state ->
-                            runOnUiThread {
-                                summary.text = when (state.status) {
-                                    ScanStatus.IDLE -> "Hazır"
-                                    ScanStatus.RUNNING -> "BACKEND FIRSAT TARAMASI • ${state.processed}/${state.total} • %${state.progress} • Atlanan ${state.skipped}"
-                                    ScanStatus.COMPLETED -> "BACKEND FIRSAT TARAMASI tamamlandı • ${state.results.size} sonuç"
-                                    ScanStatus.ERROR -> "BACKEND FIRSAT TARAMASI başarısız • ${state.errorMessage ?: "Veri alınamadı"}"
-                                    ScanStatus.CANCELLED -> "Fırsat taraması durduruldu"
-                                }
-                            }
-                        }
-                        if (finalState.status == ScanStatus.COMPLETED) {
-                            val results = sort(finalState.results)
-                            AppSession.lastOpportunities = results
-                            if (results.isEmpty()) {
-                                summary.text = "Gerçek veri alındı ancak uygun fırsat sonucu üretilemedi."
-                            } else {
-                                bind(results, "GERÇEK FIRSAT TARAMASI tamamlandı • ${results.size} sonuç • Kaynak: ${results.first().source}")
-                            }
-                        }
                     } else {
                         val error = tvResult.exceptionOrNull()
-                        summary.text = "GERÇEK FIRSAT TARAMASI başarısız • TradingView BIST Scanner'a ulaşılamadı: ${error?.message ?: "veri alınamadı"}. Backend yapılandırılmamış; demo verisine geçilmedi."
+                        summary.text = "DENEYSEL TradingView taraması başarısız • ${error?.message ?: "veri alınamadı"}. Sahte/demo verisine geçilmedi."
                     }
                 } catch (ce: CancellationException) {
-                    summary.text = "GERÇEK FIRSAT TARAMASI durduruldu"
+                    summary.text = "Fırsat taraması durduruldu"
                     throw ce
                 } catch (t: Throwable) {
-                    summary.text = "GERÇEK FIRSAT TARAMASI başarısız • ${t.message ?: "Beklenmeyen veri hatası"}"
+                    summary.text = "Fırsat taraması başarısız • ${t.message ?: "Beklenmeyen veri hatası"}"
                 } finally {
-                    scanButton.text = "GERÇEK FIRSAT TARAMASINI BAŞLAT"
+                    scanButton.text = "FIRSAT TARAMASINI BAŞLAT"
                 }
             }
         }
@@ -123,11 +133,16 @@ class OpportunityActivity : BaseActivity() {
 
     private suspend fun showExisting() {
         val existing = sort(AppSession.lastOpportunities)
+        val settings = SettingsStore(this)
         if (existing.isEmpty()) {
-            summary.text = "GERÇEK FIRSAT KONTROLÜ • BIST ana tarama kaynağı TradingView Scanner • backend isteğe bağlı • demo yok"
+            summary.text = if (settings.baseUrl.startsWith("https://")) {
+                "ÜRETİM FIRSAT KONTROLÜ • ana kaynak HTTPS backend • deneysel kaynaklar ${if (settings.experimentalProvidersEnabled) "AÇIK" else "KAPALI"}"
+            } else {
+                "ÜRETİM FIRSAT KONTROLÜ • backend yapılandırılmamış • deneysel kaynaklar ${if (settings.experimentalProvidersEnabled) "AÇIK" else "KAPALI"}"
+            }
             bind(emptyList(), summary.text.toString())
         } else {
-            bind(existing, "GERÇEK FIRSAT KONTROLÜ • ${existing.size} sonuç • sıralama: Nihai Sinyal")
+            bind(existing, "FIRSAT KONTROLÜ • ${existing.size} sonuç • sıralama: Nihai Sinyal")
         }
     }
 
