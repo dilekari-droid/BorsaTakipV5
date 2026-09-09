@@ -1,1 +1,86 @@
-<?xml version="1.0" encoding="utf-8"?><LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:background="@color/bg"><ScrollView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"><LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="18dp"><TextView style="@style/Title" android:text="Ayarlar"/><TextView style="@style/Sub" android:text="Veri sağlayıcı • API • yenileme • bildirim • sürüm"/><EditText android:id="@+id/baseUrl" android:layout_width="match_parent" android:layout_height="52dp" android:layout_marginTop="14dp" android:hint="Backend Base URL" android:textColor="@color/text_primary" android:textColorHint="@color/text_secondary"/><EditText android:id="@+id/apiKey" android:layout_width="match_parent" android:layout_height="52dp" android:hint="API Key" android:textColor="@color/text_primary" android:textColorHint="@color/text_secondary"/><EditText android:id="@+id/refreshMinutes" android:layout_width="match_parent" android:layout_height="52dp" android:hint="Yenileme (dakika, min 15)" android:inputType="number" android:textColor="@color/text_primary" android:textColorHint="@color/text_secondary"/><Switch android:id="@+id/notifications" android:layout_width="match_parent" android:layout_height="52dp" android:text="Fırsat bildirimleri" android:textColor="@color/text_primary"/><Button android:id="@+id/save" android:layout_width="match_parent" android:layout_height="52dp" android:background="@drawable/bg_card_blue" android:textColor="@color/white" android:text="KAYDET"/><TextView android:id="@+id/dataStatus" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="14dp" android:background="@drawable/bg_card" android:padding="14dp" android:textColor="@color/text_secondary"/></LinearLayout></ScrollView><include layout="@layout/include_bottom_nav"/></LinearLayout>
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/bg">
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="18dp">
+
+            <TextView style="@style/Title" android:text="Ayarlar" />
+            <TextView style="@style/Sub" android:text="Mobil veri servisi • API • canlı bağlantı • sürüm" />
+
+            <EditText
+                android:id="@+id/baseUrl"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:layout_marginTop="14dp"
+                android:hint="https://api.ornek.com"
+                android:inputType="textUri"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_secondary" />
+
+            <EditText
+                android:id="@+id/apiKey"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:hint="API Key / Bearer Token"
+                android:inputType="textPassword"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_secondary" />
+
+            <EditText
+                android:id="@+id/refreshMinutes"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:hint="Yenileme (dakika)"
+                android:inputType="number"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_secondary" />
+
+            <Switch
+                android:id="@+id/notifications"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:text="Fırsat bildirimleri"
+                android:textColor="@color/text_primary" />
+
+            <Button
+                android:id="@+id/save"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:background="@drawable/bg_card_blue"
+                android:text="KAYDET"
+                android:textColor="@color/white" />
+
+            <Button
+                android:id="@+id/testConnection"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_card"
+                android:text="BAĞLANTIYI TEST ET"
+                android:textColor="@color/text_primary" />
+
+            <TextView
+                android:id="@+id/dataStatus"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:background="@drawable/bg_card"
+                android:padding="14dp"
+                android:textColor="@color/text_secondary" />
+        </LinearLayout>
+    </ScrollView>
+
+    <include layout="@layout/include_bottom_nav" />
+</LinearLayout>
