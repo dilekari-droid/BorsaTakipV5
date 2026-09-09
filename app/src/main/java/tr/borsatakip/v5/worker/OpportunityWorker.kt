@@ -9,17 +9,22 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import androidx.work.*
 import tr.borsatakip.v5.analysis.OpportunityEngine
-import tr.borsatakip.v5.data.YahooBistProvider
+import tr.borsatakip.v5.data.MobileMarketDataProvider
 
 class OpportunityWorker(c:Context,p:WorkerParameters):CoroutineWorker(c,p){
     override suspend fun doWork():Result{
         val prefs=applicationContext.getSharedPreferences("favorites",Context.MODE_PRIVATE)
         val symbols=prefs.getStringSet("bist",emptySet())?.take(20).orEmpty()
         if(symbols.isEmpty()) return Result.success()
-        val provider=YahooBistProvider(applicationContext)
-        val hits=symbols.mapNotNull{ s -> provider.fetchOne(s)?.let{OpportunityEngine.score(it)} }.filter{it.score>=80 && it.riskScore<=60}
-        if(hits.isNotEmpty()) notify(applicationContext,"BORSA TAKİP fırsat uyarısı",hits.take(3).joinToString(" • "){"${it.symbol} ${it.score}/100 ${it.direction}"})
-        return Result.success()
+        return try {
+            val provider=MobileMarketDataProvider(applicationContext)
+            val hits=symbols.mapNotNull{ s -> provider.fetchOne(s)?.let{ stock -> OpportunityEngine.score(stock) } }
+                .filter{ it.score>=80 && it.riskScore<=60 }
+            if(hits.isNotEmpty()) notify(applicationContext,"BORSA TAKİP fırsat uyarısı",hits.take(3).joinToString(" • "){"${it.symbol} ${it.score}/100 ${it.direction}"})
+            Result.success()
+        } catch (_: Exception) {
+            Result.retry()
+        }
     }
     companion object{
         fun notify(context:Context,title:String,text:String){
