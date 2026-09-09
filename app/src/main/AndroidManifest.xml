@@ -9,6 +9,7 @@
         android:usesCleartextTraffic="false"
         android:label="BORSA TAKİP"
         android:theme="@style/Theme.BorsaTakip">
+        <activity android:name=".ui.TradingViewBrowserLoginActivity" />
         <activity android:name=".ui.SettingsActivity" />
         <activity android:name=".ui.FavoritesActivity" />
         <activity android:name=".ui.ViopActivity" />
