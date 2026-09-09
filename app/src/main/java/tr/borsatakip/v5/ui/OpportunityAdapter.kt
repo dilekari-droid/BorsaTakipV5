@@ -6,14 +6,18 @@ import android.view.ViewGroup
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import tr.borsatakip.v5.R
+import tr.borsatakip.v5.data.favorites.FavoriteRepository
 import tr.borsatakip.v5.model.Opportunity
 
 class OpportunityAdapter(
     private var items: List<Opportunity>,
-    private val click: (Opportunity) -> Unit
+    private val favoriteSymbols: Set<String>,
+    private val click: (Opportunity) -> Unit,
+    private val toggleFavorite: (Opportunity) -> Unit
 ) : RecyclerView.Adapter<OpportunityAdapter.H>() {
 
     class H(v: View) : RecyclerView.ViewHolder(v) {
+        val favorite = v.findViewById<TextView>(R.id.favoriteToggle)
         val symbol = v.findViewById<TextView>(R.id.symbol)
         val score = v.findViewById<TextView>(R.id.score)
         val company = v.findViewById<TextView>(R.id.company)
@@ -28,6 +32,11 @@ class OpportunityAdapter(
 
     override fun onBindViewHolder(holder: H, position: Int) {
         val x = items[position]
+        val normalized = FavoriteRepository.normalizeSymbol(x.symbol)
+        holder.favorite.text = if (favoriteSymbols.contains(normalized)) "★" else "☆"
+        holder.favorite.contentDescription = if (favoriteSymbols.contains(normalized)) "Favorilerden çıkar" else "Favoriye ekle"
+        holder.favorite.setOnClickListener { toggleFavorite(x) }
+
         val riskLabel = when {
             x.riskScore <= 30 -> "DÜŞÜK RİSK"
             x.riskScore <= 60 -> "ORTA RİSK"
