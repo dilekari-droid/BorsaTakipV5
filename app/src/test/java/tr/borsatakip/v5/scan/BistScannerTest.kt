@@ -59,6 +59,7 @@ class BistScannerTest {
 
     @Test
     fun deterministicProvider_completesWithoutNetwork() = runBlocking {
+        val now = System.currentTimeMillis()
         val stocks = (1..4).map { idx ->
             Stock(
                 symbol = "T$idx",
@@ -75,7 +76,10 @@ class BistScannerTest {
                     )
                 },
                 source = "unit",
-                dataTimestamp = 240L
+                dataTimestamp = now,
+                isRealtime = true,
+                delaySeconds = 0,
+                currentSessionIncluded = true
             )
         }
         val provider = object : MarketDataProvider {
