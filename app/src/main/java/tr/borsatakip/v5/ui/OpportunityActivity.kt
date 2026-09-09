@@ -21,8 +21,9 @@ class OpportunityActivity : BaseActivity() {
         val list = findViewById<RecyclerView>(R.id.list)
         list.layoutManager = LinearLayoutManager(this)
 
+        val demoRequested = intent.getBooleanExtra("demo_scan", false)
         val existing = AppSession.lastOpportunities.sortedByDescending { it.score }
-        if (existing.isNotEmpty()) {
+        if (!demoRequested && existing.isNotEmpty()) {
             bind(existing, summary, list, "${existing.size} sonuç • Skor yüksekten düşüğe • Risk ayrı hesaplanır")
             return
         }
