@@ -110,7 +110,6 @@ object TradingViewSnapshotScorer {
         val risk = (atrPenalty + lowVolumePenalty + extremeRsiPenalty).coerceIn(0.0, 100.0).toInt()
 
         var confidence = 100
-        // Scanner snapshot'ında bu veri sınıfları yok; eksiklik güven puanına açıkça yansır.
         confidence -= 10 // KAP yok
         confidence -= 10 // VWAP yok
         confidence -= 5  // destek yok
@@ -131,12 +130,13 @@ object TradingViewSnapshotScorer {
             else -> "Düşük"
         }
 
-        // Nihai karar-destek skoru: teknik %55 + risk güvenliği %25 + veri güveni %20.
-        val finalSignal = (
-            technicalScore * 0.55 +
-                (100 - risk) * 0.25 +
-                confidence * 0.20
-            ).toInt().coerceIn(0, 100)
+        // Mevcut ağırlıklar değiştirilmedi. Backtest yapılmadan katsayılar optimize edilmiş kabul edilmez.
+        val technicalContribution = technicalScore * 0.55
+        val riskSafety = 100 - risk
+        val riskContribution = riskSafety * 0.25
+        val confidenceContribution = confidence * 0.20
+        val finalSignalRaw = technicalContribution + riskContribution + confidenceContribution
+        val finalSignal = finalSignalRaw.toInt().coerceIn(0, 100)
 
         val liquidity = when {
             relVol == null -> "Veri yok"
@@ -179,10 +179,13 @@ object TradingViewSnapshotScorer {
             add("KAP: +0 (veri yok)")
             add("VWAP: +0 (Scanner snapshot alanı değil)")
             add("Destek/Direnç: veri yok (tarihsel OHLCV gerekli)")
-            add("Teknik: $technicalScore/100")
-            add("Risk: $risk/100")
+            add("Snapshot Teknik Puanı: $technicalScore/100")
+            add("Risk: $risk/100 • Risk güvenliği: $riskSafety/100")
             add("Veri Güveni: $confidence/100 ($confidenceLabel)")
+            add("Nihai formül: Teknik %55 + Risk güvenliği %25 + Veri güveni %20")
+            add("Nihai katkı: Teknik ${"%.2f".format(technicalContribution)} + Risk ${"%.2f".format(riskContribution)} + Veri ${"%.2f".format(confidenceContribution)} = ${"%.2f".format(finalSignalRaw)} → $finalSignal")
             add("Nihai Sinyal: $finalSignal/100 • $direction")
+            add("Not: Bu katsayılar backtest ile optimize edilmiş kabul edilmemelidir.")
         }
 
         return Opportunity(
