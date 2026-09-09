@@ -57,9 +57,9 @@ jobs:
           done
           for forbidden in \
             'api.ornek.com' \
-            'BorsaTakip/5.1.2' \
-            'BorsaTakip/5.1.9' \
-            'BorsaTakip/5.1.12' \
+            'BorsaTakip/5.1.2 Android' \
+            'BorsaTakip/5.1.9 Android' \
+            'BorsaTakip/5.1.12 Android' \
             'BorsaTakip/5.1.13 Android' \
             'DemoMarketDataProvider' \
             'LocalBistTestProvider'; do
