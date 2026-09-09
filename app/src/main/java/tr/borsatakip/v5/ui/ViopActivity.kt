@@ -38,7 +38,12 @@ class ViopActivity : BaseActivity() {
         refreshProviderLabel()
         render(repo.loadLocal())
         if (repo.loadLocal().isEmpty()) {
-            status.text = "Henüz VİOP kaydı yok. TradingView BIST futures kontrat keşfini başlatın."
+            val s = SettingsStore(this)
+            status.text = when {
+                s.baseUrl.startsWith("https://") -> "Henüz VİOP kaydı yok. Üretim backend sözleşmelerini yenileyin."
+                s.experimentalProvidersEnabled -> "Üretim backend yok. Deneysel TradingView VİOP testi kullanılabilir."
+                else -> "Üretim VİOP backend'i yapılandırılmamış. Deneysel kaynaklar kapalı."
+            }
         }
 
         findViewById<Button>(R.id.refresh).setOnClickListener { refreshContracts() }
@@ -48,15 +53,24 @@ class ViopActivity : BaseActivity() {
     private fun refreshProviderLabel() {
         val s = SettingsStore(this)
         providerStatus.text = buildString {
-            append("Ana VİOP kaynağı: TradingView Symbol Search + Turkey Scanner (deneysel)\n")
-            append("Aranan tabanlar: ${TradingViewViopProvider.BASE_SYMBOLS.joinToString()}\n")
-            append("Backend yedeği: ")
-            append(if (s.baseUrl.startsWith("https://")) "yapılandırılmış" else "yapılandırılmamış / isteğe bağlı")
+            append("Ana VİOP kaynağı: HTTPS backend\n")
+            append("Backend: ${if (s.baseUrl.startsWith("https://")) "YAPILANDIRILMIŞ" else "YAPILANDIRILMAMIŞ"}\n")
+            append("Deneysel TradingView VİOP: ${if (s.experimentalProvidersEnabled) "AÇIK" else "KAPALI"}\n")
+            if (s.experimentalProvidersEnabled) {
+                append("Deneysel tabanlar: ${TradingViewViopProvider.BASE_SYMBOLS.joinToString()}")
+            }
         }
     }
 
     private fun refreshContracts() {
-        status.text = "TradingView VİOP sözleşmeleri keşfediliyor ve snapshot deneniyor..."
+        val s = SettingsStore(this)
+        status.text = if (s.baseUrl.startsWith("https://")) {
+            "Üretim VİOP backend sözleşmeleri alınıyor..."
+        } else if (s.experimentalProvidersEnabled) {
+            "DENEYSEL TradingView VİOP sözleşmeleri keşfediliyor..."
+        } else {
+            "Üretim VİOP backend'i yapılandırılmamış."
+        }
         lifecycleScope.launch {
             val (items, message) = repo.refresh()
             render(items)
@@ -77,7 +91,7 @@ class ViopActivity : BaseActivity() {
         val expiry = view.findViewById<EditText>(R.id.inputExpiry)
         val symbol = view.findViewById<EditText>(R.id.inputSymbol)
         val provider = view.findViewById<Spinner>(R.id.inputProvider)
-        val providers = listOf("Manuel / Veri Yok", "Ana Backend")
+        val providers = listOf("Manuel / Veri Yok", "Üretim Backend")
         provider.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, providers)
 
         val dialog = AlertDialog.Builder(this)
@@ -105,7 +119,7 @@ class ViopActivity : BaseActivity() {
                                 underlying = u,
                                 expiry = e,
                                 providerId = if (backendSelected) "backend" else "manual",
-                                providerLabel = if (backendSelected) "Ana Backend" else "Manuel",
+                                providerLabel = if (backendSelected) "Üretim Backend" else "Manuel",
                                 isManual = true,
                                 status = if (backendSelected) "Provider doğrulaması bekleniyor" else "Veri bekleniyor",
                                 dataTimestamp = System.currentTimeMillis()
