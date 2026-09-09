@@ -1,6 +1,14 @@
 package tr.borsatakip.v5.data
 
 import android.content.Context
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
+import android.util.Base64
+import java.security.KeyStore
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
+import javax.crypto.spec.GCMParameterSpec
 
 class SettingsStore(c: Context) {
     private val p = c.getSharedPreferences("settings", Context.MODE_PRIVATE)
@@ -10,8 +18,29 @@ class SettingsStore(c: Context) {
         set(v) = p.edit().putString("base_url", v.trim().removeSuffix("/")).apply()
 
     var apiKey: String
-        get() = p.getString("api_key", "") ?: ""
-        set(v) = p.edit().putString("api_key", v.trim()).apply()
+        get() {
+            val encrypted = p.getString("api_key_encrypted", null)
+            if (!encrypted.isNullOrBlank()) return decrypt(encrypted).orEmpty()
+
+            // One-time migration from V5.0/V5.1 plaintext storage.
+            val legacy = p.getString("api_key", "").orEmpty()
+            if (legacy.isNotBlank()) {
+                apiKey = legacy
+                p.edit().remove("api_key").apply()
+            }
+            return legacy
+        }
+        set(v) {
+            val value = v.trim()
+            if (value.isBlank()) {
+                p.edit().remove("api_key_encrypted").remove("api_key").apply()
+            } else {
+                val encrypted = encrypt(value)
+                if (encrypted != null) {
+                    p.edit().putString("api_key_encrypted", encrypted).remove("api_key").apply()
+                }
+            }
+        }
 
     var refreshMinutes: Int
         get() = p.getInt("refresh_minutes", 60)
@@ -40,4 +69,45 @@ class SettingsStore(c: Context) {
     var cachedBistSymbols: Set<String>
         get() = p.getStringSet("cached_bist_symbols", emptySet())?.toSet().orEmpty()
         set(v) = p.edit().putStringSet("cached_bist_symbols", v).apply()
+
+    private fun getOrCreateKey(): SecretKey {
+        val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        (keyStore.getKey(KEY_ALIAS, null) as? SecretKey)?.let { return it }
+
+        val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
+        generator.init(
+            KeyGenParameterSpec.Builder(
+                KEY_ALIAS,
+                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
+            )
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setKeySize(256)
+                .build()
+        )
+        return generator.generateKey()
+    }
+
+    private fun encrypt(value: String): String? = runCatching {
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
+        val iv = cipher.iv
+        val encrypted = cipher.doFinal(value.toByteArray(Charsets.UTF_8))
+        Base64.encodeToString(iv + encrypted, Base64.NO_WRAP)
+    }.getOrNull()
+
+    private fun decrypt(value: String): String? = runCatching {
+        val bytes = Base64.decode(value, Base64.NO_WRAP)
+        require(bytes.size > IV_SIZE)
+        val iv = bytes.copyOfRange(0, IV_SIZE)
+        val encrypted = bytes.copyOfRange(IV_SIZE, bytes.size)
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.DECRYPT_MODE, getOrCreateKey(), GCMParameterSpec(128, iv))
+        String(cipher.doFinal(encrypted), Charsets.UTF_8)
+    }.getOrNull()
+
+    companion object {
+        private const val KEY_ALIAS = "borsa_takip_api_key"
+        private const val IV_SIZE = 12
+    }
 }
