@@ -1,11 +1,13 @@
 package tr.borsatakip.v5.ui
 
+import android.content.Intent
 import android.os.Bundle
 import android.widget.Button
 import android.widget.EditText
 import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import tr.borsatakip.v5.BuildConfig
@@ -15,6 +17,10 @@ import tr.borsatakip.v5.data.SettingsStore
 import tr.borsatakip.v5.data.TradingViewAuthClient
 
 class SettingsActivity : BaseActivity() {
+    private val tradingViewBrowserLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        recreate()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_settings)
@@ -30,6 +36,7 @@ class SettingsActivity : BaseActivity() {
         val tvUser = findViewById<EditText>(R.id.tradingViewUsername)
         val tvPass = findViewById<EditText>(R.id.tradingViewPassword)
         val tvStatus = findViewById<TextView>(R.id.tradingViewStatus)
+        val tvLoginButton = findViewById<Button>(R.id.testTradingViewLogin)
 
         base.setText(s.baseUrl)
         key.setText(s.apiKey)
@@ -40,7 +47,9 @@ class SettingsActivity : BaseActivity() {
         val injectedUser = BuildConfig.TV_TEST_USERNAME.trim()
         val injectedPass = BuildConfig.TV_TEST_PASSWORD
         tvUser.setText(s.tradingViewUsername.ifBlank { injectedUser })
-        tvPass.setText(if (BuildConfig.DEBUG && injectedPass.isNotBlank()) injectedPass else "")
+        tvPass.setText("")
+        tvPass.hint = "Tarayıcı girişinde şifreyi TradingView ekranına yazın"
+        tvLoginButton.text = "TRADINGVIEW TARAYICI GİRİŞİ"
 
         fun showTvStatus(extra: String? = null) {
             val hasSession = s.tradingViewSessionId.isNotBlank()
@@ -48,12 +57,13 @@ class SettingsActivity : BaseActivity() {
             tvStatus.text = buildString {
                 append("TradingView üyelik oturumu: ")
                 append(if (hasSession) "KAYITLI" else "YOK (Fırsat Kontrol için zorunlu değil)")
+                append("\nGiriş yöntemi: TradingView web sayfasında kullanıcı tarafından doğrulama")
                 append("\nWebSocket auth token: ")
                 append(if (hasToken) "MEVCUT" else "YOK")
                 append("\nBIST Fırsat ana kaynağı: TradingView Scanner")
                 if (BuildConfig.DEBUG) {
                     append("\nDEBUG test hesabı: ")
-                    append(if (injectedUser.isNotBlank() && injectedPass.isNotBlank()) "YÜKLÜ" else "CI secret tanımlı değil")
+                    append(if (injectedUser.isNotBlank() && injectedPass.isNotBlank()) "CI'da tanımlı" else "CI secret tanımlı değil")
                 }
                 if (s.tradingViewAuthenticatedAt > 0L) append("\nSon doğrulama: ${s.tradingViewAuthenticatedAt}")
                 if (!extra.isNullOrBlank()) append("\n$extra")
@@ -81,40 +91,22 @@ class SettingsActivity : BaseActivity() {
         showTvStatus()
         showStatus()
 
-        findViewById<Button>(R.id.testTradingViewLogin).setOnClickListener {
+        tvLoginButton.setOnClickListener {
             val username = tvUser.text.toString().trim().ifBlank { injectedUser }
-            val enteredPassword = tvPass.text.toString()
-            val password = when {
-                enteredPassword.isNotBlank() -> enteredPassword
-                s.tradingViewPassword.isNotBlank() -> s.tradingViewPassword
-                BuildConfig.DEBUG && injectedPass.isNotBlank() -> injectedPass
-                else -> ""
-            }
-            if (username.isBlank() || password.isBlank()) {
-                Toast.makeText(this, "TradingView üyelik testi için e-posta/kullanıcı adı ve şifre girin.", Toast.LENGTH_LONG).show()
-                return@setOnClickListener
-            }
-            tvStatus.text = "TradingView üyelik girişi deneniyor..."
-            lifecycleScope.launch {
-                val result = TradingViewAuthClient(this@SettingsActivity).login(username, password)
-                if (result.ok) {
-                    s.tradingViewUsername = username
-                    s.tradingViewPassword = password
-                    if (!BuildConfig.DEBUG) tvPass.setText("")
-                }
-                showTvStatus(result.message)
-                Toast.makeText(
-                    this@SettingsActivity,
-                    if (result.ok) "TradingView oturumu doğrulandı" else "TradingView üyelik girişi başarısız; Scanner yine ayrı çalışabilir",
-                    Toast.LENGTH_LONG
-                ).show()
-            }
+            if (username.isNotBlank()) s.tradingViewUsername = username
+            tvPass.setText("")
+            Toast.makeText(
+                this,
+                "TradingView sayfası açılıyor. Girişi ve varsa CAPTCHA/2FA doğrulamasını TradingView ekranında tamamlayın.",
+                Toast.LENGTH_LONG
+            ).show()
+            tradingViewBrowserLauncher.launch(Intent(this, TradingViewBrowserLoginActivity::class.java))
         }
 
         findViewById<Button>(R.id.clearTradingViewSession).setOnClickListener {
             TradingViewAuthClient(this).logoutLocal()
             tvUser.setText(injectedUser)
-            tvPass.setText(if (BuildConfig.DEBUG) injectedPass else "")
+            tvPass.setText("")
             showTvStatus("Yerel TradingView oturumu ve kayıtlı şifre temizlendi.")
         }
 
