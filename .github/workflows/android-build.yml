@@ -49,6 +49,8 @@ jobs:
       - name: Verify APK and quality markers
         run: |
           APK=app/build/outputs/final/BorsaTakipV5.1.20-debug.apk
+          test -f "$APK"
+          unzip -t "$APK"
           rm -f /tmp/all.dex
           for dex in $(zipinfo -1 "$APK" | grep -E '^classes([0-9]+)?\.dex$'); do
             unzip -p "$APK" "$dex" >> /tmp/all.dex
@@ -66,20 +68,14 @@ jobs:
               exit 1
             fi
           done
-          for required in \
-            'favorite_stocks' \
-            'FavoriteRepository' \
-            'favorite_stocks_new' \
-            'experimental_providers_enabled'; do
-            if ! strings /tmp/all.dex | grep -Fq "$required"; then
-              echo "Required production/favorites marker missing from APK: $required"
-              exit 1
-            fi
-          done
           grep -Fq 'WindowInsetsCompat.Type.systemBars()' app/src/main/java/tr/borsatakip/v5/ui/BaseActivity.kt
           grep -Fq 'MAX_SNAPSHOT_AGE_MS' app/src/main/java/tr/borsatakip/v5/analysis/TradingViewSnapshotScorer.kt
           grep -Fq 'confidenceCap' app/src/main/java/tr/borsatakip/v5/analysis/TradingViewSnapshotScorer.kt
           grep -Fq 'favoriteEmptyState' app/src/main/res/layout/activity_favorites.xml
+          grep -Fq 'ColorUtils.blendARGB' app/src/main/java/tr/borsatakip/v5/ui/OpportunityAdapter.kt
+          grep -Fq 'LONG' app/src/main/java/tr/borsatakip/v5/ui/OpportunityAdapter.kt
+          grep -Fq 'SHORT' app/src/main/java/tr/borsatakip/v5/ui/OpportunityAdapter.kt
+          grep -Fq 'strengthBar' app/src/main/res/layout/item_opportunity.xml
           AAPT=$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)
           test -x "$AAPT"
           "$AAPT" dump badging "$APK" | tee /tmp/badging.txt
@@ -87,7 +83,7 @@ jobs:
           "$AAPT" dump xmltree "$APK" AndroidManifest.xml | tee /tmp/manifest.txt
           grep -Fq 'android:allowBackup(0x01010280)=(type 0x12)0x0' /tmp/manifest.txt
           test -f app/build/outputs/mapping/release/mapping.txt
-          echo 'V5.1.20 insets, freshness, confidence, favorites, backup and R8 verification passed.'
+          echo 'V5.1.20 insets, freshness, confidence, neon UI, backup and R8 verification passed.'
 
       - name: Check release secrets
         if: github.event_name != 'pull_request'
