@@ -6,16 +6,18 @@ import android.widget.Button
 import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.lifecycle.lifecycleScope
-import com.google.android.material.chip.Chip
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import tr.borsatakip.v5.R
-import tr.borsatakip.v5.data.ProviderRouter
-import tr.borsatakip.v5.data.SettingsStore
-import tr.borsatakip.v5.scan.BistScanner
-import tr.borsatakip.v5.scan.ScanState
-import tr.borsatakip.v5.scan.ScanStatus
+import tr.borsatakip.v5.scan.SafeBistScanner
+import tr.borsatakip.v5.scan.SafeScanState
+import tr.borsatakip.v5.scan.SafeScanStatus
 
+/**
+ * V5.1.5 DEBUG: BIST Tara önce provider'dan tamamen ayrılmış yerel motor testi çalıştırır.
+ * Bu ekran gerçek provider'a dokunmaz. Amaç cihaz üzerindeki crash'in UI/scanner tarafında olup
+ * olmadığını izole ederek kanıtlamaktır.
+ */
 class BistScanActivity : BaseActivity() {
     private var scanJob: Job? = null
 
@@ -24,40 +26,33 @@ class BistScanActivity : BaseActivity() {
         setContentView(R.layout.activity_bist_scan)
         setupBottomNav()
 
-        val progress = findViewById<ProgressBar>(R.id.progress)
-        val txt = findViewById<TextView>(R.id.txtProgress)
-        val status = findViewById<TextView>(R.id.txtStatus)
-        val btn = findViewById<Button>(R.id.btnStartScan)
-        val source = findViewById<TextView>(R.id.txtSource)
-        val settings = SettingsStore(this)
+        val progress = requireNotNull(findViewById<ProgressBar>(R.id.progress)) { "progress view missing" }
+        val txt = requireNotNull(findViewById<TextView>(R.id.txtProgress)) { "txtProgress view missing" }
+        val status = requireNotNull(findViewById<TextView>(R.id.txtStatus)) { "txtStatus view missing" }
+        val btn = requireNotNull(findViewById<Button>(R.id.btnStartScan)) { "btnStartScan view missing" }
+        val source = requireNotNull(findViewById<TextView>(R.id.txtSource)) { "txtSource view missing" }
+        val debug = requireNotNull(findViewById<TextView>(R.id.txtDebugState)) { "txtDebugState view missing" }
 
-        fun refreshSourceLabel() {
-            val primary = if (settings.baseUrl.startsWith("https://")) settings.baseUrl else "tanımlı değil"
-            val fallback = if (settings.yahooFallbackEnabled) "açık" else "kapalı"
-            val cached = settings.cachedBistSymbols.size
-            source.text = buildString {
-                append("Ana kaynak: $primary\n")
-                append("Yedek/gecikmeli kaynak: Yahoo Finance ($fallback)\n")
-                append("Yüklenen dinamik BIST sembolü: $cached")
-                if (cached == 0) append(" • Sabit 28 hisse listesi kullanılmaz")
+        source.text = "V5.1.5 TEST MODU\nProvider: YEREL TEST • İnternet/WebSocket/Backend kullanılmaz"
+
+        fun render(state: SafeScanState) {
+            val safeProgress = state.progress.coerceIn(0, 100)
+            progress.progress = safeProgress
+            txt.text = "${state.processed.coerceAtLeast(0)} / ${state.total.coerceAtLeast(0)} • %$safeProgress"
+            status.text = "${state.message}\nBaşarılı: ${state.successful} • Atlanan: ${state.skipped} • Toplam: ${state.total}"
+            debug.text = buildString {
+                append("Motor: ")
+                append(if (state.status == SafeScanStatus.RUNNING) "ÇALIŞIYOR" else "HAZIR")
+                append("\nProvider: TEST")
+                append("\nTarama: ${state.processed}/${state.total}")
+                append("\nSon işlenen: ${state.lastSymbol}")
+                append("\nHata: ${state.errors}")
             }
+            btn.text = if (state.status == SafeScanStatus.RUNNING) "DURDUR" else "TEST TARAMASINI BAŞLAT"
+            btn.isEnabled = true
         }
 
-        fun render(state: ScanState) {
-            progress.progress = state.progress
-            txt.text = "${state.processed} / ${state.total} • %${state.progress}"
-            status.text = when (state.status) {
-                ScanStatus.IDLE -> "Hazır"
-                ScanStatus.RUNNING -> "Tarama başladı • Başarılı: ${state.successful} • Atlanan: ${state.skipped} • Toplam: ${state.total}"
-                ScanStatus.COMPLETED -> "Tarama tamamlandı • Başarılı: ${state.successful} • Atlanan: ${state.skipped} • Toplam: ${state.total} • Fırsat: ${state.results.size}"
-                ScanStatus.ERROR -> state.errorMessage ?: "Tarama başlatılamadı."
-                ScanStatus.CANCELLED -> "Tarama durduruldu."
-            }
-            btn.text = if (state.status == ScanStatus.RUNNING) "DURDUR" else "TARAMAYI BAŞLAT"
-        }
-
-        refreshSourceLabel()
-        render(ScanState())
+        render(SafeScanState())
 
         btn.setOnClickListener {
             if (scanJob?.isActive == true) {
@@ -66,27 +61,15 @@ class BistScanActivity : BaseActivity() {
             }
 
             AppSession.lastOpportunities = emptyList()
-            val scanner = BistScanner(ProviderRouter(this))
+            val scanner = SafeBistScanner()
             scanJob = lifecycleScope.launch {
-                val finalState = scanner.scan { state ->
-                    runOnUiThread { render(state) }
-                }
-                if (finalState.status == ScanStatus.COMPLETED) {
-                    var ops = finalState.results
-                    if (findViewById<Chip>(R.id.chipTechnical).isChecked) ops = ops.filter { it.score >= 65 }
-                    if (findViewById<Chip>(R.id.chipVolume).isChecked) ops = ops.filter { (it.technical.volumeRatio ?: 0.0) >= 1.2 }
-                    if (findViewById<Chip>(R.id.chipBreakout).isChecked) ops = ops.filter { x ->
-                        if (x.direction == "LONG") x.resistance?.let { x.price >= it * 0.995 } == true
-                        else x.support?.let { x.price <= it * 1.005 } == true
-                    }
-                    val longOn = findViewById<Chip>(R.id.chipLong).isChecked
-                    val shortOn = findViewById<Chip>(R.id.chipShort).isChecked
-                    ops = ops.filter { (it.direction == "LONG" && longOn) || (it.direction == "SHORT" && shortOn) }
-                        .sortedByDescending { it.score }
-                    AppSession.lastOpportunities = ops
-                    render(finalState.copy(results = ops))
-                    refreshSourceLabel()
+                val finalState = scanner.scan(::render)
+                if (finalState.status == SafeScanStatus.COMPLETED) {
+                    AppSession.lastOpportunities = finalState.results.toList()
+                    render(finalState)
                     startActivity(Intent(this@BistScanActivity, OpportunityActivity::class.java))
+                } else {
+                    render(finalState)
                 }
             }
         }
@@ -94,6 +77,7 @@ class BistScanActivity : BaseActivity() {
 
     override fun onDestroy() {
         scanJob?.cancel()
+        scanJob = null
         super.onDestroy()
     }
 }
