@@ -16,16 +16,18 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 
-class MobileMarketDataProvider(context: Context) {
+/** Ana mobil veri sağlayıcısı. Lisanslı/gerçek zamanlı servis bu katmana bağlanır. */
+class MobileMarketDataProvider(context: Context) : MarketDataProvider {
     private val settings = SettingsStore(context)
+    override val id = "mobile_backend"
+    override val displayName = "Mobil canlı veri servisi"
 
-    suspend fun scan(onProgress: (done: Int, total: Int) -> Unit): List<Stock> = coroutineScope {
-        require(settings.baseUrl.isNotBlank()) {
-            "Mobil veri servisi tanımlı değil. Ayarlar > Veri Sağlayıcı bölümünden HTTPS servis adresini girin."
+    override suspend fun scan(onProgress: (done: Int, total: Int) -> Unit): List<Stock> = coroutineScope {
+        require(settings.baseUrl.startsWith("https://")) {
+            "Ana mobil veri servisi tanımlı değil. Ayarlar bölümünden HTTPS servis adresini girin."
         }
         val symbols = loadSymbols()
-        require(symbols.isNotEmpty()) { "Veri sağlayıcı BIST sembol listesi döndürmedi." }
-
+        require(symbols.isNotEmpty()) { "Ana veri sağlayıcı BIST sembol listesi döndürmedi." }
         val semaphore = Semaphore(8)
         var done = 0
         symbols.map { symbol ->
@@ -40,17 +42,19 @@ class MobileMarketDataProvider(context: Context) {
         }.awaitAll().filterNotNull()
     }
 
-    suspend fun fetchOne(symbol: String): Stock? = withContext(Dispatchers.IO) {
-        require(settings.baseUrl.isNotBlank()) { "Mobil veri servisi tanımlı değil." }
+    override suspend fun fetchOne(symbol: String): Stock? = withContext(Dispatchers.IO) {
+        require(settings.baseUrl.startsWith("https://")) { "Ana mobil veri servisi tanımlı değil." }
         fetchHistory(symbol.trim().uppercase())
     }
 
     private fun loadSymbols(): List<String> {
         val json = getJson("/v1/bist/symbols") ?: return emptyList()
         val items = json.optJSONArray("items") ?: return emptyList()
-        return (0 until items.length())
+        val symbols = (0 until items.length())
             .mapNotNull { i -> items.optString(i).trim().uppercase().takeIf { it.matches(Regex("[A-Z0-9]{3,12}")) } }
             .distinct()
+        if (symbols.isNotEmpty()) settings.cachedBistSymbols = symbols.toSet()
+        return symbols
     }
 
     private fun fetchHistory(symbol: String): Stock? {
@@ -58,7 +62,6 @@ class MobileMarketDataProvider(context: Context) {
         val json = getJson("/v1/bist/history/$encoded?range=1y&interval=1d") ?: return null
         val candlesArray = json.optJSONArray("candles") ?: JSONArray()
         val candles = mutableListOf<Candle>()
-
         for (i in 0 until candlesArray.length()) {
             val x = candlesArray.optJSONObject(i) ?: continue
             val ts = x.optLong("timestamp", 0L)
@@ -70,23 +73,20 @@ class MobileMarketDataProvider(context: Context) {
             if (ts <= 0 || listOf(open, high, low, close, volume).any { it.isNaN() }) continue
             candles += Candle(ts, open, high, low, close, volume)
         }
-
         if (candles.size < 220) return null
-        val source = json.optString("source").ifBlank { "Mobil veri servisi" }
         val sorted = candles.sortedBy { it.timestamp }
-        val dataTimestamp = json.optLong("dataTimestamp", sorted.last().timestamp)
         return Stock(
             symbol = json.optString("symbol").ifBlank { symbol },
             companyName = json.optString("name").takeIf { it.isNotBlank() },
             candles = sorted,
-            source = source,
-            dataTimestamp = dataTimestamp
+            source = json.optString("source").ifBlank { displayName },
+            dataTimestamp = json.optLong("dataTimestamp", sorted.last().timestamp)
         )
     }
 
     private fun getJson(path: String): JSONObject? {
         val base = settings.baseUrl.trim().removeSuffix("/")
-        require(base.startsWith("https://")) { "Mobil veri servisi HTTPS olmalıdır." }
+        if (!base.startsWith("https://")) return null
         val con = URL(base + path).openConnection() as HttpURLConnection
         con.requestMethod = "GET"
         con.connectTimeout = 8000
