@@ -24,7 +24,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="52dp"
                 android:layout_marginTop="14dp"
-                android:hint="Ana sağlayıcı: https://api.ornek.com"
+                android:hint="Ana backend HTTPS adresi (isteğe bağlı)"
                 android:inputType="textUri"
                 android:textColor="@color/text_primary"
                 android:textColorHint="@color/text_secondary" />
