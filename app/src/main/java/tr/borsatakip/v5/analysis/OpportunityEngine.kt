@@ -1,6 +1,10 @@
 package tr.borsatakip.v5.analysis
 
+import tr.borsatakip.v5.data.RealTimeIntegrityPolicy
+import tr.borsatakip.v5.model.DataMode
 import tr.borsatakip.v5.model.Opportunity
+import tr.borsatakip.v5.model.OpportunitySnapshot
+import tr.borsatakip.v5.model.SignalValidity
 import tr.borsatakip.v5.model.Stock
 
 object OpportunityEngine {
@@ -83,6 +87,7 @@ object OpportunityEngine {
 
         val kapScore = 0
         val direction = if (longScore >= shortScore) "LONG" else "SHORT"
+        // V5.1.26 merkezi final skor davranışı korunur: yeni bir finalSignalScore formülü oluşturulmaz.
         val score = maxOf(longScore, shortScore).coerceIn(0, 100)
         val chosenParts = if (direction == "LONG") longParts else shortParts
 
@@ -108,12 +113,68 @@ object OpportunityEngine {
         val change = ((price / prev) - 1.0) * 100.0
         if (!change.isFinite()) return null
 
+        val confidence = calculateDataConfidence(
+            price = price,
+            candleCount = c.size,
+            volumeRatio = volumeRatio,
+            support = support,
+            resistance = resistance,
+            vwap = t.vwap,
+            ema20 = t.ema20,
+            ema50 = t.ema50,
+            ema200 = t.ema200,
+            rsi = t.rsi14,
+            macd = t.macd,
+            macdSignal = t.macdSignal,
+            kapLabel = kapLabel
+        )
+        val confidenceLabel = when {
+            confidence >= 80 -> "Yüksek"
+            confidence >= 60 -> "Orta"
+            else -> "Düşük"
+        }
+
+        val dataMode = when {
+            stock.isRealtime && stock.currentSessionIncluded &&
+                stock.delaySeconds != null &&
+                stock.delaySeconds in 0..RealTimeIntegrityPolicy.MAX_DECLARED_DELAY_SECONDS -> DataMode.REALTIME
+            stock.delaySeconds != null && stock.delaySeconds > RealTimeIntegrityPolicy.MAX_DECLARED_DELAY_SECONDS -> DataMode.DELAYED
+            else -> DataMode.UNVERIFIED
+        }
+
+        val integrity = RealTimeIntegrityPolicy.validate(stock)
+        val validity = when {
+            !integrity.accepted && integrity.reason.contains("OHLCV", ignoreCase = true) -> SignalValidity.INSUFFICIENT
+            !integrity.accepted -> SignalValidity.REJECTED
+            confidence < 60 -> SignalValidity.WATCH
+            else -> SignalValidity.VALID
+        }
+        val validityReason = when (validity) {
+            SignalValidity.VALID -> "Fiyat, kaynak, zaman ve zorunlu veri bütünlüğü doğrulandı."
+            SignalValidity.WATCH -> "Teknik yapı var; veri güveni teyit için yeterli değil."
+            SignalValidity.INSUFFICIENT -> integrity.reason
+            SignalValidity.REJECTED -> integrity.reason
+        }
+
         val breakdown = buildList {
             addAll(chosenParts)
             add("KAP: +$kapScore (${if (kapLabel == "Veri yok") "veri yok" else kapLabel})")
             add("Risk: $risk/100 (fırsat puanından ayrı)")
+            add("Veri Güveni: $confidence/100 ($confidenceLabel)")
             add("Toplam: $score/100 • $direction")
         }
+
+        val snapshot = OpportunitySnapshot(
+            provider = stock.source,
+            symbol = stock.symbol,
+            price = price,
+            exchangeTimestamp = stock.exchangeTimestamp,
+            receivedAt = stock.receivedAt,
+            dataMode = dataMode,
+            dataConfidence = confidence,
+            technical = t,
+            finalSignalScore = score
+        )
 
         return Opportunity(
             symbol = stock.symbol,
@@ -134,9 +195,46 @@ object OpportunityEngine {
             candles = c,
             technical = t,
             scoreBreakdown = breakdown,
+            dataConfidenceScore = confidence,
+            dataConfidenceLabel = confidenceLabel,
+            finalSignalScore = score,
             isRealtime = stock.isRealtime,
             delaySeconds = stock.delaySeconds,
-            currentSessionIncluded = stock.currentSessionIncluded
+            currentSessionIncluded = stock.currentSessionIncluded,
+            exchangeTimestamp = stock.exchangeTimestamp,
+            receivedAt = stock.receivedAt,
+            dataMode = dataMode,
+            signalValidity = validity,
+            signalValidityReason = validityReason,
+            snapshot = snapshot
         )
+    }
+
+    private fun calculateDataConfidence(
+        price: Double,
+        candleCount: Int,
+        volumeRatio: Double?,
+        support: Double?,
+        resistance: Double?,
+        vwap: Double?,
+        ema20: Double?,
+        ema50: Double?,
+        ema200: Double?,
+        rsi: Double?,
+        macd: Double?,
+        macdSignal: Double?,
+        kapLabel: String
+    ): Int {
+        var value = 0
+        if (price.isFinite() && price > 0.0) value += 20
+        if (candleCount >= 220) value += 25
+        if (volumeRatio?.isFinite() == true) value += 15
+        if (support?.isFinite() == true && resistance?.isFinite() == true) value += 10
+        if (vwap?.isFinite() == true) value += 10
+        if (ema20?.isFinite() == true && ema50?.isFinite() == true && ema200?.isFinite() == true) value += 10
+        if (rsi?.isFinite() == true) value += 5
+        if (macd?.isFinite() == true && macdSignal?.isFinite() == true) value += 3
+        if (!kapLabel.equals("Veri yok", ignoreCase = true) && kapLabel.isNotBlank()) value += 2
+        return value.coerceIn(0, 100)
     }
 }
