@@ -37,7 +37,7 @@ class MobileMarketDataProvider(context: Context) : MarketDataProvider {
         symbols.map { symbol ->
             async(Dispatchers.IO) {
                 val stock = try {
-                    semaphore.withPermit { withTimeoutOrNull(15_000) { fetchHistory(symbol) } }
+                    semaphore.withPermit { withTimeoutOrNull(20_000) { fetchStock(symbol) } }
                 } catch (ce: CancellationException) {
                     throw ce
                 } catch (t: Throwable) {
@@ -53,7 +53,7 @@ class MobileMarketDataProvider(context: Context) : MarketDataProvider {
 
     override suspend fun fetchOne(symbol: String): Stock? = withContext(Dispatchers.IO) {
         if (!settings.baseUrl.startsWith("https://")) return@withContext null
-        withTimeoutOrNull(15_000) { fetchHistory(symbol.trim().uppercase()) }
+        withTimeoutOrNull(20_000) { fetchStock(symbol.trim().uppercase()) }
     }
 
     private fun loadSymbols(): List<String> {
@@ -71,12 +71,21 @@ class MobileMarketDataProvider(context: Context) : MarketDataProvider {
         return symbols
     }
 
-    private fun fetchHistory(symbol: String): Stock? {
+    private fun fetchStock(symbol: String): Stock? {
         val encoded = URLEncoder.encode(symbol, "UTF-8")
-        val json = getJson("/v1/bist/history/$encoded?range=1y&interval=1d") ?: return null
+        val quoteJson = getJson("/v1/bist/quote/$encoded") ?: return null
+        val historyJson = getJson("/v1/bist/history/$encoded?range=1y&interval=1d") ?: return null
+
+        val quotePrice = quoteJson.optDouble("price", Double.NaN)
+        val exchangeTimestamp = quoteJson.optLong("exchangeTimestamp", 0L)
+        val delaySeconds = if (quoteJson.has("delaySeconds") && !quoteJson.isNull("delaySeconds")) quoteJson.optInt("delaySeconds") else null
+        val realtime = quoteJson.optBoolean("realtime", false)
+        val currentSession = quoteJson.optBoolean("currentSessionIncluded", false)
+        if (!quotePrice.isFinite() || quotePrice <= 0.0 || exchangeTimestamp <= 0L) return null
+
         val receivedAt = System.currentTimeMillis()
         val receivedElapsed = SystemClock.elapsedRealtime()
-        val candlesArray = json.optJSONArray("candles") ?: JSONArray()
+        val candlesArray = historyJson.optJSONArray("candles") ?: JSONArray()
         val candles = mutableListOf<Candle>()
         for (i in 0 until candlesArray.length()) {
             val x = candlesArray.optJSONObject(i) ?: continue
@@ -91,22 +100,20 @@ class MobileMarketDataProvider(context: Context) : MarketDataProvider {
             candles += Candle(ts, open, high, low, close, volume)
         }
         if (candles.size < 220) return null
-        val sorted = candles.sortedBy { it.timestamp }
-        val delaySeconds = if (json.has("delaySeconds") && !json.isNull("delaySeconds")) {
-            json.optInt("delaySeconds", Int.MAX_VALUE).takeIf { it != Int.MAX_VALUE }
-        } else null
-        val exchangeTimestamp = json.optLong("dataTimestamp", 0L)
+
         return Stock(
-            symbol = json.optString("symbol").ifBlank { symbol },
-            companyName = json.optString("name").takeIf { it.isNotBlank() },
-            candles = sorted,
-            source = json.optString("source").ifBlank { displayName },
+            symbol = quoteJson.optString("symbol").ifBlank { historyJson.optString("symbol").ifBlank { symbol } },
+            companyName = historyJson.optString("name").takeIf { it.isNotBlank() },
+            candles = candles.sortedBy { it.timestamp },
+            source = quoteJson.optString("source").ifBlank { displayName },
             dataTimestamp = exchangeTimestamp,
-            isRealtime = json.optBoolean("realtime", false),
+            isRealtime = realtime,
             delaySeconds = delaySeconds,
-            currentSessionIncluded = json.optBoolean("currentSessionIncluded", false),
+            currentSessionIncluded = currentSession,
             receivedAt = receivedAt,
-            receivedElapsedRealtime = receivedElapsed
+            receivedElapsedRealtime = receivedElapsed,
+            quotePrice = quotePrice,
+            currency = quoteJson.optString("currency").takeIf { it.isNotBlank() }
         )
     }
 
