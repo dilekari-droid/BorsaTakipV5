@@ -10,4 +10,144 @@ import android.view.ViewGroup
 import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.core.graphics.ColorUtils
-import androidx.recyclerview.widget.Rem{òÚ$z{-®éÜj×¹‘…ÁÑ•Èñ=ÁÁ½ÉÑÕ¹¥Ñå‘…ÁÑ•È¹ ø ¤ì((€€€±…ÍÌ ¡ØèY¥•Ü¤€èI•å±•ÉY¥•Ü¹Y¥•Ý!½±‘•È¡Ø¤ì(€€€€€€€Ù…°™…Ù½É¥Ñ”€ôØ¹™¥¹‘Y¥•Ý	å%ñQ•áÑY¥•Üø¡H¹¥¹™…Ù½É¥Ñ•Q½±”¤(€€€€€€€Ù…°Íåµ‰½°€ôØ¹™¥¹‘Y¥•Ý	å%ñQ•áÑY¥•Üø¡H¹¥¹Íåµ‰½°¤(€€€€€€€Ù…°Í½É”€ôØ¹™¥¹‘Y¥•Ý	å%ñQ•áÑY¥•Üø¡H¹¥¹Í½É”¤(€€€€€€€Ù…°½µÁ…¹ä€ôØ¹™¥¹‘Y¥•Ý	å%ñQ•áÑY¥•Üø¡H¹¥¹½µÁ…¹ä¤(€€€€€€€Ù…°ÍÑÉ•¹Ñ¡	…È€ôØ¹™¥¹‘Y¥•Ý	å%ñAÉ½É•ÍÍ	…Èø¡H¹¥¹ÍÑÉ•¹Ñ¡	…È¤(€€€€€€€Ù…°ÍÑÉ•¹Ñ¡Y…±Õ”€ôØ¹™¥¹‘Y¥•Ý	å%ñQ•áÑY¥•Üø¡H¹¥¹ÍÑÉ•¹Ñ¡Y…±Õ”¤(€€€€€€€Ù…°µ•Ñ„€ôØ¹™¥¹‘Y¥•Ý	å%ñQ•áÑY¥•Üø¡H¹¥¹µ•Ñ„¤(€€€€€€€Ù…°É¥Í¬€ôØ¹™¥¹‘Y¥•Ý	å%ñQ•áÑY¥•Üø¡H¹¥¹É¥Í¬¤(€€€ô((€€€½Ù•ÉÉ¥‘”™Õ¸½¹É•…Ñ•Y¥•Ý!½±‘•È¡Á…É•¹ÐèY¥•ÝÉ½ÕÀ°Ù¥•ÝQåÁ”è%¹Ð¤€ô(€€€€€€€ ¡1…å½ÕÑ%¹™±…Ñ•È¹™É½´¡Á…É•¹Ð¹½¹Ñ•áÐ¤¹¥¹™±…Ñ”¡H¹±…å½ÕÐ¹¥Ñ•µ}½ÁÁ½ÉÑÕ¹¥Ñä°Á…É•¹Ð°™…±Í”¤¤((€€€½Ù•ÉÉ¥‘”™Õ¸•Ñ%Ñ•µ½Õ¹Ð ¤€ô¥Ñ•µÌ¹Í¥é”((€€€½Ù•ÉÉ¥‘”™Õ¸½¹	¥¹‘Y¥•Ý!½±‘•È¡¡½±‘•Èè °Á½Í¥Ñ¥½¸è%¹Ð¤ì(€€€€€€€Ù…°à€ô¥Ñ•µÍmÁ½Í¥Ñ¥½¹t(€€€€€€€Ù…°¹½Éµ…±¥é•€ô…Ù½É¥Ñ•I•Á½Í¥Ñ½Éä¹¹½Éµ…±¥é•Måµ‰½°¡à¹Íåµ‰½°¤(€€€€€€€Ù…°™…Ù½É¥Ñ”€ô™…Ù½É¥Ñ•Måµ‰½±Ì¹½¹Ñ…¥¹Ì¡¹½Éµ…±¥é•¤(€€€€€€€¡½±‘•È¹™…Ù½É¥Ñ”¹Ñ•áÐ€ô¥˜€¡™…Ù½É¥Ñ”¤€‹Šbˆ•±Í”€‹Šbˆ(€€€€€€€¡½±‘•È¹™…Ù½É¥Ñ”¹½¹Ñ•¹Ñ•ÍÉ¥ÁÑ¥½¸€ô¥˜€¡™…Ù½É¥Ñ”¤€‰…Ù½É¥±•É‘•¸ƒŸÅ­…Èˆ•±Í”€‰…Ù½É¥å”•­±”ˆ(€€€€€€€¡½±‘•È¹™…Ù½É¥Ñ”¹Í•Ñ=¹±¥­1¥ÍÑ•¹•ÈìÑ½±•…Ù½É¥Ñ”¡à¤ô((€€€€€€€Ù…°ÍÑÉ•¹Ñ €ôà¹™¥¹…±M¥¹…±M½É”¹½•É•%¸ À°€ÄÀÀ¤(€€€€€€€…ÁÁ±åM¥¹…±Y¥ÍÕ…±Ì¡¡½±‘•È°à¹‘¥É•Ñ¥½¸°ÍÑÉ•¹Ñ ¤((€€€€€€€Ù…°É¥Í­1…‰•°€ôÝ¡•¸ì(€€€€€€€€€€€à¹É¥Í­M½É”€ðô€ÌÀ€´ø€‰s{q,KÁM,ˆ(€€€€€€€€€€€à¹É¥Í­M½É”€ðô€ØÀ€´ø€‰=IQKÁM,ˆ(€€€€€€€€€€€•±Í”€´ø€‰gq-M,KÁM,ˆ(€€€€€€€ô(€€€€€€€Ù…°Ù…±¥‘¥Ñå1…‰•°€ôÝ¡•¸€¡à¹Í¥¹…±Y…±¥‘¥Ñä¤ì(€€€€€€€€€€€M¥¹…±Y…±¥‘¥Ñä¹Y1%€´ø€‰?yIU195'x%IMPˆ(€€€€€€€€€€€M¥¹…±Y…±¥‘¥Ñä¹]Q €´ø€‹Ái15ˆ(€€€€€€€€€€€M¥¹…±Y…±¥‘¥Ñä¹%9MU%%9P€´ø€‰eQIOÁhYKÀˆ(€€€€€€€€€€€M¥¹…±Y…±¥‘¥Ñä¹I)Q€´ø€‰IÁ1Àˆ(€€€€€€€ô(€€€€€€€Ù…°µ½‘•1…‰•°€ôÝ¡•¸€¡à¹‘…Ñ…5½‘”¤ì(€€€€€€€€€€€…Ñ…5½‘”¹I1Q%5€´ø€‰I1Q%5ˆ(€€€€€€€€€€€…Ñ…5½‘”¹1e€´ø€‰1eˆ(€€€€€€€€€€€…Ñ…5½‘”¹=€´ø€‰=ˆ(€€€€€€€€€€€…Ñ…5½‘”¹U9YI%%€´ø€‰U9YI%%ˆ(€€€€€€€ô(€€€€€€€Ù…°É•…Í½¸€ôà¹Í½É•	É•…­‘½Ý¸¹…ÍM•ÅÕ•¹” ¤(€€€€€€€€€€€€¹Ñ…­•]¡¥±”ì€…¥Ð¹ÍÑ…ÉÑÍ]¥Ñ  ‰-@èˆ¤ô(€€€€€€€€€€€€¹™¥±Ñ•Èì¥Ð¹½¹Ñ…¥¹Ì ˆè€¬ˆ¤ô(€€€€€€€€€€€€¹µ…Àì¥Ð¹ÍÕ‰ÍÑÉ¥¹	•™½É” ˆèˆ¤¹ÑÉ¥´ ¤ô(€€€€€€€€€€€€¹‘¥ÍÑ¥¹Ð ¤(€€€€€€€€€€€€¹©½¥¹Q½MÑÉ¥¹œ ˆ€¬€ˆ¤(€€€€€€€€€€€€¹¥™	±…¹¬ì€‰e•Ñ•É±¤Ñ•­¹¥¬‰¥±—}•¸‡ŸÅ­±…µ…ÏÄå½¬ˆô((€€€€€€€Ù…°•á¡…¹•Q•áÐ€ô¥˜€¡à¹•á¡…¹•Q¥µ•ÍÑ…µÀ€ø€Á0¤ì(€€€€€€€€€€€M¥µÁ±•…Ñ•½Éµ…Ð ‰‘¹54¹åååä! éµ´éÍÌˆ°1½…±”¹•Ñ•™…Õ±Ð ¤¤¹™½Éµ…Ð¡…Ñ”¡à¹•á¡…¹•Q¥µ•ÍÑ…µÀ¤¤(€€€€€€€ô•±Í”€‰‰¥±¥¹µ¥å½Èˆ(€€€€€€€Ù…°É••¥Ù•‘Q•áÐ€ô¥˜€¡à¹É••¥Ù•‘Ð€ø€Á0¤ì(€€€€€€€€€€€M¥µÁ±•…Ñ•½Éµ…Ð ‰‘¹54¹åååä! éµ´éÍÌˆ°1½…±”¹•Ñ•™…Õ±Ð ¤¤¹™½Éµ…Ð¡…Ñ”¡à¹É••¥Ù•‘Ð¤¤(€€€€€€€ô•±Í”€‰‰¥±¥¹µ¥å½Èˆ(€€€€€€€Ù…°µ•…ÍÕÉ•‘•Q•áÐ€ô¥˜€¡à¹É••¥Ù•‘±…ÁÍ•‘I•…±Ñ¥µ”€ø€Á0¤ì(€€€€€€€€€€€Ù…°•±…ÁÍ•€ô€¡MåÍÑ•µ±½¬¹•±…ÁÍ•‘I•…±Ñ¥µ” ¤€´à¹É••¥Ù•‘±…ÁÍ•‘I•…±Ñ¥µ”¤¹½•É•Ñ1•…ÍÐ Á0¤(€€€€€€€€€€€Ù…°…•ÑI••¥ÁÐ€ô¥˜€¡à¹•á¡…¹•Q¥µ•ÍÑ…µÀ€ø€Á0€˜˜à¹É••¥Ù•‘Ð€ø€Á0¤€¡à¹É••¥Ù•‘Ð€´à¹•á¡…¹•Q¥µ•ÍÑ…µÀ¤¹½•É•Ñ1•…ÍÐ Á0¤•±Í”€Á0(€€€€€€€€€€€™½Éµ…Ñ”¡…•ÑI••¥ÁÐ€¬•±…ÁÍ•¤(€€€€€€€ô•±Í”€‰å•¹¥‘•¸‰‡}±…Ñµ„Í½¹É…ÏÄ‘¿}ÉÕ±…¹…·Åå½Èˆ((€€€€€€€Ù…°¡…ÍAÉ¥”€ôà¹ÁÉ¥”¹¥Í¥¹¥Ñ” ¤€˜˜à¹ÁÉ¥”€ø€À¸À(€€€€€€€Ù…°¡…ÍY½±Õµ”€ô€…à¹Ù½±Õµ•1…‰•°¹•ÅÕ…±Ì ‰Y•É¤å½¬ˆ°ÑÉÕ”¤€˜˜à¹Ù½±Õµ•1…‰•°¹¥Í9½Ñ	±…¹¬ ¤(€€€€€€€Ù…°¡…Í=¡±Ø€ôà¹…¹‘±•Ì¹¥Í9½ÑµÁÑä ¤(€€€€€€€Ù…°¡…Í-…À€ô€…à¹­…Á1…‰•°¹•ÅÕ…±Ì ‰Y•É¤å½¬ˆ°ÑÉÕ”¤€˜˜à¹­…Á1…‰•°¹¥Í9½Ñ	±…¹¬ ¤(€€€€€€€Ù…°¡…Í1•Ù•±Ì€ôà¹ÍÕÁÁ½ÉÐ€„ô¹Õ±°€˜˜à¹É•Í¥ÍÑ…¹”€„ô¹Õ±°(€€€€€€€Ù…°¡…ÍYÝ…À€ôà¹Ñ•¡¹¥…°¹ÙÝ…À€„ô¹Õ±°(€€€€€€€™Õ¸µ…É¬¡½¬è	½½±•…¸¤èMÑÉ¥¹œ€ô¥˜€¡½¬¤€‹ŠrLˆ•±Í”€‹Šj€Ù•É¤å½¬ˆ((€€€€€€€¡½±‘•È¹Íåµ‰½°¹Ñ•áÐ€ôà¹Íåµ‰½°(€€€€€€€¡½±‘•È¹Í½É”¹Ñ•áÐ€ô€ˆ‘íà¹‘¥É•Ñ¥½¹ôƒŠˆ9¥¡…¤M¥¹å…°€‘ÍÑÉ•¹Ñ ¼ÄÀÀˆ(€€€€€€€¡½±‘•È¹ÍÑÉ•¹Ñ¡	…È¹ÁÉ½É•ÍÌ€ôÍÑÉ•¹Ñ (€€€€€€€¡½±‘•È¹ÍÑÉ•¹Ñ¡Y…±Õ”¹Ñ•áÐ€ô€ˆ‘ÍÑÉ•¹Ñ ¼ÄÀÀˆ(€€€€€€€¡½±‘•È¹½µÁ…¹ä¹Ñ•áÐ€ôà¹½µÁ…¹å9…µ”€üè€ˆˆ(€€€€€€€¡½±‘•È¹µ•Ñ„¹Ñ•áÐ€ô‰Õ¥±‘MÑÉ¥¹œì(€€€€€€€€€€€…ÁÁ•¹ ˆ‘Ù…±¥‘¥Ñå1…‰•°ƒŠˆ€‘É¥Í­1…‰•°ƒŠˆY•É¤5½‘Ôè€‘µ½‘•1…‰•±q¸ˆ¤(€€€€€€€€€€€…ÁÁ•¹ ‰-…å¹…¬è€‘íà¹Í½ÕÉ•õq¸ˆ¤(€€€€€€€€€€€…ÁÁ•¹ ‰A¥å…Í„Y•É¤i…µ…»Äè€‘•á¡…¹•Q•áÐƒŠˆUåÕ±…µ…å„U±‡}µ„è€‘É••¥Ù•‘Q•áÑq¸ˆ¤(€€€€€€€€€€€…ÁÁ•¹ ‹Y³Ÿñ±•¸Y•É¤e‡Äè€‘µ•…ÍÕÉ•‘•Q•áÐƒŠˆM‡}±…çÅÄ•¥­µ•Í¤è€‘íà¹‘•±…åM•½¹‘Ìü¹±•Ðì€ˆ‘¥ÐÍ¸ˆô€üè€‰‰¥±¥¹µ¥å½È‰õq¸ˆ¤(€€€€€€€€€€€…ÁÁ•¹ ‰Q•­¹¥¬M­½È€‘íà¹Í½É•ô¼ÄÀÀƒŠˆI¥Í¬€‘íà¹É¥Í­M½É•ô¼ÄÀÀƒŠˆY•É¤ñÙ•¹¤€‘íà¹‘…Ñ…½¹™¥‘•¹•M½É•ô¼ÄÀÀ€ ‘íà¹‘…Ñ…½¹™¥‘•¹•1…‰•±ô¥q¸ˆ¤(€€€€€€€€€€€…ÁÁ•¹ ‰YKÀ-AM5$è¥å…Ð€‘íµ…É¬¡¡…ÍAÉ¥”¥ôƒŠˆ!…¥´€‘íµ…É¬¡¡…ÍY½±Õµ”¥ôƒŠˆ=!1X€‘íµ…É¬¡¡…Í=¡±Ø¥ôƒŠˆ-@€‘íµ…É¬¡¡…Í-…À¥ôƒŠˆ•ÍÑ•¬½¥É•»œ€‘íµ…É¬¡¡…Í1•Ù•±Ì¥ôƒŠˆY]@€‘íµ…É¬¡¡…ÍYÝ…À¥õq¸ˆ¤(€€€€€€€€€€€…ÁÁ•¹ ˆ‘íà¹‘¥É•Ñ¥½¹ô¹•‘•¹¤è€‘É•…Í½¸ˆ¤(€€€€€€€ô(€€€€€€€¡½±‘•È¹É¥Í¬¹Ñ•áÐ€ô€ˆ‘íà¹Í¥¹…±Y…±¥‘¥ÑåI•…Í½¹ôƒŠˆ•ÍÑ•¬€‘íà¹ÍÕÁÁ½ÉÐü¹±•Ðì€ˆ”¸É˜ˆ¹™½Éµ…Ð¡¥Ð¤ô€üè€‰Ù•É¤å½¬‰ôƒŠˆ¥É•»œ€‘íà¹É•Í¥ÍÑ…¹”ü¹±•Ðì€ˆ”¸É˜ˆ¹™½Éµ…Ð¡¥Ð¤ô€üè€‰Ù•É¤å½¬‰ôˆ(€€€€€€€¡½±‘•È¹¥Ñ•µY¥•Ü¹Í•Ñ=¹±¥­1¥ÍÑ•¹•Èì±¥¬¡à¤ô(€€€ô((€€€ÁÉ¥Ù…Ñ”™Õ¸™½Éµ…Ñ”¡µÌé1½¹œ¤éMÑÉ¥¹œ€ôÝ¡•¸ì(€€€€€€€µÌ€ð€ØÁ|ÀÀÁ0€´ø€ˆ‘íµÌ€¼€ÄÀÀÁ1ôÍ¸ˆ(€€€€€€€µÌ€ð€Í|ØÀÁ|ÀÀÁ0€´ø€ˆ‘íµÌ€¼€ØÁ|ÀÀÁ1ô‘¬ˆ(€€€€€€€•±Í”€´ø€ˆ‘íµÌ€¼€Í|ØÀÁ|ÀÀÁ1ôÍ„ˆ(€€€ô((€€€ÁÉ¥Ù…Ñ”™Õ¸…ÁÁ±åM¥¹…±Y¥ÍÕ…±Ì¡¡½±‘•Èè °‘¥É•Ñ¥½¸èMÑÉ¥¹œ°ÍÑÉ•¹Ñ è%¹Ð¤ì(€€€€€€€Ù…°Ð€ôÍÑÉ•¹Ñ €¼€ÄÀÁ˜(€€€€€€€Ù…°¥Í1½¹œ€ô‘¥É•Ñ¥½¸¹•ÅÕ…±Ì ‰1=9ˆ°¥¹½É•…Í”€ôÑÉÕ”¤(€€€€€€€Ù…°‘…É­	…Í”€ô¥˜€¡¥Í1½¹œ¤½±½È¹Éˆ À°€Ìà°€ÈÈ¤•±Í”½±½È¹Éˆ Ðà°€À°€à¤(€€€€€€€Ù…°‰…Í”€ô¥˜€¡¥Í1½¹œ¤½±½È¹Éˆ À°€ÈÀÀ°€àÌ¤•±Í”½±½È¹Éˆ ÈÄÌ°€À°€À¤(€€€€€€€Ù…°¹•½¸€ô¥˜€¡¥Í1½¹œ¤½±½È¹Éˆ À°€ÈÔÔ°€ÄÀÈ¤•±Í”½±½È¹Éˆ ÈÔÔ°€ÈÌ°€Øà¤(€€€€€€€Ù…°…•¹Ð€ô½±½ÉUÑ¥±Ì¹‰±•¹‘I¡‰…Í”°¹•½¸°Ð¤(€€€€€€€Ù…°‰…­É½Õ¹€ô½±½ÉUÑ¥±Ì¹‰±•¹‘I¡‘…É­	…Í”°…•¹Ð°€À¸ÄÙ˜€¬€ À¸ÈÁ˜€¨Ð¤¤(€€€€€€€Ù…°‰½É‘•È€ô½±½ÉUÑ¥±Ì¹‰±•¹‘I¡‰…Í”°¹•½¸°€À¸ÈÕ˜€¬€ À¸ÜÕ˜€¨Ð¤¤(€€€€€€€¡½±‘•È¹¥Ñ•µY¥•Ü¹‰…­É½Õ¹€ôÉ…‘¥•¹ÑÉ…Ý…‰±” ¤¹…ÁÁ±äì(€€€€€€€€€€€Í¡…Á”€ôÉ…‘¥•¹ÑÉ…Ý…‰±”¹IQ91(€€€€€€€€€€€½É¹•ÉI…‘¥ÕÌ€ô‘À¡¡½±‘•È¹¥Ñ•µY¥•Ü°€ÄÑ˜¤(€€€€€€€€€€€Í•Ñ½±½È¡‰…­É½Õ¹¤(€€€€€€€€€€€Í•ÑMÑÉ½­”¡‘À¡¡½±‘•È¹¥Ñ•µY¥•Ü°¥˜€¡ÍÑÉ•¹Ñ €øô€àÔ¤€È¸É˜•±Í”€Ä¸É˜¤¹Ñ½%¹Ð ¤¹½•É•Ñ1•…ÍÐ Ä¤°‰½É‘•È¤(€€€€€€€ô(€€€€€€€¡½±‘•È¹Í½É”¹Í•ÑQ•áÑ½±½È¡…•¹Ð¤(€€€€€€€¡½±‘•È¹ÍÑÉ•¹Ñ¡Y…±Õ”¹Í•ÑQ•áÑ½±½È¡…•¹Ð¤(€€€€€€€¡½±‘•È¹ÍÑÉ•¹Ñ¡	…È¹ÁÉ½É•ÍÍQ¥¹Ñ1¥ÍÐ€ô½±½ÉMÑ…Ñ•1¥ÍÐ¹Ù…±Õ•=˜¡…•¹Ð¤(€€€€€€€¡½±‘•È¹ÍÑÉ•¹Ñ¡	…È¹ÁÉ½É•ÍÍ	…­É½Õ¹‘Q¥¹Ñ1¥ÍÐ€ô½±½ÉMÑ…Ñ•1¥ÍÐ¹Ù…±Õ•=˜¡½±½ÉUÑ¥±Ì¹Í•Ñ±Á¡…½µÁ½¹•¹Ð¡…•¹Ð°€ÐÈ¤¤(€€€€€€€Ù…°±½ÝI…‘¥ÕÌ€ô‘À¡¡½±‘•È¹¥Ñ•µY¥•Ü°€Ä¸Õ˜€¬€ Ô¸Õ˜€¨Ð¤¤(€€€€€€€Ù…°±½Ý½±½È€ô½±½ÉUÑ¥±Ì¹Í•Ñ±Á¡…½µÁ½¹•¹Ð¡¹•½¸°€ äÀ€¬€ ÄÔÀ€¨Ð¤¤¹Ñ½%¹Ð ¤¹½•É•%¸ À°ÈÔÔ¤¤(€€€€€€€¡½±‘•È¹Í½É”¹Í•ÑM¡…‘½Ý1…å•È¡±½ÝI…‘¥ÕÌ°€Á˜°€Á˜°±½Ý½±½È¤(€€€€€€€¡½±‘•È¹ÍÑÉ•¹Ñ¡Y…±Õ”¹Í•ÑM¡…‘½Ý1…å•È¡±½ÝI…‘¥ÕÌ€¨€À¸Ý˜°€Á˜°€Á˜°±½Ý½±½È¤(€€€€€€€¡½±‘•È¹¥Ñ•µY¥•Ü¹•±•Ù…Ñ¥½¸€ô‘À¡¡½±‘•È¹¥Ñ•µY¥•Ü°¥˜€¡ÍÑÉ•¹Ñ €øô€àÔ¤€á˜•±Í”€É˜€¬€ Ñ˜€¨Ð¤¤(€€€ô((€€€ÁÉ¥Ù…Ñ”™Õ¸‘À¡Ù¥•ÜèY¥•Ü°Ù…±Õ”è±½…Ð¤è±½…Ð€ôÙ…±Õ”€¨Ù¥•Ü¹É•Í½ÕÉ•Ì¹‘¥ÍÁ±…å5•ÑÉ¥Ì¹‘•¹Í¥Ñä)ô(
+import androidx.recyclerview.widget.RecyclerView
+import tr.borsatakip.v5.R
+import tr.borsatakip.v5.data.favorites.FavoriteRepository
+import tr.borsatakip.v5.model.DataMode
+import tr.borsatakip.v5.model.Opportunity
+import tr.borsatakip.v5.model.SignalValidity
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+class OpportunityAdapter(
+    private var items: List<Opportunity>,
+    private val favoriteSymbols: Set<String>,
+    private val click: (Opportunity) -> Unit,
+    private val toggleFavorite: (Opportunity) -> Unit
+) : RecyclerView.Adapter<OpportunityAdapter.H>() {
+
+    class H(v: View) : RecyclerView.ViewHolder(v) {
+        val favorite = v.findViewById<TextView>(R.id.favoriteToggle)
+        val symbol = v.findViewById<TextView>(R.id.symbol)
+        val score = v.findViewById<TextView>(R.id.score)
+        val company = v.findViewById<TextView>(R.id.company)
+        val strengthBar = v.findViewById<ProgressBar>(R.id.strengthBar)
+        val strengthValue = v.findViewById<TextView>(R.id.strengthValue)
+        val meta = v.findViewById<TextView>(R.id.meta)
+        val risk = v.findViewById<TextView>(R.id.risk)
+    }
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
+        H(LayoutInflater.from(parent.context).inflate(R.layout.item_opportunity, parent, false))
+
+    override fun getItemCount() = items.size
+
+    override fun onBindViewHolder(holder: H, position: Int) {
+        val x = items[position]
+        val normalized = FavoriteRepository.normalizeSymbol(x.symbol)
+        val favorite = favoriteSymbols.contains(normalized)
+        holder.favorite.text = if (favorite) "â˜…" else "â˜†"
+        holder.favorite.contentDescription = if (favorite) "Favorilerden Ã§Ä±kar" else "Favoriye ekle"
+        holder.favorite.setOnClickListener { toggleFavorite(x) }
+
+        val strength = x.finalSignalScore.coerceIn(0, 100)
+        applySignalVisuals(holder, x.direction, strength)
+
+        val riskLabel = when {
+            x.riskScore <= 30 -> "DÃœÅžÃœK RÄ°SK"
+            x.riskScore <= 60 -> "ORTA RÄ°SK"
+            else -> "YÃœKSEK RÄ°SK"
+        }
+        val validityLabel = when (x.signalValidity) {
+            SignalValidity.VALID -> "DOÄžRULANMIÅž FIRSAT"
+            SignalValidity.WATCH -> "Ä°ZLEME"
+            SignalValidity.INSUFFICIENT -> "YETERSÄ°Z VERÄ°"
+            SignalValidity.REJECTED -> "REDDEDÄ°LDÄ°"
+        }
+        val modeLabel = when (x.dataMode) {
+            DataMode.REALTIME -> "REALTIME"
+            DataMode.DELAYED -> "DELAYED"
+            DataMode.EOD -> "EOD"
+            DataMode.UNVERIFIED -> "UNVERIFIED"
+        }
+        val reason = x.scoreBreakdown.asSequence()
+            .takeWhile { !it.startsWith("KAP:") }
+            .filter { it.contains(": +") }
+            .map { it.substringBefore(":").trim() }
+            .distinct()
+            .joinToString(" + ")
+            .ifBlank { "Yeterli teknik bileÅŸen aÃ§Ä±klamasÄ± yok" }
+
+        val exchangeText = if (x.exchangeTimestamp > 0L) {
+            SimpleDateFormat("dd.MM.yyyy HH:mm:ss", Locale.getDefault()).format(Date(x.exchangeTimestamp))
+        } else "bilinmiyor"
+        val receivedText = if (x.receivedAt > 0L) {
+            SimpleDateFormat("dd.MM.yyyy HH:mm:ss", Locale.getDefault()).format(Date(x.receivedAt))
+        } else "bilinmiyor"
+        val measuredAgeText = if (x.receivedElapsedRealtime > 0L) {
+            val elapsed = (SystemClock.elapsedRealtime() - x.receivedElapsedRealtime).coerceAtLeast(0L)
+            val ageAtReceipt = if (x.exchangeTimestamp > 0L && x.receivedAt > 0L) (x.receivedAt - x.exchangeTimestamp).coerceAtLeast(0L) else 0L
+            formatAge(ageAtReceipt + elapsed)
+        } else "yeniden baÅŸlatma sonrasÄ± doÄŸrulanamÄ±yor"
+
+        val hasPrice = x.price.isFinite() && x.price > 0.0
+        val hasVolume = !x.volumeLabel.equals("Veri yok", true) && x.volumeLabel.isNotBlank()
+        val hasOhlcv = x.candles.isNotEmpty()
+        val hasKap = !x.kapLabel.equals("Veri yok", true) && x.kapLabel.isNotBlank()
+        val hasLevels = x.support != null && x.resistance != null
+        val hasVwap = x.technical.vwap != null
+        fun mark(ok: Boolean): String = if (ok) "âœ“" else "âš  veri yok"
+
+        holder.symbol.text = x.symbol
+        holder.score.text = "${x.direction} â€¢ Nihai Sinyal $strength/100"
+        holder.strengthBar.progress = strength
+        holder.strengthValue.text = "$strength/100"
+        holder.company.text = x.companyName ?: ""
+        holder.meta.text = buildString {
+            append("$validityLabel â€¢ $riskLabel â€¢ Veri Modu: $modeLabel\n")
+            append("Kaynak: ${x.source}\n")
+            append("Piyasa Veri ZamanÄ±: $exchangeText â€¢ Uygulamaya UlaÅŸma: $receivedText\n")
+            append("Ã–lÃ§Ã¼len Veri YaÅŸÄ±: $measuredAgeText â€¢ SaÄŸlayÄ±cÄ± gecikmesi: ${x.delaySeconds?.let { "$it sn" } ?: "bilinmiyor"}\n")
+            append("Teknik Skor ${x.score}/100 â€¢ Risk ${x.riskScore}/100 â€¢ Veri GÃ¼veni ${x.dataConfidenceScore}/100 (${x.dataConfidenceLabel})\n")
+            append("VERÄ° KAPSAMI: Fiyat ${mark(hasPrice)} â€¢ Hacim ${mark(hasVolume)} â€¢ OHLCV ${mark(hasOhlcv)} â€¢ KAP ${mark(hasKap)} â€¢ Destek/DirenÃ§ ${mark(hasLevels)} â€¢ VWAP ${mark(hasVwap)}\n")
+            append("${x.direction} nedeni: $reason")
+        }
+        holder.risk.text = "${x.signalValidityReason} â€¢ Destek ${x.support?.let { "%.2f".format(it) } ?: "veri yok"} â€¢ DirenÃ§ ${x.resistance?.let { "%.2f".format(it) } ?: "veri yok"}"
+        holder.itemView.setOnClickListener { click(x) }
+    }
+
+    private fun formatAge(ms:Long):String = when {
+        ms < 60_000L -> "${ms / 1000L} sn"
+        ms < 3_600_000L -> "${ms / 60_000L} dk"
+        else -> "${ms / 3_600_000L} sa"
+    }
+
+    private fun applySignalVisuals(holder: H, direction: String, strength: Int) {
+        val t = strength / 100f
+        val isLong = direction.equals("LONG", ignoreCase = true)
+        val darkBase = if (isLong) Color.rgb(0, 38, 22) else Color.rgb(48, 0, 8)
+        val base = if (isLong) Color.rgb(0, 200, 83) else Color.rgb(213, 0, 0)
+        val neon = if (isLong) Color.rgb(0, 255, 102) else Color.rgb(255, 23, 68)
+        val accent = ColorUtils.blendARGB(base, neon, t)
+        val background = ColorUtils.blendARGB(darkBase, accent, 0.16f + (0.20f * t))
+        val border = ColorUtils.blendARGB(base, neon, 0.25f + (0.75f * t))
+        holder.itemView.background = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = dp(holder.itemView, 14f)
+            setColor(background)
+            setStroke(dp(holder.itemView, if (strength >= 85) 2.2f else 1.2f).toInt().coerceAtLeast(1), border)
+        }
+        holder.score.setTextColor(accent)
+        holder.strengthValue.setTextColor(accent)
+        holder.strengthBar.progressTintList = ColorStateList.valueOf(accent)
+        holder.strengthBar.progressBackgroundTintList = ColorStateList.valueOf(ColorUtils.setAlphaComponent(accent, 42))
+        val glowRadius = dp(holder.itemView, 1.5f + (5.5f * t))
+        val glowColor = ColorUtils.setAlphaComponent(neon, (90 + (150 * t)).toInt().coerceIn(0,255))
+        holder.score.setShadowLayer(glowRadius, 0f, 0f, glowColor)
+        holder.strengthValue.setShadowLayer(glowRadius * 0.7f, 0f, 0f, glowColor)
+        holder.itemView.elevation = dp(holder.itemView, if (strength >= 85) 8f else 2f + (4f * t))
+    }
+
+    private fun dp(view: View, value: Float): Float = value * view.resources.displayMetrics.density
+}
