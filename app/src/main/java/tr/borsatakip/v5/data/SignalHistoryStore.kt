@@ -10,6 +10,9 @@ import tr.borsatakip.v5.model.ScanRun
 import tr.borsatakip.v5.model.ScanRunStatus
 import tr.borsatakip.v5.model.SignalValidity
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
  * Sinyal üretildiği andaki kayıt değiştirilemez; sonraki fiyat gözlemleri ayrı outcome alanlarıdır.
@@ -83,6 +86,27 @@ class SignalHistoryStore(context: Context) {
             changed = true
         }
         if (changed) withContext(Dispatchers.IO) { writeRoot(root) }
+    }
+
+    suspend fun summaryLines(limit:Int = 200):List<String> = withContext(Dispatchers.IO) {
+        val a=readRoot().optJSONArray("records") ?: return@withContext emptyList()
+        val df=SimpleDateFormat("dd.MM.yyyy HH:mm:ss",Locale("tr","TR"))
+        buildList {
+            for(i in a.length()-1 downTo 0) {
+                if(size>=limit) break
+                val r=a.optJSONObject(i) ?: continue
+                val outcomes=r.optJSONObject("outcomes") ?: JSONObject()
+                val outcomeText=buildList {
+                    for(name in listOf("15m","30m","1h","4h","1d")) {
+                        val o=outcomes.optJSONObject(name) ?: continue
+                        val pct=o.optDouble("directionalReturnPct",Double.NaN)
+                        val observed=o.optLong("observedAt",0L)
+                        if(pct.isFinite()) add("$name ${"%+.2f".format(pct)}% @ ${if(observed>0)df.format(Date(observed)) else "?"}")
+                    }
+                }.joinToString(" • ").ifBlank { "Forward outcome henüz ölçülmedi" }
+                add("${r.optString("symbol")} ${r.optString("direction")} • Nihai ${r.optInt("finalSignalScore")}/100 • Risk ${r.optInt("riskScore")}/100 • Veri Güveni ${r.optInt("dataConfidenceScore")}/100\nSinyal: ${df.format(Date(r.optLong("recordedAt",0L)))} • Fiyat ${"%.2f".format(r.optDouble("signalPrice"))} • Kaynak ${r.optString("source")}\n$outcomeText")
+            }
+        }
     }
 
     private fun readRoot():JSONObject = runCatching { if(file.isFile) JSONObject(file.readText()) else JSONObject() }.getOrDefault(JSONObject())
