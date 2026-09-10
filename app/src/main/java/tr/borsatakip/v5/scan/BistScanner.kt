@@ -41,13 +41,7 @@ class BistScanner(private val provider: MarketDataProvider) {
         var fetched = 0
 
         fun run(status: ScanRunStatus, completedAt: Long? = null, count: Int = fetched, errors: Int = 0) = ScanRun(
-            scanRunId = scanRunId,
-            scanStartedAt = scanStartedAt,
-            scanCompletedAt = completedAt,
-            providerId = provider.id,
-            status = status,
-            count = count,
-            errorCount = errors
+            scanRunId, scanStartedAt, completedAt, provider.id, status, count, errors
         )
 
         Log.i(TAG, "[BIST_SCAN] START id=$scanRunId provider=${provider.id}")
@@ -57,11 +51,10 @@ class BistScanner(private val provider: MarketDataProvider) {
             val stocks = provider.scan { done, providerTotal ->
                 processed = done.coerceAtLeast(0)
                 total = providerTotal.coerceAtLeast(0)
-                val progress = safeProgress(processed, total)
                 onState(
                     ScanState(
                         status = ScanStatus.RUNNING,
-                        progress = progress,
+                        progress = safeProgress(processed, total),
                         processed = processed,
                         total = total,
                         successful = fetched,
@@ -74,33 +67,14 @@ class BistScanner(private val provider: MarketDataProvider) {
             fetched = stocks.size
             if (total == 0) {
                 val completed = System.currentTimeMillis()
-                val error = ScanState(
+                return ScanState(
                     status = ScanStatus.ERROR,
                     errorMessage = "BIST sembol listesi alınamadı.",
-                    scanRun = run(ScanRunStatus.FAILED, completedAt = completed, errors = 1)
-                )
-                onState(error)
-                return error
+                    scanRun = run(ScanRunStatus.FAILED, completed, errors = 1)
+                ).also(onState)
             }
 
             val analyzed = analyzeSafely(stocks)
-            if (stocks.isNotEmpty() && analyzed.analyzedCount == 0 && analyzed.integrityRejected > 0) {
-                val completed = System.currentTimeMillis()
-                val error = ScanState(
-                    status = ScanStatus.ERROR,
-                    progress = 100,
-                    processed = total,
-                    total = total,
-                    successful = 0,
-                    skipped = total,
-                    integrityRejected = analyzed.integrityRejected,
-                    errorMessage = "ANLIK VERİ DOĞRULANAMADI. Gecikmeli/eski/kanıtsız veriyle fırsat üretilmedi.",
-                    scanRun = run(ScanRunStatus.FAILED, completedAt = completed, errors = analyzed.integrityRejected)
-                )
-                onState(error)
-                return error
-            }
-
             val completed = System.currentTimeMillis()
             val traced = analyzed.results.map { opportunity ->
                 opportunity.copy(
@@ -110,23 +84,21 @@ class BistScanner(private val provider: MarketDataProvider) {
                     snapshot = opportunity.snapshot?.copy(scanRunId = scanRunId)
                 )
             }
-            val skipped = (total - fetched).coerceAtLeast(0) + (fetched - analyzed.analyzedCount).coerceAtLeast(0)
+            val structuralSkipped = (total - fetched).coerceAtLeast(0) + (fetched - analyzed.analyzedCount).coerceAtLeast(0)
+            val errors = structuralSkipped + analyzed.integrityRejected
+            val runStatus = if (errors == 0) ScanRunStatus.COMPLETE else ScanRunStatus.PARTIAL
             val finalState = ScanState(
                 status = ScanStatus.COMPLETED,
                 progress = 100,
                 processed = total,
                 total = total,
-                successful = analyzed.analyzedCount,
-                skipped = skipped,
+                successful = analyzed.integrityAccepted,
+                skipped = structuralSkipped,
                 integrityRejected = analyzed.integrityRejected,
                 results = traced,
-                scanRun = run(
-                    if (skipped > 0) ScanRunStatus.PARTIAL else ScanRunStatus.COMPLETE,
-                    completedAt = completed,
-                    count = traced.size,
-                    errors = skipped
-                )
+                scanRun = run(runStatus, completed, traced.size, errors)
             )
+            Log.i(TAG, "[BIST_SCAN] ${runStatus.name} id=$scanRunId total=$total results=${traced.size} integrityRejected=${analyzed.integrityRejected}")
             onState(finalState)
             finalState
         } catch (ce: CancellationException) {
@@ -139,15 +111,15 @@ class BistScanner(private val provider: MarketDataProvider) {
                 successful = fetched,
                 skipped = (processed - fetched).coerceAtLeast(0),
                 errorMessage = "Tarama kullanıcı tarafından durduruldu.",
-                scanRun = run(ScanRunStatus.PARTIAL, completedAt = completed, errors = (processed - fetched).coerceAtLeast(0))
+                scanRun = run(ScanRunStatus.PARTIAL, completed, errors = (processed - fetched).coerceAtLeast(0))
             )
             onState(cancelled)
             throw ce
         } catch (t: Throwable) {
             val completed = System.currentTimeMillis()
             val message = when {
-                t.message?.contains("tanımlı değil", ignoreCase = true) == true -> "Canlı veri sağlayıcısı yapılandırılmamış."
-                t.message?.contains("sembol", ignoreCase = true) == true -> "BIST sembol listesi alınamadı."
+                t.message?.contains("tanımlı değil", true) == true -> "Canlı veri sağlayıcısı yapılandırılmamış."
+                t.message?.contains("sembol", true) == true -> "BIST sembol listesi alınamadı."
                 else -> t.message ?: "Tarama başlatılamadı."
             }
             val error = ScanState(
@@ -158,7 +130,7 @@ class BistScanner(private val provider: MarketDataProvider) {
                 successful = fetched,
                 skipped = (processed - fetched).coerceAtLeast(0),
                 errorMessage = message,
-                scanRun = run(ScanRunStatus.FAILED, completedAt = completed, errors = 1)
+                scanRun = run(ScanRunStatus.FAILED, completed, errors = 1)
             )
             Log.e(TAG, "[BIST_SCAN] ERROR $message", t)
             onState(error)
@@ -169,36 +141,40 @@ class BistScanner(private val provider: MarketDataProvider) {
     private data class AnalysisResult(
         val results: List<Opportunity>,
         val analyzedCount: Int,
+        val integrityAccepted: Int,
         val integrityRejected: Int
     )
 
+    /**
+     * Teknik olarak analiz edilebilir gecikmeli/EOD veri kaydı tamamen yok edilmez; OpportunityEngine
+     * onu WATCH/REJECTED olarak etiketler. Böyle kayıtlar COMPLETE sayılmaz ve son başarılı taramayı
+     * değiştiremez. Malformed/bozuk/yetersiz veri ise OpportunityEngine tarafından sonuç üretmeden atlanır.
+     */
     private suspend fun analyzeSafely(stocks: List<Stock>): AnalysisResult = withContext(Dispatchers.Default) {
         supervisorScope {
+            data class Row(val opportunity: Opportunity?, val accepted: Boolean)
             val analyzed = stocks.map { stock ->
                 async {
                     val verdict = RealTimeIntegrityPolicy.validate(stock)
-                    if (!verdict.accepted) {
-                        Log.w(TAG, "[BIST_SCAN] REALTIME_REJECT ${stock.symbol}: ${verdict.reason}")
-                        return@async Triple(false, true, null)
-                    }
+                    if (!verdict.accepted) Log.w(TAG, "[BIST_SCAN] INTEGRITY_${stock.symbol}: ${verdict.reason}")
                     try {
-                        val result = OpportunityEngine.score(stock)
-                        Triple(true, false, result)
+                        Row(OpportunityEngine.score(stock), verdict.accepted)
                     } catch (ce: CancellationException) {
                         throw ce
                     } catch (t: Throwable) {
                         Log.w(TAG, "[BIST_SCAN] SYMBOL_SKIPPED ${stock.symbol}: ${t.message}")
-                        Triple(false, false, null)
+                        Row(null, false)
                     }
                 }
             }.awaitAll()
 
-            val validResults = analyzed.mapNotNull { it.third }
+            val results = analyzed.mapNotNull { it.opportunity }
                 .sortedWith(compareByDescending<Opportunity> { it.finalSignalScore }.thenBy { it.symbol })
             AnalysisResult(
-                results = validResults,
-                analyzedCount = analyzed.count { it.first },
-                integrityRejected = analyzed.count { it.second }
+                results = results,
+                analyzedCount = analyzed.count { it.opportunity != null },
+                integrityAccepted = analyzed.count { it.opportunity != null && it.accepted },
+                integrityRejected = analyzed.count { it.opportunity != null && !it.accepted }
             )
         }
     }
