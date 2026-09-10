@@ -19,6 +19,8 @@ import tr.borsatakip.v5.scan.ScanStatus
 
 class BistScanActivity : BaseActivity() {
     private var scanJob: Job? = null
+    private lateinit var source: TextView
+    private lateinit var settings: SettingsStore
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -29,30 +31,20 @@ class BistScanActivity : BaseActivity() {
         val txt = findViewById<TextView>(R.id.txtProgress)
         val status = findViewById<TextView>(R.id.txtStatus)
         val btn = findViewById<Button>(R.id.btnStartScan)
-        val source = findViewById<TextView>(R.id.txtSource)
+        val configure = findViewById<Button>(R.id.btnConfigureProvider)
+        source = findViewById(R.id.txtSource)
         val debug = findViewById<TextView>(R.id.txtDebugState)
-        val settings = SettingsStore(this)
-
-        fun experimentalOnly(): Boolean =
-            !settings.baseUrl.startsWith("https://") &&
-                settings.experimentalProvidersEnabled &&
-                settings.yahooFallbackEnabled
-
-        fun refreshSourceLabel() {
-            source.text = if (settings.baseUrl.startsWith("https://")) {
-                "Kaynak: Production Backend • tarama öncesi Health/Symbols/History doğrulaması"
-            } else if (experimentalOnly()) {
-                "Kaynak: Yahoo Finance • DENEYSEL/YEDEK/GEÇİKMELİ"
-            } else {
-                "Kaynak: Production Backend yapılandırması eksik"
-            }
-        }
+        settings = SettingsStore(this)
 
         refreshSourceLabel()
         status.text = "Hazır • tarama başlatılmadı"
         txt.text = "TARAMA BAŞLAMADI"
         progress.progress = 0
         debug.text = "Tarama ancak veri sağlayıcısı hazır olduğunda başlar. 0/0 başarılı tarama olarak gösterilmez."
+
+        configure.setOnClickListener {
+            startActivity(Intent(this, SettingsActivity::class.java))
+        }
 
         btn.setOnClickListener {
             if (scanJob?.isActive == true) {
@@ -77,7 +69,7 @@ class BistScanActivity : BaseActivity() {
                             progress.progress = 0
                             txt.text = "PROVIDER HAZIR DEĞİL"
                             status.text = "Tarama başlatılamadı • ${preflight.message}"
-                            debug.text = "${preflight.failureKind} • ScanRun oluşturulmadı • son başarılı tarama korunuyor."
+                            debug.text = "${preflight.failureKind} • ScanRun oluşturulmadı • son başarılı tarama korunuyor.\nAyarlar → Veri Sağlayıcı bölümünden gerçek HTTPS backend adresini yapılandırın."
                             return@launch
                         }
                         announcedTotal = preflight.symbolCount
@@ -144,6 +136,26 @@ class BistScanActivity : BaseActivity() {
                 }
             }
         }
+    }
+
+    private fun experimentalOnly(): Boolean =
+        !settings.baseUrl.startsWith("https://") &&
+            settings.experimentalProvidersEnabled &&
+            settings.yahooFallbackEnabled
+
+    private fun refreshSourceLabel() {
+        source.text = if (settings.baseUrl.startsWith("https://")) {
+            "Kaynak: Production Backend • tarama öncesi Health/Symbols/History doğrulaması"
+        } else if (experimentalOnly()) {
+            "Kaynak: Yahoo Finance • DENEYSEL/YEDEK/GEÇİKMELİ"
+        } else {
+            "Kaynak: Production Backend yapılandırması eksik"
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::settings.isInitialized && ::source.isInitialized) refreshSourceLabel()
     }
 
     override fun onDestroy() {
