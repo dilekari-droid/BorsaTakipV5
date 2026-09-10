@@ -18,7 +18,9 @@ data class Stock(
     val delaySeconds:Int? = null,
     val currentSessionIncluded:Boolean = false,
     val receivedAt:Long = System.currentTimeMillis(),
-    val receivedElapsedRealtime:Long = SystemClock.elapsedRealtime()
+    val receivedElapsedRealtime:Long = SystemClock.elapsedRealtime(),
+    val quotePrice:Double? = null,
+    val currency:String? = null
 ) { val exchangeTimestamp:Long get() = dataTimestamp }
 
 data class TechnicalSnapshot(
