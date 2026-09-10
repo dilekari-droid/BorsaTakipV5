@@ -35,12 +35,14 @@ class LicensedUpstreamProvider:
     """Generic adapter for a licensed/authorized market-data upstream.
 
     No concrete provider endpoint or secret is embedded in source control.
+    Production readiness requires separate symbols, quote and history HTTPS contracts.
     """
 
     def __init__(self) -> None:
         self.name = os.getenv("BORSA_UPSTREAM_NAME", "licensed-upstream").strip() or "licensed-upstream"
         self.token = os.getenv("BORSA_UPSTREAM_TOKEN", "").strip()
         self.symbols_url = os.getenv("BORSA_SYMBOLS_URL", "").strip()
+        self.quote_url_template = os.getenv("BORSA_QUOTE_URL_TEMPLATE", "").strip()
         self.history_url_template = os.getenv("BORSA_HISTORY_URL_TEMPLATE", "").strip()
         self.viop_url = os.getenv("BORSA_VIOP_URL", "").strip()
         self.max_attempts = max(1, min(int(os.getenv("BORSA_UPSTREAM_MAX_ATTEMPTS", "3")), 3))
@@ -48,6 +50,8 @@ class LicensedUpstreamProvider:
     def configuration_ready(self) -> bool:
         return (
             self.symbols_url.startswith("https://")
+            and self.quote_url_template.startswith("https://")
+            and "{symbol}" in self.quote_url_template
             and self.history_url_template.startswith("https://")
             and "{symbol}" in self.history_url_template
         )
@@ -82,11 +86,10 @@ class LicensedUpstreamProvider:
                 return payload
             except ProviderError:
                 raise
-            except httpx.TimeoutException as exc:
+            except httpx.TimeoutException:
                 last_error = ProviderError(ProviderErrorCode.NETWORK_TIMEOUT, "Upstream request timed out", 504)
             except httpx.ConnectError as exc:
-                text = exc.__class__.__name__ + ": " + str(exc)
-                low = text.lower()
+                low = (exc.__class__.__name__ + ": " + str(exc)).lower()
                 if "certificate" in low or "ssl" in low or "tls" in low:
                     last_error = ProviderError(ProviderErrorCode.TLS_ERROR, "Upstream TLS connection failed", 502)
                 elif "name or service not known" in low or "nodename nor servname" in low or "dns" in low:
