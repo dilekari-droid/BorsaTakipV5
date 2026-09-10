@@ -104,5 +104,12 @@ data class ViopContract(
     val isManual:Boolean = false,
     val currency:String? = null,
     val status:String = "Veri bekleniyor",
-    val dataTimestamp:Long = 0L
-)
+    val dataTimestamp:Long = 0L,
+    val isRealtime:Boolean = false,
+    val delaySeconds:Int? = null,
+    val currentSessionIncluded:Boolean = false,
+    val receivedAt:Long = 0L,
+    val dataMode:DataMode = DataMode.UNVERIFIED,
+    val validity:SignalValidity = SignalValidity.WATCH,
+    val validityReason:String = "Sözleşme doğrulanmadı."
+) { val exchangeTimestamp:Long get() = dataTimestamp }
