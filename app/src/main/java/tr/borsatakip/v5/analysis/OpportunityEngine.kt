@@ -15,7 +15,7 @@ object OpportunityEngine {
         }
         if (c.size < 220) return null
 
-        val price = c.last().close
+        val price = stock.marketPrice ?: return null
         val prev = c[c.lastIndex - 1].close
         val price20 = c[c.lastIndex - 20].close
         if (!price.isFinite() || price <= 0.0 || !prev.isFinite() || prev <= 0.0 || price20 <= 0.0) return null

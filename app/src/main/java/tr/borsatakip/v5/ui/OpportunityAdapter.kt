@@ -70,6 +70,7 @@ class OpportunityAdapter(
             DataMode.DELAYED -> "DELAYED"
             DataMode.EOD -> "EOD"
             DataMode.UNVERIFIED -> "UNVERIFIED"
+            DataMode.HISTORICAL -> "HISTORICAL"
         }
         val reason = x.scoreBreakdown.asSequence()
             .takeWhile { !it.startsWith("KAP:") }

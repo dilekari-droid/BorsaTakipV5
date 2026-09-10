@@ -46,7 +46,8 @@ class BackendPreflightClient(context: Context) {
         val symbolCount: Int = 0,
         val sampleSymbol: String? = null,
         val provider: String? = null,
-        val elapsedMs: Long = 0L
+        val elapsedMs: Long = 0L,
+        val quoteOk: Boolean = false
     )
 
     suspend fun check(): Result = withContext(Dispatchers.IO) {
@@ -80,6 +81,12 @@ class BackendPreflightClient(context: Context) {
 
         val sample = symbols.first()
         val encoded = URLEncoder.encode(sample, "UTF-8")
+        val quoteResponse = requestJson(base, "/v1/bist/quote/$encoded")
+        if (!quoteResponse.ok) return@withContext quoteResponse.toPreflight(started, "Örnek sembol anlık quote kontrolü başarısız", healthOk = true, authOk = true, symbolsOk = true, symbolCount = symbols.size, sampleSymbol = sample, provider = provider)
+        val quoteJson = quoteResponse.json ?: return@withContext fail(FailureKind.INVALID_DATA, "Anlık quote cevabı geçersiz.", started, true, true, true, false, symbols.size, sample, provider)
+        val quoteError = validateQuote(quoteJson, sample)
+        if (quoteError != null) return@withContext fail(FailureKind.INVALID_DATA, quoteError, started, true, true, true, false, symbols.size, sample, provider)
+
         val historyResponse = requestJson(base, "/v1/bist/history/$encoded?range=1y&interval=1d")
         if (!historyResponse.ok) return@withContext historyResponse.toPreflight(started, "Örnek sembol OHLCV kontrolü başarısız", healthOk = true, authOk = true, symbolsOk = true, symbolCount = symbols.size, sampleSymbol = sample, provider = provider)
         val historyJson = historyResponse.json ?: return@withContext fail(FailureKind.HISTORY_ERROR, "Piyasa verisi cevabı geçersiz.", started, true, true, true, false, symbols.size, sample, provider)
@@ -98,7 +105,7 @@ class BackendPreflightClient(context: Context) {
         Result(
             ok = true,
             failureKind = FailureKind.NONE,
-            message = "Backend hazır • Health ✓ • Authentication ✓ • Symbols ✓ • History ✓",
+            message = "Backend hazır • Health ✓ • Authentication ✓ • Symbols ✓ • Quote ✓ • History ✓",
             healthOk = true,
             authOk = true,
             symbolsOk = true,
@@ -106,8 +113,27 @@ class BackendPreflightClient(context: Context) {
             symbolCount = symbols.size,
             sampleSymbol = sample,
             provider = provider,
-            elapsedMs = SystemClock.elapsedRealtime() - started
+            elapsedMs = SystemClock.elapsedRealtime() - started,
+            quoteOk = true
         )
+    }
+
+    private fun validateQuote(json: JSONObject, requestedSymbol: String): String? {
+        if (json.optString("symbol").trim().uppercase() != requestedSymbol) return "Anlık quote sembolü istekle eşleşmiyor."
+        if (json.optString("source").isBlank() || json.optString("providerId").isBlank()) return "Anlık quote kaynak/provenance alanları eksik."
+        val price = json.optDouble("price", Double.NaN)
+        if (!price.isFinite() || price <= 0.0) return "Anlık quote fiyatı eksik veya geçersiz."
+        if (!json.optBoolean("realtime", false)) return "Sağlayıcı quote verisini gerçek zamanlı doğrulamadı."
+        if (!json.optBoolean("currentSessionIncluded", false)) return "Güncel işlem seansı quote verisine dahil değil."
+        if (!json.has("delaySeconds") || json.isNull("delaySeconds")) return "Sağlayıcı quote gecikmesini bildirmedi."
+        val delay = json.optInt("delaySeconds", Int.MAX_VALUE)
+        if (delay !in 0..RealTimeIntegrityPolicy.MAX_DECLARED_DELAY_SECONDS) return "Quote gecikmesi gerçek zaman eşiğini aşıyor: $delay sn."
+        val timestamp = json.optLong("exchangeTimestamp", 0L)
+        if (timestamp <= 0L) return "Quote piyasa zamanı eksik veya geçersiz."
+        val age = System.currentTimeMillis() - timestamp
+        if (age < -15_000L) return "Quote piyasa zamanı cihaz saatinden ileride."
+        if (age > RealTimeIntegrityPolicy.MAX_DATA_AGE_MS) return "Quote güncel değil: ${age / 1000L} sn yaş."
+        return null
     }
 
     /** Preflight must validate the same real-time contract used by the scanner. */
@@ -115,18 +141,8 @@ class BackendPreflightClient(context: Context) {
         val returnedSymbol = json.optString("symbol").trim().uppercase()
         if (returnedSymbol != requestedSymbol) return "Örnek OHLCV sembolü istekle eşleşmiyor."
         if (json.optString("source").isBlank()) return "Piyasa verisi kaynak/provenance alanı eksik."
-        if (!json.optBoolean("realtime", false)) return "Sağlayıcı örnek veriyi gerçek zamanlı olarak doğrulamadı."
-        if (!json.optBoolean("currentSessionIncluded", false)) return "Güncel işlem seansı örnek OHLCV verisine dahil değil."
-        if (!json.has("delaySeconds") || json.isNull("delaySeconds")) return "Sağlayıcı gecikme bilgisini bildirmedi."
-        val delay = json.optInt("delaySeconds", Int.MAX_VALUE)
-        if (delay !in 0..RealTimeIntegrityPolicy.MAX_DECLARED_DELAY_SECONDS) {
-            return "Sağlayıcı gecikmesi gerçek zaman eşiğini aşıyor: $delay sn."
-        }
         val dataTimestamp = json.optLong("dataTimestamp", 0L)
         if (dataTimestamp <= 0L) return "Piyasa veri zamanı eksik veya geçersiz."
-        val ageAtReceipt = System.currentTimeMillis() - dataTimestamp
-        if (ageAtReceipt < -15_000L) return "Piyasa veri zamanı cihaz saatinden ileride; saat bütünlüğü doğrulanamadı."
-        if (ageAtReceipt > RealTimeIntegrityPolicy.MAX_DATA_AGE_MS) return "Örnek piyasa verisi güncel değil: ${ageAtReceipt / 1000L} sn yaş."
 
         val rows = json.optJSONArray("candles") ?: return "Piyasa OHLCV dizisi eksik."
         var validCount = 0

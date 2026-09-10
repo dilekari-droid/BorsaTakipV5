@@ -22,6 +22,8 @@ object RealTimeIntegrityPolicy {
         val delay = stock.delaySeconds ?: return Verdict(false, "Sağlayıcı gecikme bilgisini bildirmedi.")
         if (delay !in 0..MAX_DECLARED_DELAY_SECONDS) return Verdict(false, "Sağlayıcı gecikmesi gerçek zaman eşiğini aşıyor: $delay sn.")
         if (stock.exchangeTimestamp <= 0L) return Verdict(false, "Piyasa veri zamanı yok.")
+        val marketPrice = stock.marketPrice ?: return Verdict(false, "Anlık quote fiyatı yok.")
+        if (!marketPrice.isFinite() || marketPrice <= 0.0) return Verdict(false, "Anlık quote fiyatı geçersiz.")
         if (stock.receivedAt <= 0L || stock.receivedElapsedRealtime <= 0L) return Verdict(false, "Veri alma zamanı doğrulanamadı.")
 
         val ageAtReceipt = stock.receivedAt - stock.exchangeTimestamp

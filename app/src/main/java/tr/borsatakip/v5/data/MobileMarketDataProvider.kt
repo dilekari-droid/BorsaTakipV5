@@ -73,6 +73,7 @@ class MobileMarketDataProvider(context: Context) : MarketDataProvider {
 
     private fun fetchHistory(symbol: String): Stock? {
         val encoded = URLEncoder.encode(symbol, "UTF-8")
+        val quote = getJson("/v1/bist/quote/$encoded") ?: return null
         val json = getJson("/v1/bist/history/$encoded?range=1y&interval=1d") ?: return null
         val receivedAt = System.currentTimeMillis()
         val receivedElapsed = SystemClock.elapsedRealtime()
@@ -92,21 +93,25 @@ class MobileMarketDataProvider(context: Context) : MarketDataProvider {
         }
         if (candles.size < 220) return null
         val sorted = candles.sortedBy { it.timestamp }
-        val delaySeconds = if (json.has("delaySeconds") && !json.isNull("delaySeconds")) {
-            json.optInt("delaySeconds", Int.MAX_VALUE).takeIf { it != Int.MAX_VALUE }
+        val delaySeconds = if (quote.has("delaySeconds") && !quote.isNull("delaySeconds")) {
+            quote.optInt("delaySeconds", Int.MAX_VALUE).takeIf { it != Int.MAX_VALUE }
         } else null
-        val exchangeTimestamp = json.optLong("dataTimestamp", 0L)
+        val exchangeTimestamp = quote.optLong("exchangeTimestamp", 0L)
+        val marketPrice = quote.optDouble("price", Double.NaN).takeIf { it.isFinite() && it > 0.0 } ?: return null
+        val returnedQuoteSymbol = quote.optString("symbol").trim().uppercase()
+        if (returnedQuoteSymbol != symbol) return null
         return Stock(
             symbol = json.optString("symbol").ifBlank { symbol },
             companyName = json.optString("name").takeIf { it.isNotBlank() },
             candles = sorted,
-            source = json.optString("source").ifBlank { displayName },
+            source = quote.optString("source").ifBlank { displayName },
             dataTimestamp = exchangeTimestamp,
-            isRealtime = json.optBoolean("realtime", false),
+            isRealtime = quote.optBoolean("realtime", false),
             delaySeconds = delaySeconds,
-            currentSessionIncluded = json.optBoolean("currentSessionIncluded", false),
+            currentSessionIncluded = quote.optBoolean("currentSessionIncluded", false),
             receivedAt = receivedAt,
-            receivedElapsedRealtime = receivedElapsed
+            receivedElapsedRealtime = receivedElapsed,
+            marketPrice = marketPrice
         )
     }
 

@@ -2,7 +2,7 @@ package tr.borsatakip.v5.model
 
 import android.os.SystemClock
 
-enum class DataMode { REALTIME, DELAYED, EOD, UNVERIFIED }
+enum class DataMode { REALTIME, DELAYED, EOD, UNVERIFIED, HISTORICAL }
 enum class SignalValidity { VALID, WATCH, INSUFFICIENT, REJECTED }
 enum class ScanRunStatus { STARTED, PARTIAL, COMPLETE, FAILED }
 
@@ -18,7 +18,8 @@ data class Stock(
     val delaySeconds:Int? = null,
     val currentSessionIncluded:Boolean = false,
     val receivedAt:Long = System.currentTimeMillis(),
-    val receivedElapsedRealtime:Long = SystemClock.elapsedRealtime()
+    val receivedElapsedRealtime:Long = SystemClock.elapsedRealtime(),
+    val marketPrice:Double? = candles.lastOrNull()?.close
 ) { val exchangeTimestamp:Long get() = dataTimestamp }
 
 data class TechnicalSnapshot(

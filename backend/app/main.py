@@ -19,6 +19,7 @@ APP_ENV = os.getenv("BORSA_APP_ENV", "production").strip().lower()
 UPSTREAM_TOKEN = os.getenv("BORSA_UPSTREAM_TOKEN", "").strip()
 SYMBOLS_URL = os.getenv("BORSA_SYMBOLS_URL", "").strip()
 HISTORY_URL_TEMPLATE = os.getenv("BORSA_HISTORY_URL_TEMPLATE", "").strip()
+QUOTE_URL_TEMPLATE = os.getenv("BORSA_QUOTE_URL_TEMPLATE", "").strip()
 VIOP_URL = os.getenv("BORSA_VIOP_URL", "").strip()
 UPSTREAM_NAME = os.getenv("BORSA_UPSTREAM_NAME", "licensed-upstream").strip() or "licensed-upstream"
 MAX_REALTIME_AGE_MS = int(os.getenv("BORSA_MAX_REALTIME_AGE_MS", "60000"))
@@ -56,9 +57,34 @@ class HistoryResponse(BaseModel):
     candles: list[Candle]
     source: str
     dataTimestamp: int
+    candleCount: int
+    dataMode: str = "HISTORICAL"
+
+
+class QuoteResponse(BaseModel):
+    symbol: str
+    price: float
+    bid: float | None = None
+    ask: float | None = None
+    source: str
+    providerId: str
+    exchangeTimestamp: int
     realtime: bool
     delaySeconds: int
     currentSessionIncluded: bool
+    dataMode: str = "REALTIME"
+
+
+class PreflightResponse(BaseModel):
+    ok: bool
+    backendConfig: bool
+    authentication: bool
+    symbols: bool
+    quote: bool
+    history: bool
+    symbolCount: int = 0
+    sampleSymbol: str | None = None
+    message: str
 
 
 class ViopContract(BaseModel):
@@ -142,10 +168,10 @@ def _require_realtime_metadata(payload: dict[str, Any]) -> tuple[int, int]:
     if payload.get("realtime") is not True:
         raise HTTPException(status_code=409, detail="Upstream did not certify data as real-time")
     if payload.get("currentSessionIncluded") is not True:
-        raise HTTPException(status_code=409, detail="Current trading session is not included in OHLCV")
+        raise HTTPException(status_code=409, detail="Current trading session is not included in quote")
     try:
         delay_seconds = int(payload["delaySeconds"])
-        data_ts = int(payload["dataTimestamp"])
+        data_ts = int(payload.get("exchangeTimestamp", payload.get("dataTimestamp")))
     except (KeyError, TypeError, ValueError) as exc:
         raise HTTPException(status_code=409, detail="Real-time provenance metadata is incomplete") from exc
     if delay_seconds < 0 or delay_seconds > MAX_DECLARED_DELAY_SECONDS:
@@ -162,7 +188,6 @@ def _require_realtime_metadata(payload: dict[str, Any]) -> tuple[int, int]:
 def _normalize_candles(payload: Any, requested_symbol: str) -> HistoryResponse:
     if not isinstance(payload, dict):
         raise HTTPException(status_code=502, detail="Upstream history response must be an object")
-    delay_seconds, data_ts = _require_realtime_metadata(payload)
     rows = payload.get("candles")
     if not isinstance(rows, list):
         raise HTTPException(status_code=502, detail="Upstream history response must contain candles")
@@ -183,13 +208,22 @@ def _normalize_candles(payload: Any, requested_symbol: str) -> HistoryResponse:
             continue
         if not all(math.isfinite(v) for v in [candle.open, candle.high, candle.low, candle.close, candle.volume]):
             continue
-        if candle.timestamp <= 0 or candle.high < candle.low or candle.close <= 0 or candle.volume < 0:
+        if (candle.timestamp <= 0 or min(candle.open, candle.high, candle.low, candle.close) <= 0 or
+                candle.high < max(candle.open, candle.low, candle.close) or
+                candle.low > min(candle.open, candle.high, candle.close) or candle.volume < 0):
             continue
         candles.append(candle)
     candles.sort(key=lambda c: c.timestamp)
+    if any(candles[i].timestamp <= candles[i - 1].timestamp for i in range(1, len(candles))):
+        raise HTTPException(status_code=422, detail="OHLCV timestamps must be unique and strictly increasing")
     if len(candles) < 220:
         raise HTTPException(status_code=422, detail=f"Insufficient OHLCV history: {len(candles)} candles; minimum 220")
     symbol = str(payload.get("symbol") or requested_symbol).strip().upper()
+    if symbol != requested_symbol:
+        raise HTTPException(status_code=409, detail="Upstream history symbol does not match request")
+    data_ts = int(payload.get("dataTimestamp") or candles[-1].timestamp)
+    if data_ts <= 0:
+        raise HTTPException(status_code=409, detail="Historical data timestamp is missing")
     name = payload.get("name")
     return HistoryResponse(
         symbol=symbol,
@@ -197,8 +231,27 @@ def _normalize_candles(payload: Any, requested_symbol: str) -> HistoryResponse:
         candles=candles,
         source=UPSTREAM_NAME,
         dataTimestamp=data_ts,
-        realtime=True,
-        delaySeconds=delay_seconds,
+        candleCount=len(candles),
+    )
+
+
+def _normalize_quote(payload: Any, requested_symbol: str) -> QuoteResponse:
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=502, detail="Upstream quote response must be an object")
+    delay_seconds, data_ts = _require_realtime_metadata(payload)
+    symbol = str(payload.get("symbol") or requested_symbol).strip().upper()
+    if symbol != requested_symbol:
+        raise HTTPException(status_code=409, detail="Upstream quote symbol does not match request")
+    price = _finite_optional(payload.get("price", payload.get("last")), positive=True)
+    if price is None:
+        raise HTTPException(status_code=422, detail="Upstream quote price is missing or invalid")
+    return QuoteResponse(
+        symbol=symbol, price=price,
+        bid=_finite_optional(payload.get("bid"), nonnegative=True),
+        ask=_finite_optional(payload.get("ask"), nonnegative=True),
+        source=str(payload.get("source") or UPSTREAM_NAME).strip() or UPSTREAM_NAME,
+        providerId=str(payload.get("providerId") or UPSTREAM_NAME).strip() or UPSTREAM_NAME,
+        exchangeTimestamp=data_ts, realtime=True, delaySeconds=delay_seconds,
         currentSessionIncluded=True,
     )
 
@@ -300,6 +353,8 @@ async def health(authorization: str | None = Header(default=None)) -> Health:
         SYMBOLS_URL.startswith("https://"),
         HISTORY_URL_TEMPLATE.startswith("https://"),
         "{symbol}" in HISTORY_URL_TEMPLATE,
+        QUOTE_URL_TEMPLATE.startswith("https://"),
+        "{symbol}" in QUOTE_URL_TEMPLATE,
     ])
     return Health(
         ok=configured,
@@ -337,6 +392,36 @@ async def bist_history(
         raise HTTPException(status_code=503, detail="BORSA_HISTORY_URL_TEMPLATE must contain {symbol}")
     payload = await _get_json(HISTORY_URL_TEMPLATE.replace("{symbol}", quote(normalized, safe="")))
     return _normalize_candles(payload, normalized)
+
+
+@app.get("/v1/bist/quote/{symbol}", response_model=QuoteResponse)
+async def bist_quote(symbol: str, authorization: str | None = Header(default=None)) -> QuoteResponse:
+    _require_client_auth(authorization)
+    normalized = symbol.strip().upper()
+    if not (3 <= len(normalized) <= 12 and normalized.replace("_", "").isalnum()):
+        raise HTTPException(status_code=400, detail="Invalid symbol")
+    if "{symbol}" not in QUOTE_URL_TEMPLATE:
+        raise HTTPException(status_code=503, detail="BORSA_QUOTE_URL_TEMPLATE must contain {symbol}")
+    payload = await _get_json(QUOTE_URL_TEMPLATE.replace("{symbol}", quote(normalized, safe="")))
+    return _normalize_quote(payload, normalized)
+
+
+@app.get("/v1/preflight", response_model=PreflightResponse)
+async def preflight(authorization: str | None = Header(default=None)) -> PreflightResponse:
+    _require_client_auth(authorization)
+    configured = all([SYMBOLS_URL.startswith("https://"), QUOTE_URL_TEMPLATE.startswith("https://"),
+                      HISTORY_URL_TEMPLATE.startswith("https://"), "{symbol}" in QUOTE_URL_TEMPLATE,
+                      "{symbol}" in HISTORY_URL_TEMPLATE])
+    if not configured:
+        return PreflightResponse(ok=False, backendConfig=False, authentication=True, symbols=False,
+                                 quote=False, history=False, message="Licensed upstream endpoints are not configured")
+    symbols = _normalize_symbols(await _get_json(SYMBOLS_URL))
+    sample = symbols[0]
+    quote_result = _normalize_quote(await _get_json(QUOTE_URL_TEMPLATE.replace("{symbol}", quote(sample, safe=""))), sample)
+    history_result = _normalize_candles(await _get_json(HISTORY_URL_TEMPLATE.replace("{symbol}", quote(sample, safe=""))), sample)
+    return PreflightResponse(ok=True, backendConfig=True, authentication=True, symbols=True,
+                             quote=quote_result.realtime, history=history_result.candleCount >= 220,
+                             symbolCount=len(symbols), sampleSymbol=sample, message="Production provider contract verified")
 
 
 @app.get("/v1/viop/contracts", response_model=ViopResponse)
