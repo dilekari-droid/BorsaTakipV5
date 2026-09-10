@@ -14,6 +14,7 @@ def load_main(**env):
         "BORSA_UPSTREAM_NAME",
         "BORSA_UPSTREAM_TOKEN",
         "BORSA_SYMBOLS_URL",
+        "BORSA_QUOTE_URL_TEMPLATE",
         "BORSA_HISTORY_URL_TEMPLATE",
         "BORSA_VIOP_URL",
         "BORSA_MAX_REALTIME_AGE_MS",
@@ -53,13 +54,13 @@ def candles(count: int, now: int):
 
 def test_health_is_not_ready_when_endpoints_missing():
     main = load_main()
-    result = pytest.run(async_fn=main.health) if False else None
     assert main.UPSTREAM.configuration_ready() is False
 
 
 def test_http_upstream_is_rejected():
     main = load_main(
         BORSA_SYMBOLS_URL="http://invalid.local/symbols",
+        BORSA_QUOTE_URL_TEMPLATE="https://valid.invalid/quote/{symbol}",
         BORSA_HISTORY_URL_TEMPLATE="https://valid.invalid/history/{symbol}",
     )
     assert main.UPSTREAM.configuration_ready() is False
@@ -111,9 +112,6 @@ def test_less_than_220_candles_is_422():
     now = int(time.time() * 1000)
     payload = {
         "symbol": "THYAO",
-        "realtime": True,
-        "currentSessionIncluded": True,
-        "delaySeconds": 0,
         "dataTimestamp": now,
         "candles": candles(219, now),
     }
@@ -123,18 +121,17 @@ def test_less_than_220_candles_is_422():
     assert exc.value.detail["code"] == "INSUFFICIENT_HISTORY"
 
 
-def test_220_valid_candles_pass():
+def test_220_valid_candles_pass_as_historical_contract():
     main = load_main()
     now = int(time.time() * 1000)
     payload = {
         "symbol": "THYAO",
-        "realtime": True,
-        "currentSessionIncluded": True,
-        "delaySeconds": 0,
         "dataTimestamp": now,
         "candles": candles(220, now),
     }
     result = main._normalize_candles(payload, "THYAO")
     assert result.symbol == "THYAO"
     assert len(result.candles) == 220
-    assert result.realtime is True
+    assert result.candleCount == 220
+    assert result.dataMode == "HISTORICAL"
+    assert not hasattr(result, "realtime")
