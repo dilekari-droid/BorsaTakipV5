@@ -40,6 +40,23 @@ jobs:
           mkdir -p app/build/outputs/final
           cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/final/BorsaTakipV5.1.27-debug.apk
 
+      - name: Verify debug APK signature
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/final/BorsaTakipV5.1.27-debug.apk
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)
+          test -x "$APKSIGNER"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee app/build/outputs/final/BorsaTakipV5.1.27-debug-apksigner.txt
+
+      - name: Emulator runtime verifier regression
+        uses: ReactiveCircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          script: gradle :app:connectedDebugAndroidTest
+
       - name: Release R8 smoke build
         run: gradle :app:assembleRelease
 
@@ -81,6 +98,7 @@ jobs:
           }
 
           require_marker 'ProviderRouter(this@BistScanActivity)' app/src/main/java/tr/borsatakip/v5/ui/BistScanActivity.kt
+          require_marker 'ScanRunStatus.COMPLETE' app/src/main/java/tr/borsatakip/v5/ui/BistScanActivity.kt
           require_marker 'BistScanner(ProviderRouter(this@OpportunityActivity))' app/src/main/java/tr/borsatakip/v5/ui/OpportunityActivity.kt
           require_marker 'OpportunityFilterPolicy.apply' app/src/main/java/tr/borsatakip/v5/ui/OpportunityActivity.kt
           require_marker 'LastSuccessfulScanStore' app/src/main/java/tr/borsatakip/v5/ui/OpportunityActivity.kt
@@ -107,6 +125,7 @@ jobs:
           require_marker 'multiplier' backend/app/main.py
           require_marker 'WindowInsetsCompat.Type.systemBars()' app/src/main/java/tr/borsatakip/v5/ui/BaseActivity.kt
           require_marker 'bg_screen_gradient' app/src/main/res/layout/activity_main.xml
+          require_marker 'activityLoadsAndScanButtonClickDoesNotTriggerVerifierCrash' app/src/androidTest/java/tr/borsatakip/v5/ui/BistScanActivityRuntimeTest.kt
 
           if grep -R -E -q 'TradingViewAuthClient|TradingViewBrowserLoginActivity|TradingViewScannerOpportunityProvider|TradingViewViopProvider|TradingViewSnapshotScorer|android\.webkit\.WebView|WebView/OAuth|OTURUMU UYGULAMAYA AKTAR' app/src; then
             echo 'Legacy TradingView embedded-auth/WebView reference remains in app source.'
@@ -122,7 +141,7 @@ jobs:
           grep -Fq 'android:allowBackup(0x01010280)=(type 0x12)0x0' /tmp/manifest.txt
           test -f app/build/outputs/mapping/release/mapping.txt
           sha256sum "$APK" | tee app/build/outputs/final/BorsaTakipV5.1.27-debug.sha256
-          echo 'V5.1.27 source/build/static quality checks passed. Device and live-market tests are not claimed by CI.'
+          echo 'V5.1.27 source/build/static checks and emulator runtime verifier regression passed. Physical-device and live-market tests are not claimed by CI.'
 
       - name: Package exact source snapshot
         run: |
@@ -173,4 +192,5 @@ jobs:
             app/build/outputs/final/*.apk
             app/build/outputs/final/*.zip
             app/build/outputs/final/*.sha256
+            app/build/outputs/final/*.txt
           if-no-files-found: error
