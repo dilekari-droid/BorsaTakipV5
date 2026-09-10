@@ -60,9 +60,14 @@ class MobileMarketDataProvider(context: Context) : MarketDataProvider {
         val json = getJson("/v1/bist/symbols") ?: return emptyList()
         val items = json.optJSONArray("items") ?: return emptyList()
         val symbols = (0 until items.length())
-            .mapNotNull { i -> items.optString(i).trim().uppercase().takeIf { it.matches(Regex("[A-Z0-9]{3,12}")) } }
+            .mapNotNull { i -> items.optString(i).trim().uppercase().takeIf { it.matches(Regex("[A-Z0-9_]{3,12}")) } }
             .distinct()
-        if (symbols.isNotEmpty()) settings.cachedBistSymbols = symbols.toSet()
+        if (symbols.isNotEmpty()) {
+            settings.cachedBistSymbols = symbols.toSet()
+            settings.cachedBistSymbolCount = symbols.size
+            settings.cachedBistSymbolsFetchedAt = System.currentTimeMillis()
+            settings.cachedBistSymbolsProviderId = json.optString("source").ifBlank { displayName }
+        }
         return symbols
     }
 
