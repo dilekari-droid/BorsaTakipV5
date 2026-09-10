@@ -12,23 +12,24 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import tr.borsatakip.v5.R
+import tr.borsatakip.v5.analysis.OpportunityFilter
+import tr.borsatakip.v5.analysis.OpportunityFilterPolicy
 import tr.borsatakip.v5.data.LastSuccessfulScanStore
 import tr.borsatakip.v5.data.ProviderRouter
 import tr.borsatakip.v5.data.SettingsStore
+import tr.borsatakip.v5.data.SignalHistoryStore
 import tr.borsatakip.v5.data.favorites.FavoriteRepository
 import tr.borsatakip.v5.model.Opportunity
 import tr.borsatakip.v5.model.ScanRunStatus
-import tr.borsatakip.v5.model.SignalValidity
 import tr.borsatakip.v5.scan.BistScanner
 import tr.borsatakip.v5.scan.ScanStatus
 
 class OpportunityActivity : BaseActivity() {
-    private enum class OpportunityFilter { ALL, LONG, SHORT, HIGH_POWER }
-
     private var scanJob: Job? = null
     private var selectedFilter = OpportunityFilter.ALL
     private lateinit var favoriteRepository: FavoriteRepository
     private lateinit var historyStore: LastSuccessfulScanStore
+    private lateinit var signalHistoryStore: SignalHistoryStore
     private var favoriteSymbols: Set<String> = emptySet()
     private lateinit var summary: TextView
     private lateinit var list: RecyclerView
@@ -43,6 +44,7 @@ class OpportunityActivity : BaseActivity() {
 
         favoriteRepository = FavoriteRepository.get(this)
         historyStore = LastSuccessfulScanStore(this)
+        signalHistoryStore = SignalHistoryStore(this)
         summary = findViewById(R.id.txtSummary)
         list = findViewById(R.id.list)
         val scanButton = findViewById<Button>(R.id.btnRealOpportunityScan)
@@ -60,7 +62,9 @@ class OpportunityActivity : BaseActivity() {
             favoriteRepository.migrateLegacyIfNeeded()
             refreshFavoriteSymbols()
             if (AppSession.lastOpportunities.isEmpty()) {
-                historyStore.load()?.let { (_, items) -> AppSession.lastOpportunities = sort(items) }
+                historyStore.load()?.let { (_, items) ->
+                    AppSession.lastOpportunities = OpportunityFilterPolicy.apply(items, OpportunityFilter.ALL)
+                }
             }
             showExisting()
         }
@@ -97,19 +101,20 @@ class OpportunityActivity : BaseActivity() {
                     val run = finalState.scanRun
                     when {
                         finalState.status == ScanStatus.COMPLETED && run?.status == ScanRunStatus.COMPLETE -> {
-                            val results = sort(finalState.results)
+                            val results = OpportunityFilterPolicy.apply(finalState.results, OpportunityFilter.ALL)
                             AppSession.lastOpportunities = results
                             historyStore.save(run, results)
+                            signalHistoryStore.recordCompleteScan(run, results)
                             applyFilter("SON BAŞARILI TARAMA • ${results.size} kayıt • Kaynak: ${settings.lastProviderLabel}")
                         }
                         finalState.status == ScanStatus.COMPLETED && run?.status == ScanRunStatus.PARTIAL -> {
-                            // Kısmi tarama ekranda incelenebilir; kalıcı son başarılı sonuç kesinlikle değiştirilmez.
-                            val partial = sort(finalState.results)
+                            // Kısmi tarama incelenebilir; kalıcı son başarılı sonuç ve sinyal geçmişi değiştirilmez.
+                            val partial = OpportunityFilterPolicy.apply(finalState.results, OpportunityFilter.ALL)
                             bindFiltered(partial, "KISMİ TARAMA • ${partial.size} kayıt • Son başarılı tarama değiştirilmedi")
                         }
                         finalState.status == ScanStatus.COMPLETED -> bindFiltered(emptyList(), "Tarama tamamlandı ancak yayınlanabilir sonuç oluşmadı")
                     }
-                } catch (ce: CancellationException) {
+                } catch (_: CancellationException) {
                     summary.text = "Fırsat taraması durduruldu • son başarılı tarama korunuyor"
                 } catch (t: Throwable) {
                     summary.text = "Fırsat taraması başarısız • ${t.message ?: "Beklenmeyen veri hatası"} • son başarılı tarama korunuyor"
@@ -127,14 +132,8 @@ class OpportunityActivity : BaseActivity() {
     }
 
     private suspend fun applyFilter(prefix: String = "FIRSAT KONTROLÜ") {
-        val all = sort(AppSession.lastOpportunities)
-        val publishable = { x: Opportunity -> x.signalValidity == SignalValidity.VALID || x.signalValidity == SignalValidity.WATCH }
-        val filtered = when (selectedFilter) {
-            OpportunityFilter.ALL -> all
-            OpportunityFilter.LONG -> all.filter { publishable(it) && it.direction.equals("LONG", true) }
-            OpportunityFilter.SHORT -> all.filter { publishable(it) && it.direction.equals("SHORT", true) }
-            OpportunityFilter.HIGH_POWER -> all.filter { publishable(it) && it.finalSignalScore >= 85 }
-        }
+        val all = OpportunityFilterPolicy.apply(AppSession.lastOpportunities, OpportunityFilter.ALL)
+        val filtered = OpportunityFilterPolicy.apply(all, selectedFilter)
         val label = when (selectedFilter) {
             OpportunityFilter.ALL -> "TÜMÜ"
             OpportunityFilter.LONG -> "LONG"
@@ -173,9 +172,6 @@ class OpportunityActivity : BaseActivity() {
         btnShort.state(selectedFilter == OpportunityFilter.SHORT, "SHORT")
         btnHigh.state(selectedFilter == OpportunityFilter.HIGH_POWER, "85+")
     }
-
-    private fun sort(items: List<Opportunity>) =
-        items.sortedWith(compareByDescending<Opportunity> { it.finalSignalScore }.thenBy { it.symbol })
 
     private suspend fun refreshFavoriteSymbols() { favoriteSymbols = favoriteRepository.symbols() }
 
