@@ -3,6 +3,7 @@ package tr.borsatakip.v5.ui
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
+import android.os.SystemClock
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -11,9 +12,10 @@ import android.widget.TextView
 import androidx.core.graphics.ColorUtils
 import androidx.recyclerview.widget.RecyclerView
 import tr.borsatakip.v5.R
-import tr.borsatakip.v5.data.RealTimeIntegrityPolicy
 import tr.borsatakip.v5.data.favorites.FavoriteRepository
+import tr.borsatakip.v5.model.DataMode
 import tr.borsatakip.v5.model.Opportunity
+import tr.borsatakip.v5.model.SignalValidity
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -57,12 +59,17 @@ class OpportunityAdapter(
             x.riskScore <= 60 -> "ORTA RİSK"
             else -> "YÜKSEK RİSK"
         }
-        val finalLabel = when {
-            x.finalSignalScore >= 90 -> "ÇOK GÜÇLÜ NİHAİ SİNYAL"
-            x.finalSignalScore >= 80 -> "GÜÇLÜ NİHAİ SİNYAL"
-            x.finalSignalScore >= 70 -> "İZLE"
-            x.finalSignalScore >= 60 -> "ZAYIF SİNYAL"
-            else -> "FIRSAT YOK"
+        val validityLabel = when (x.signalValidity) {
+            SignalValidity.VALID -> "DOĞRULANMIŞ FIRSAT"
+            SignalValidity.WATCH -> "İZLEME"
+            SignalValidity.INSUFFICIENT -> "YETERSİZ VERİ"
+            SignalValidity.REJECTED -> "REDDEDİLDİ"
+        }
+        val modeLabel = when (x.dataMode) {
+            DataMode.REALTIME -> "REALTIME"
+            DataMode.DELAYED -> "DELAYED"
+            DataMode.EOD -> "EOD"
+            DataMode.UNVERIFIED -> "UNVERIFIED"
         }
         val reason = x.scoreBreakdown.asSequence()
             .takeWhile { !it.startsWith("KAP:") }
@@ -72,22 +79,17 @@ class OpportunityAdapter(
             .joinToString(" + ")
             .ifBlank { "Yeterli teknik bileşen açıklaması yok" }
 
-        val now = System.currentTimeMillis()
-        val ageMs = if (x.dataTimestamp > 0L) (now - x.dataTimestamp).coerceAtLeast(0L) else Long.MAX_VALUE
-        val ageText = when {
-            ageMs == Long.MAX_VALUE -> "bilinmiyor"
-            ageMs < 60_000L -> "${ageMs / 1000L} sn"
-            ageMs < 3_600_000L -> "${ageMs / 60_000L} dk"
-            else -> "${ageMs / 3_600_000L} sa"
-        }
-        val timeText = if (x.dataTimestamp > 0L) {
-            SimpleDateFormat("dd.MM.yyyy HH:mm:ss", Locale.getDefault()).format(Date(x.dataTimestamp))
+        val exchangeText = if (x.exchangeTimestamp > 0L) {
+            SimpleDateFormat("dd.MM.yyyy HH:mm:ss", Locale.getDefault()).format(Date(x.exchangeTimestamp))
         } else "bilinmiyor"
-        val realtimeOk = x.isRealtime && x.currentSessionIncluded &&
-            x.delaySeconds != null && x.delaySeconds in 0..RealTimeIntegrityPolicy.MAX_DECLARED_DELAY_SECONDS &&
-            ageMs <= RealTimeIntegrityPolicy.MAX_DATA_AGE_MS
-        val realtimeLabel = if (realtimeOk) "ANLIK ✓" else "ANLIK DOĞRULANMADI"
-        val providerDelay = x.delaySeconds?.let { "$it sn" } ?: "bilinmiyor"
+        val receivedText = if (x.receivedAt > 0L) {
+            SimpleDateFormat("dd.MM.yyyy HH:mm:ss", Locale.getDefault()).format(Date(x.receivedAt))
+        } else "bilinmiyor"
+        val measuredAgeText = if (x.receivedElapsedRealtime > 0L) {
+            val elapsed = (SystemClock.elapsedRealtime() - x.receivedElapsedRealtime).coerceAtLeast(0L)
+            val ageAtReceipt = if (x.exchangeTimestamp > 0L && x.receivedAt > 0L) (x.receivedAt - x.exchangeTimestamp).coerceAtLeast(0L) else 0L
+            formatAge(ageAtReceipt + elapsed)
+        } else "yeniden başlatma sonrası doğrulanamıyor"
 
         val hasPrice = x.price.isFinite() && x.price > 0.0
         val hasVolume = !x.volumeLabel.equals("Veri yok", true) && x.volumeLabel.isNotBlank()
@@ -98,27 +100,27 @@ class OpportunityAdapter(
         fun mark(ok: Boolean): String = if (ok) "✓" else "⚠ veri yok"
 
         holder.symbol.text = x.symbol
-        holder.score.text = "${x.direction} $strength%"
+        holder.score.text = "${x.direction} • Nihai Sinyal $strength/100"
         holder.strengthBar.progress = strength
-        holder.strengthValue.text = "$strength%"
+        holder.strengthValue.text = "$strength/100"
         holder.company.text = x.companyName ?: ""
         holder.meta.text = buildString {
-            append("$realtimeLabel • ${x.direction} • $finalLabel • $riskLabel\n")
-            append("Kaynak: ${x.source} • Veri zamanı: $timeText • Yaş: $ageText • Sağlayıcı gecikmesi: $providerDelay\n")
-            append("Snapshot Teknik Puanı ${x.score}/100 • Risk ${x.riskScore}/100 • Veri Güveni ${x.dataConfidenceScore}/100 (${x.dataConfidenceLabel})\n")
-            append("Nihai Sinyal ${x.finalSignalScore}/100\n")
-            append("Hacim ${x.volumeLabel} • ${x.volumeDirectionLabel} • Günlük değişim ${"%.2f".format(x.dailyChangePct)}%\n")
-            append("VERİ KAPSAMI: Fiyat ${mark(hasPrice)} • Hacim ${mark(hasVolume)} • OHLCV ${mark(hasOhlcv)}\n")
-            append("KAP ${mark(hasKap)} • Destek/Direnç ${mark(hasLevels)} • VWAP ${mark(hasVwap)}\n")
-            append("${x.direction} nedeni: $reason\n")
-            append(x.scoreBreakdown.joinToString(" • "))
+            append("$validityLabel • $riskLabel • Veri Modu: $modeLabel\n")
+            append("Kaynak: ${x.source}\n")
+            append("Piyasa Veri Zamanı: $exchangeText • Uygulamaya Ulaşma: $receivedText\n")
+            append("Ölçülen Veri Yaşı: $measuredAgeText • Sağlayıcı gecikmesi: ${x.delaySeconds?.let { "$it sn" } ?: "bilinmiyor"}\n")
+            append("Teknik Skor ${x.score}/100 • Risk ${x.riskScore}/100 • Veri Güveni ${x.dataConfidenceScore}/100 (${x.dataConfidenceLabel})\n")
+            append("VERİ KAPSAMI: Fiyat ${mark(hasPrice)} • Hacim ${mark(hasVolume)} • OHLCV ${mark(hasOhlcv)} • KAP ${mark(hasKap)} • Destek/Direnç ${mark(hasLevels)} • VWAP ${mark(hasVwap)}\n")
+            append("${x.direction} nedeni: $reason")
         }
-        holder.risk.text = buildString {
-            append("Destek ${x.support?.let { "%.2f".format(it) } ?: "veri yok"}")
-            append(" • Direnç ${x.resistance?.let { "%.2f".format(it) } ?: "veri yok"}")
-            if (x.technical.vwap == null) append(" • VWAP veri yok")
-        }
+        holder.risk.text = "${x.signalValidityReason} • Destek ${x.support?.let { "%.2f".format(it) } ?: "veri yok"} • Direnç ${x.resistance?.let { "%.2f".format(it) } ?: "veri yok"}"
         holder.itemView.setOnClickListener { click(x) }
+    }
+
+    private fun formatAge(ms:Long):String = when {
+        ms < 60_000L -> "${ms / 1000L} sn"
+        ms < 3_600_000L -> "${ms / 60_000L} dk"
+        else -> "${ms / 3_600_000L} sa"
     }
 
     private fun applySignalVisuals(holder: H, direction: String, strength: Int) {
@@ -130,7 +132,6 @@ class OpportunityAdapter(
         val accent = ColorUtils.blendARGB(base, neon, t)
         val background = ColorUtils.blendARGB(darkBase, accent, 0.16f + (0.20f * t))
         val border = ColorUtils.blendARGB(base, neon, 0.25f + (0.75f * t))
-
         holder.itemView.background = GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
             cornerRadius = dp(holder.itemView, 14f)
@@ -142,8 +143,7 @@ class OpportunityAdapter(
         holder.strengthBar.progressTintList = ColorStateList.valueOf(accent)
         holder.strengthBar.progressBackgroundTintList = ColorStateList.valueOf(ColorUtils.setAlphaComponent(accent, 42))
         val glowRadius = dp(holder.itemView, 1.5f + (5.5f * t))
-        val glowAlpha = (90 + (150 * t)).toInt().coerceIn(0, 255)
-        val glowColor = ColorUtils.setAlphaComponent(neon, glowAlpha)
+        val glowColor = ColorUtils.setAlphaComponent(neon, (90 + (150 * t)).toInt().coerceIn(0,255))
         holder.score.setShadowLayer(glowRadius, 0f, 0f, glowColor)
         holder.strengthValue.setShadowLayer(glowRadius * 0.7f, 0f, 0f, glowColor)
         holder.itemView.elevation = dp(holder.itemView, if (strength >= 85) 8f else 2f + (4f * t))
