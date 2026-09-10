@@ -1,0 +1,43 @@
+name: Backend Contract Tests
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install backend test dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Compile backend
+        run: python -m compileall app
+
+      - name: Contract and provenance tests
+        run: pytest -q tests
+
+      - name: Verify no real secrets or fake production endpoints are committed
+        run: |
+          set -euo pipefail
+          ! grep -R -n -E 'provider\.example|api\.example\.com|BORSA_UPSTREAM_TOKEN=.{4,}|BORSA_BACKEND_API_KEY=[A-Za-z0-9_-]{20,}' . --exclude-dir=.git --exclude='*.md'
+          grep -Fq 'BORSA_SYMBOLS_URL=' .env.example
+          grep -Fq 'BORSA_HISTORY_URL_TEMPLATE=' .env.example
+          grep -Fq 'LicensedUpstreamProvider' app/provider_adapter.py
+
+      - name: Docker build smoke test
+        run: docker build -t borsatakip-backend-ci .
