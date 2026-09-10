@@ -1,6 +1,7 @@
 package tr.borsatakip.v5.data
 
 import android.content.Context
+import android.os.SystemClock
 import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -26,9 +27,7 @@ class MobileMarketDataProvider(context: Context) : MarketDataProvider {
     override val displayName = "Üretim canlı veri servisi"
 
     override suspend fun scan(onProgress: (done: Int, total: Int) -> Unit): List<Stock> = supervisorScope {
-        require(settings.baseUrl.startsWith("https://")) {
-            "Canlı veri sağlayıcısı yapılandırılmamış."
-        }
+        require(settings.baseUrl.startsWith("https://")) { "Canlı veri sağlayıcısı yapılandırılmamış." }
         val symbols = withContext(Dispatchers.IO) { loadSymbols() }
         require(symbols.isNotEmpty()) { "BIST sembol listesi alınamadı." }
         Log.i(TAG, "[BIST_SCAN] TOTAL=${symbols.size}")
@@ -37,19 +36,14 @@ class MobileMarketDataProvider(context: Context) : MarketDataProvider {
         val done = AtomicInteger(0)
         symbols.map { symbol ->
             async(Dispatchers.IO) {
-                Log.d(TAG, "[BIST_SCAN] SYMBOL=$symbol DATA_REQUEST")
                 val stock = try {
-                    semaphore.withPermit {
-                        withTimeoutOrNull(15_000) { fetchHistory(symbol) }
-                    }
+                    semaphore.withPermit { withTimeoutOrNull(15_000) { fetchHistory(symbol) } }
                 } catch (ce: CancellationException) {
                     throw ce
                 } catch (t: Throwable) {
                     Log.w(TAG, "[BIST_SCAN] SYMBOL_SKIPPED $symbol ${t.message}")
                     null
                 }
-                if (stock != null) Log.d(TAG, "[BIST_SCAN] SYMBOL=$symbol DATA_RECEIVED")
-                else Log.w(TAG, "[BIST_SCAN] SYMBOL_SKIPPED $symbol")
                 val current = done.incrementAndGet()
                 onProgress(current, symbols.size)
                 stock
@@ -75,6 +69,8 @@ class MobileMarketDataProvider(context: Context) : MarketDataProvider {
     private fun fetchHistory(symbol: String): Stock? {
         val encoded = URLEncoder.encode(symbol, "UTF-8")
         val json = getJson("/v1/bist/history/$encoded?range=1y&interval=1d") ?: return null
+        val receivedAt = System.currentTimeMillis()
+        val receivedElapsed = SystemClock.elapsedRealtime()
         val candlesArray = json.optJSONArray("candles") ?: JSONArray()
         val candles = mutableListOf<Candle>()
         for (i in 0 until candlesArray.length()) {
@@ -86,7 +82,7 @@ class MobileMarketDataProvider(context: Context) : MarketDataProvider {
             val close = x.optDouble("close", Double.NaN)
             val volume = x.optDouble("volume", Double.NaN)
             if (ts <= 0 || listOf(open, high, low, close, volume).any { !it.isFinite() }) continue
-            if (high < low || volume < 0.0) continue
+            if (high < low || close <= 0.0 || volume < 0.0) continue
             candles += Candle(ts, open, high, low, close, volume)
         }
         if (candles.size < 220) return null
@@ -94,15 +90,18 @@ class MobileMarketDataProvider(context: Context) : MarketDataProvider {
         val delaySeconds = if (json.has("delaySeconds") && !json.isNull("delaySeconds")) {
             json.optInt("delaySeconds", Int.MAX_VALUE).takeIf { it != Int.MAX_VALUE }
         } else null
+        val exchangeTimestamp = json.optLong("dataTimestamp", 0L)
         return Stock(
             symbol = json.optString("symbol").ifBlank { symbol },
             companyName = json.optString("name").takeIf { it.isNotBlank() },
             candles = sorted,
             source = json.optString("source").ifBlank { displayName },
-            dataTimestamp = json.optLong("dataTimestamp", 0L),
+            dataTimestamp = exchangeTimestamp,
             isRealtime = json.optBoolean("realtime", false),
             delaySeconds = delaySeconds,
-            currentSessionIncluded = json.optBoolean("currentSessionIncluded", false)
+            currentSessionIncluded = json.optBoolean("currentSessionIncluded", false),
+            receivedAt = receivedAt,
+            receivedElapsedRealtime = receivedElapsed
         )
     }
 
