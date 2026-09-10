@@ -14,18 +14,13 @@
         android:paddingTop="16dp"
         android:paddingBottom="12dp">
 
-        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical">
-            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
-                <TextView style="@style/Title" android:text="Fırsat Kontrol" />
-                <TextView android:id="@+id/txtSummary" style="@style/Sub" android:text="LONG / SHORT sonuçları nihai sinyale göre sıralanır." android:layout_marginTop="2dp" />
-            </LinearLayout>
-            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Filtre" android:textColor="@color/blue" android:textStyle="bold" android:padding="8dp" />
-        </LinearLayout>
+        <TextView style="@style/Title" android:text="Fırsat Kontrol" />
+        <TextView android:id="@+id/txtSummary" style="@style/Sub" android:text="LONG / SHORT sonuçları Nihai Sinyal puanına göre sıralanır." android:layout_marginTop="2dp" />
 
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginTop="12dp">
-            <TextView android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:layout_marginEnd="5dp" android:background="@drawable/bg_card" android:gravity="center" android:padding="10dp" android:text="LONG\nYeşil" android:textColor="@color/green" android:textStyle="bold" />
-            <TextView android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:layout_marginHorizontal="5dp" android:background="@drawable/bg_card" android:gravity="center" android:padding="10dp" android:text="SHORT\nKırmızı" android:textColor="@color/red" android:textStyle="bold" />
-            <TextView android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:layout_marginStart="5dp" android:background="@drawable/bg_card" android:gravity="center" android:padding="10dp" android:text="85+\nYüksek Güç" android:textColor="@color/yellow" android:textStyle="bold" />
+            <Button android:id="@+id/btnFilterLong" android:layout_width="0dp" android:layout_weight="1" android:layout_height="48dp" android:layout_marginEnd="5dp" android:text="LONG" android:textStyle="bold" android:textColor="@color/green" />
+            <Button android:id="@+id/btnFilterShort" android:layout_width="0dp" android:layout_weight="1" android:layout_height="48dp" android:layout_marginHorizontal="5dp" android:text="SHORT" android:textStyle="bold" android:textColor="@color/red" />
+            <Button android:id="@+id/btnFilterHighPower" android:layout_width="0dp" android:layout_weight="1" android:layout_height="48dp" android:layout_marginStart="5dp" android:text="85+" android:textStyle="bold" android:textColor="@color/yellow" />
         </LinearLayout>
 
         <Button
