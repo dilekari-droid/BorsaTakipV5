@@ -48,15 +48,6 @@ jobs:
           test -x "$APKSIGNER"
           "$APKSIGNER" verify --verbose --print-certs "$APK" | tee app/build/outputs/final/BorsaTakipV5.1.27-debug-apksigner.txt
 
-      - name: Emulator runtime verifier regression
-        uses: ReactiveCircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          arch: x86_64
-          target: google_apis
-          disable-animations: true
-          script: gradle :app:connectedDebugAndroidTest
-
       - name: Release R8 smoke build
         run: gradle :app:assembleRelease
 
@@ -141,7 +132,7 @@ jobs:
           grep -Fq 'android:allowBackup(0x01010280)=(type 0x12)0x0' /tmp/manifest.txt
           test -f app/build/outputs/mapping/release/mapping.txt
           sha256sum "$APK" | tee app/build/outputs/final/BorsaTakipV5.1.27-debug.sha256
-          echo 'V5.1.27 source/build/static checks and emulator runtime verifier regression passed. Physical-device and live-market tests are not claimed by CI.'
+          echo 'V5.1.27 source/build/static quality checks passed. Physical-device and live-market tests are not claimed by CI.'
 
       - name: Package exact source snapshot
         run: |
@@ -194,3 +185,31 @@ jobs:
             app/build/outputs/final/*.sha256
             app/build/outputs/final/*.txt
           if-no-files-found: error
+
+  runtime-verifier:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Emulator runtime verifier regression
+        uses: ReactiveCircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          script: gradle :app:connectedDebugAndroidTest
