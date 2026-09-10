@@ -15,7 +15,7 @@ object OpportunityEngine {
         }
         if (c.size < 220) return null
 
-        val price = c.last().close
+        val price = stock.quotePrice?.takeIf { it.isFinite() && it > 0.0 } ?: c.last().close
         val prev = c[c.lastIndex - 1].close
         val price20 = c[c.lastIndex - 20].close
         if (!price.isFinite() || price <= 0.0 || !prev.isFinite() || prev <= 0.0 || price20 <= 0.0) return null
@@ -73,7 +73,6 @@ object OpportunityEngine {
         }
 
         val direction = if (longScore >= shortScore) "LONG" else "SHORT"
-        // V5.1.26 sözleşmesi korunur: finalSignalScore için yeni ağırlık/formül icat edilmez.
         val score = maxOf(longScore, shortScore).coerceIn(0, 100)
         val chosenParts = if (direction == "LONG") longParts else shortParts
 
