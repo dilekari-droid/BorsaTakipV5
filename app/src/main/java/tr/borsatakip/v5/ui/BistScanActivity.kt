@@ -12,6 +12,7 @@ import kotlinx.coroutines.launch
 import tr.borsatakip.v5.R
 import tr.borsatakip.v5.data.ProviderRouter
 import tr.borsatakip.v5.data.SettingsStore
+import tr.borsatakip.v5.model.ScanRunStatus
 import tr.borsatakip.v5.scan.BistScanner
 import tr.borsatakip.v5.scan.ScanStatus
 
@@ -55,7 +56,7 @@ class BistScanActivity : BaseActivity() {
             progress.progress = 0
             btn.text = "DURDUR"
             status.text = "BIST veri kaynağına bağlanılıyor..."
-            AppSession.lastOpportunities = emptyList()
+            // V5.1.27: yeni tarama daha başlamadan son başarılı sonuç silinmez.
             refreshSourceLabel()
 
             scanJob = lifecycleScope.launch {
@@ -71,27 +72,31 @@ class BistScanActivity : BaseActivity() {
                                     status.text = "BIST taraması çalışıyor"
                                     debug.text = "ProviderRouter • İşlenen ${state.processed}/${state.total} • Atlanan ${state.skipped}"
                                 }
-                                ScanStatus.COMPLETED -> status.text = "BIST taraması tamamlandı • ${state.results.size} sonuç"
+                                ScanStatus.COMPLETED -> status.text = "BIST taraması tamamlandı • ${state.results.size} sonuç • ${state.scanRun?.status ?: "?"}"
                                 ScanStatus.ERROR -> status.text = "BIST taraması başarısız • ${state.errorMessage ?: "Veri alınamadı"}"
                                 ScanStatus.CANCELLED -> status.text = "Tarama durduruldu"
                             }
                         }
                     }
 
-                    if (finalState.status == ScanStatus.COMPLETED) {
-                        AppSession.lastOpportunities = finalState.results.sortedByDescending { it.finalSignalScore }
+                    if (finalState.status == ScanStatus.COMPLETED && finalState.scanRun?.status == ScanRunStatus.COMPLETE) {
+                        AppSession.lastOpportunities = finalState.results.sortedWith(
+                            compareByDescending<tr.borsatakip.v5.model.Opportunity> { it.finalSignalScore }.thenBy { it.symbol }
+                        )
                         progress.progress = 100
                         txt.text = "${finalState.processed} / ${finalState.total} • %100"
                         status.text = "BIST taraması tamamlandı • ${finalState.results.size} sonuç • Atlanan ${finalState.skipped}"
                         debug.text = "Aktif kaynak: ${settings.lastProviderLabel}\nTradingView veri kaynağı kullanılmadı."
                         startActivity(Intent(this@BistScanActivity, OpportunityActivity::class.java))
+                    } else if (finalState.status == ScanStatus.COMPLETED) {
+                        status.text = "BIST taraması kısmi/eksik tamamlandı • son başarılı tarama korunuyor"
+                        debug.text = "ScanRun=${finalState.scanRun?.status ?: "?"} • sonuçlar kalıcı son başarılı taramayı değiştirmedi."
                     }
-                } catch (ce: CancellationException) {
-                    status.text = "Tarama durduruldu"
-                    throw ce
+                } catch (_: CancellationException) {
+                    status.text = "Tarama durduruldu • son başarılı tarama korunuyor"
                 } catch (t: Throwable) {
                     status.text = "BIST taraması başarısız • ${t.message ?: "Beklenmeyen hata"}"
-                    debug.text = "Sahte/demo/TradingView verisine geçilmedi."
+                    debug.text = "Sahte/demo/TradingView verisine geçilmedi • son başarılı tarama korunuyor."
                 } finally {
                     btn.text = "BIST TARAMASINI BAŞLAT"
                     refreshSourceLabel()
