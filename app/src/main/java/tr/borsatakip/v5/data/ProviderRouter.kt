@@ -26,11 +26,13 @@ class ProviderRouter(context: Context) : MarketDataProvider {
             return fallbackScan(onProgress)
         }
 
+        var primaryFailure: Throwable? = null
         val primaryResult = try {
             primary.scan(onProgress)
         } catch (ce: CancellationException) {
             throw ce
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            primaryFailure = t
             emptyList()
         }
         if (primaryResult.isNotEmpty()) {
@@ -39,7 +41,8 @@ class ProviderRouter(context: Context) : MarketDataProvider {
         }
 
         if (!allowExperimentalFallback()) {
-            throw IllegalStateException("Üretim backend'i veri döndürmedi; deneysel fallback kapalı.")
+            val reason = primaryFailure?.message?.takeIf { it.isNotBlank() } ?: "geçerli veri dönmedi"
+            throw IllegalStateException("Üretim backend taraması tamamlanamadı: $reason. Deneysel fallback kapalı.", primaryFailure)
         }
         return fallbackScan(onProgress)
     }
@@ -84,6 +87,7 @@ class ProviderRouter(context: Context) : MarketDataProvider {
     private fun mark(providerId: String, label: String) {
         settings.lastProviderId = providerId
         settings.lastProviderLabel = label
-        settings.lastProviderTimestamp = System.currentTimeMillis()
+        // Son başarılı tarama zamanı yalnız COMPLETE ScanRun sonunda güncellenir.
+        // Burada cihaz saatini piyasa/tarama zamanı gibi kaydetmeyiz.
     }
 }
