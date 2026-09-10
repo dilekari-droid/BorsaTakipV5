@@ -61,6 +61,9 @@ class OpportunityActivity : BaseActivity() {
         btnLong.setOnClickListener { toggleFilter(OpportunityFilter.LONG) }
         btnShort.setOnClickListener { toggleFilter(OpportunityFilter.SHORT) }
         btnHigh.setOnClickListener { toggleFilter(OpportunityFilter.HIGH_POWER) }
+        findViewById<Button>(R.id.btnSignalHistory).setOnClickListener {
+            startActivity(Intent(this, SignalHistoryActivity::class.java))
+        }
         updateFilterVisuals()
 
         lifecycleScope.launch {
