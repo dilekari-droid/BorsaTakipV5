@@ -1,5 +1,6 @@
 package tr.borsatakip.v5.data
 
+import tr.borsatakip.v5.analysis.CandleSeriesValidator
 import tr.borsatakip.v5.model.Stock
 
 /**
@@ -37,6 +38,13 @@ object RealTimeIntegrityPolicy {
         }
         if (stock.candles.size < 220) {
             return Verdict(false, "Teknik analiz için en az 220 OHLCV mumu gerekli.")
+        }
+        val validation = CandleSeriesValidator.validate(stock.candles)
+        if (validation.candles.size < 220) {
+            return Verdict(false, "Doğrulama sonrasında yeterli OHLCV mumu kalmadı.")
+        }
+        if (validation.inputIssueCount > 0) {
+            return Verdict(false, "Gerçek zamanlı OHLCV serisinde bozuk, tekrarlı veya sırasız kayıt bulundu.")
         }
         val last = stock.candles.lastOrNull()
             ?: return Verdict(false, "OHLCV verisi yok.")
