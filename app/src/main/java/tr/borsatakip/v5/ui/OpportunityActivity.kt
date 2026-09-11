@@ -108,15 +108,16 @@ class OpportunityActivity : BaseActivity() {
                             AppSession.lastOpportunities = results
                             lastSuccessfulRun = run
                             historyStore.save(run, results)
-                            signalHistoryStore.recordCompleteScan(run, results)
-                            applyFilter("SON BAŞARILI TARAMA • ${formatRunTime(run)} • ${results.size} kayıt • Kaynak: ${settings.lastProviderLabel}")
+                            val persisted = signalHistoryStore.recordScan(run, results)
+                            applyFilter("SON BAŞARILI TARAMA • ${formatRunTime(run)} • ${results.size} kayıt • Geçmişe $persisted sinyal yazıldı • Kaynak: ${settings.lastProviderLabel}")
                         }
                         finalState.status == ScanStatus.COMPLETED && run?.status == ScanRunStatus.PARTIAL && finalState.successful > 0 -> {
                             val partial = OpportunityFilterPolicy.apply(finalState.results, OpportunityFilter.ALL)
                             AppSession.lastOpportunities = partial
-                            bindFiltered(partial, "KISMİ TARAMA • Başarılı ${finalState.successful}/${finalState.total} • Hatalı/atlanan ${finalState.skipped} • Son COMPLETE tarama kaydı değiştirilmedi")
+                            val persisted = signalHistoryStore.recordScan(run, partial)
+                            bindFiltered(partial, "KISMİ TARAMA • Başarılı ${finalState.successful}/${finalState.total} • Hatalı/atlanan ${finalState.skipped} • Geçmişe $persisted geçerli sinyal yazıldı • Son COMPLETE tarama kaydı değiştirilmedi")
                         }
-                        finalState.status == ScanStatus.COMPLETED -> bindFiltered(emptyList(), "Tarama tamamlandı ancak başarılı analiz sonucu oluşmadı")
+                        finalState.status == ScanStatus.COMPLETED -> bindFiltered(emptyList(), "Tarama tamamlandı ancak başarılı analiz sonucu oluşmadı • geçmiş kaydı oluşturulmadı")
                     }
                 } catch (_: CancellationException) {
                     summary.text = "Fırsat taraması durduruldu • son başarılı tarama korunuyor"
