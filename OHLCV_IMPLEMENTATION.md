@@ -1,16 +1,16 @@
-# V5.1.27 Gerçek OHLCV Grafik Uygulaması
+# V5.1.29 Gerçek OHLCV Grafik ve Analiz Uygulaması
 
-Bu dalda Hisse Detay ekranındaki eski basit fiyat çizgisi kaldırılmış, gerçek OHLCV verisine dayalı profesyonel teknik grafik eklenmiştir.
+Hisse Detay ekranında gerçek OHLCV verisine dayalı teknik grafik kullanılmaktadır.
 
-- Dönemler: 1G, 1H, 1A, 3A, 1Y.
-- Her dönem seçimi veri kaynağına yeni range/interval isteği gönderir.
+- Dönemler: 3 Dk, 5 Dk, 15 Dk, 1 Saat, 1 Gün, Tüm Zamanlar.
+- Her dönem seçimi veri kaynağına uygun range/interval isteği gönderir.
 - Öncelik HTTPS production backend'dir; açıkça etkinse Yahoo yalnız YEDEK/GECİKMELİ fallback olarak kullanılır.
-- Candlestick, EMA20/50/200, hacim, RSI14, MACD/Signal/Histogram aynı doğrulanmış OHLCV dizisinden hesaplanır.
+- Candlestick, EMA20/50/200, hacim, RSI14, MACD/Signal/Histogram ve LRC aynı doğrulanmış OHLCV dizisinden hesaplanır.
+- LRC100 varsayılan ±2σ ana kanalı, Pearson R ve normalize eğim bilgisi desteklenir.
 - Geçersiz OHLC kayıtları çizilmez; timestamp tekrarları tekilleştirilir.
 - Yatay kaydırma, pinch zoom ve mum seçimi desteklenir.
 - Canlı olmayan veri CANLI etiketi almaz.
+- Gecikmeli/yedek veri gerçek zamanlı AL/SAT sinyali üretmez; yalnız teknik araştırma adayı olabilir.
 - Sahte mum, fiyat, hacim veya indikatör üretilmez.
 
 Kabul notu: Derleme ve runtime doğrulaması başarısızsa özellik TAMAMLANDI olarak raporlanmamalıdır.
-
-CI tetikleme notu: Bu revizyon PR doğrulama derlemesini ve kaynak paketlemesini yeniden tetiklemek için güncellenmiştir.
