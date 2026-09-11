@@ -1,4 +1,4 @@
-# BORSA TAKİP V5.1.1
+# BORSA TAKİP V5.1.27
 
 Android/Kotlin tabanlı BIST ve VİOP takip uygulaması.
 
@@ -47,4 +47,4 @@ Bu secret'lar yoksa workflow yalnızca debug APK üretir. Aynı `applicationId` 
 
 ## Derleme
 
-`main` dalına her gönderim `Android Build` workflow'unu çalıştırır. Release secret'ları tanımlıysa artifact içinde `BorsaTakipV5.1.1-release.apk`, tanımlı değilse `BorsaTakipV5.1.1-debug.apk` bulunur.
+`main` dalına her gönderim `Android Build` workflow'unu çalıştırır. Release secret'ları tanımlıysa artifact içinde `BorsaTakipV5.1.27-release.apk`, tanımlı değilse `BorsaTakipV5.1.27-debug.apk` bulunur.

@@ -1,6 +1,7 @@
 package tr.borsatakip.v5.data
 
 import android.content.Context
+import android.os.SystemClock
 import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -26,9 +27,7 @@ class MobileMarketDataProvider(context: Context) : MarketDataProvider {
     override val displayName = "Üretim canlı veri servisi"
 
     override suspend fun scan(onProgress: (done: Int, total: Int) -> Unit): List<Stock> = supervisorScope {
-        require(settings.baseUrl.startsWith("https://")) {
-            "Canlı veri sağlayıcısı yapılandırılmamış."
-        }
+        require(settings.baseUrl.startsWith("https://")) { "Canlı veri sağlayıcısı yapılandırılmamış." }
         val symbols = withContext(Dispatchers.IO) { loadSymbols() }
         require(symbols.isNotEmpty()) { "BIST sembol listesi alınamadı." }
         Log.i(TAG, "[BIST_SCAN] TOTAL=${symbols.size}")
@@ -37,19 +36,14 @@ class MobileMarketDataProvider(context: Context) : MarketDataProvider {
         val done = AtomicInteger(0)
         symbols.map { symbol ->
             async(Dispatchers.IO) {
-                Log.d(TAG, "[BIST_SCAN] SYMBOL=$symbol DATA_REQUEST")
                 val stock = try {
-                    semaphore.withPermit {
-                        withTimeoutOrNull(15_000) { fetchHistory(symbol) }
-                    }
+                    semaphore.withPermit { withTimeoutOrNull(15_000) { fetchHistory(symbol) } }
                 } catch (ce: CancellationException) {
                     throw ce
                 } catch (t: Throwable) {
                     Log.w(TAG, "[BIST_SCAN] SYMBOL_SKIPPED $symbol ${t.message}")
                     null
                 }
-                if (stock != null) Log.d(TAG, "[BIST_SCAN] SYMBOL=$symbol DATA_RECEIVED")
-                else Log.w(TAG, "[BIST_SCAN] SYMBOL_SKIPPED $symbol")
                 val current = done.incrementAndGet()
                 onProgress(current, symbols.size)
                 stock
@@ -66,15 +60,23 @@ class MobileMarketDataProvider(context: Context) : MarketDataProvider {
         val json = getJson("/v1/bist/symbols") ?: return emptyList()
         val items = json.optJSONArray("items") ?: return emptyList()
         val symbols = (0 until items.length())
-            .mapNotNull { i -> items.optString(i).trim().uppercase().takeIf { it.matches(Regex("[A-Z0-9]{3,12}")) } }
+            .mapNotNull { i -> items.optString(i).trim().uppercase().takeIf { it.matches(Regex("[A-Z0-9_]{3,12}")) } }
             .distinct()
-        if (symbols.isNotEmpty()) settings.cachedBistSymbols = symbols.toSet()
+        if (symbols.isNotEmpty()) {
+            settings.cachedBistSymbols = symbols.toSet()
+            settings.cachedBistSymbolCount = symbols.size
+            settings.cachedBistSymbolsFetchedAt = System.currentTimeMillis()
+            settings.cachedBistSymbolsProviderId = json.optString("source").ifBlank { displayName }
+        }
         return symbols
     }
 
     private fun fetchHistory(symbol: String): Stock? {
         val encoded = URLEncoder.encode(symbol, "UTF-8")
+        val quote = getJson("/v1/bist/quote/$encoded") ?: return null
         val json = getJson("/v1/bist/history/$encoded?range=1y&interval=1d") ?: return null
+        val receivedAt = System.currentTimeMillis()
+        val receivedElapsed = SystemClock.elapsedRealtime()
         val candlesArray = json.optJSONArray("candles") ?: JSONArray()
         val candles = mutableListOf<Candle>()
         for (i in 0 until candlesArray.length()) {
@@ -86,23 +88,30 @@ class MobileMarketDataProvider(context: Context) : MarketDataProvider {
             val close = x.optDouble("close", Double.NaN)
             val volume = x.optDouble("volume", Double.NaN)
             if (ts <= 0 || listOf(open, high, low, close, volume).any { !it.isFinite() }) continue
-            if (high < low || volume < 0.0) continue
+            if (high < low || close <= 0.0 || volume < 0.0) continue
             candles += Candle(ts, open, high, low, close, volume)
         }
         if (candles.size < 220) return null
         val sorted = candles.sortedBy { it.timestamp }
-        val delaySeconds = if (json.has("delaySeconds") && !json.isNull("delaySeconds")) {
-            json.optInt("delaySeconds", Int.MAX_VALUE).takeIf { it != Int.MAX_VALUE }
+        val delaySeconds = if (quote.has("delaySeconds") && !quote.isNull("delaySeconds")) {
+            quote.optInt("delaySeconds", Int.MAX_VALUE).takeIf { it != Int.MAX_VALUE }
         } else null
+        val exchangeTimestamp = quote.optLong("exchangeTimestamp", 0L)
+        val marketPrice = quote.optDouble("price", Double.NaN).takeIf { it.isFinite() && it > 0.0 } ?: return null
+        val returnedQuoteSymbol = quote.optString("symbol").trim().uppercase()
+        if (returnedQuoteSymbol != symbol) return null
         return Stock(
             symbol = json.optString("symbol").ifBlank { symbol },
             companyName = json.optString("name").takeIf { it.isNotBlank() },
             candles = sorted,
-            source = json.optString("source").ifBlank { displayName },
-            dataTimestamp = json.optLong("dataTimestamp", 0L),
-            isRealtime = json.optBoolean("realtime", false),
+            source = quote.optString("source").ifBlank { displayName },
+            dataTimestamp = exchangeTimestamp,
+            isRealtime = quote.optBoolean("realtime", false),
             delaySeconds = delaySeconds,
-            currentSessionIncluded = json.optBoolean("currentSessionIncluded", false)
+            currentSessionIncluded = quote.optBoolean("currentSessionIncluded", false),
+            receivedAt = receivedAt,
+            receivedElapsedRealtime = receivedElapsed,
+            marketPrice = marketPrice
         )
     }
 
