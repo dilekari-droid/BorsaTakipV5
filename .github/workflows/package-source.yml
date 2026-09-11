@@ -1,0 +1,30 @@
+name: Package Source
+
+on:
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Package source
+        run: |
+          set -euo pipefail
+          zip -r BorsaTakipV5.1.27-scan-fix-source.zip . \
+            -x '.git/*' \
+               'app/build/*' \
+               '.gradle/*' \
+               '**/.gradle/*' \
+               '**/build/*'
+
+      - name: Upload source artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BorsaTakipV5.1.27-scan-fix-source
+          path: BorsaTakipV5.1.27-scan-fix-source.zip
+          if-no-files-found: error
