@@ -60,6 +60,18 @@ class SettingsStore(c: Context) {
         get() = p.getLong("last_provider_timestamp", 0L)
         set(v) = p.edit().putLong("last_provider_timestamp", v).apply()
 
+    var lastProviderState: String
+        get() = p.getString("last_provider_state", "PROVIDER_NOT_CONFIGURED") ?: "PROVIDER_NOT_CONFIGURED"
+        set(v) = p.edit().putString("last_provider_state", v).apply()
+
+    var lastProviderFailureCode: String
+        get() = p.getString("last_provider_failure_code", "") ?: ""
+        set(v) = p.edit().putString("last_provider_failure_code", v).apply()
+
+    var lastProviderMessage: String
+        get() = p.getString("last_provider_message", "") ?: ""
+        set(v) = p.edit().putString("last_provider_message", v).apply()
+
     var cachedBistSymbols: Set<String>
         get() = p.getStringSet("cached_bist_symbols", emptySet())?.toSet().orEmpty()
         set(v) = p.edit().putStringSet("cached_bist_symbols", v).apply()
