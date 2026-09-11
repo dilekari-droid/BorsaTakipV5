@@ -115,3 +115,61 @@ data class ViopContract(
     val validity:SignalValidity = SignalValidity.WATCH,
     val validityReason:String = "Sözleşme doğrulanmadı."
 ) { val exchangeTimestamp:Long get() = dataTimestamp }
+
+data class ViopQuote(
+    val symbol:String,
+    val price:Double,
+    val bid:Double?,
+    val ask:Double?,
+    val dailyChangePct:Double?,
+    val volume:Double?,
+    val openInterest:Long?,
+    val exchangeTimestamp:Long,
+    val receivedAt:Long,
+    val source:String,
+    val realtime:Boolean,
+    val delaySeconds:Int?,
+    val currentSessionIncluded:Boolean
+)
+
+data class ViopOpportunity(
+    val contract:ViopContract,
+    val quote:ViopQuote,
+    val candles:List<Candle>,
+    val technical:TechnicalSnapshot,
+    val technicalScore:Int,
+    val riskScore:Int,
+    val liquidityScore:Int,
+    val expiryRisk:Int,
+    val longScore:Int,
+    val shortScore:Int,
+    val finalScore:Int,
+    val direction:String,
+    val signalReason:String,
+    val validity:SignalValidity,
+    val dataAgeMs:Long,
+    val historyCandleCount:Int
+)
+
+data class ViopScanError(val symbol:String, val code:String, val reason:String)
+
+data class ViopScanProgress(
+    val total:Int = 0,
+    val quoteSuccess:Int = 0,
+    val historySuccess:Int = 0,
+    val analyzed:Int = 0,
+    val insufficient:Int = 0,
+    val eliminated:Int = 0,
+    val failed:Int = 0,
+    val longCount:Int = 0,
+    val shortCount:Int = 0
+)
+
+data class ViopScanResult(
+    val opportunities:List<ViopOpportunity>,
+    val errors:List<ViopScanError>,
+    val progress:ViopScanProgress,
+    val startedAt:Long,
+    val completedAt:Long,
+    val status:ScanRunStatus
+)
