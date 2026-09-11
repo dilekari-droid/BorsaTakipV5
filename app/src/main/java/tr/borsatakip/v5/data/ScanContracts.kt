@@ -14,6 +14,7 @@ enum class ProviderSymbolStatus {
     NETWORK_ERROR,
     PARSE_ERROR,
     DATA_INSUFFICIENT,
+    DATA_UNAVAILABLE,
     UNKNOWN_ERROR
 }
 
