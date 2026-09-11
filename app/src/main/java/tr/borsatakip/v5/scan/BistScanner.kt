@@ -28,6 +28,7 @@ enum class SymbolTerminalStatus {
     NETWORK_ERROR,
     PARSE_ERROR,
     DATA_INSUFFICIENT,
+    DATA_UNAVAILABLE,
     INTEGRITY_REJECTED,
     ANALYSIS_ERROR,
     UNKNOWN_ERROR
@@ -56,6 +57,7 @@ data class ScanState(
     val networkErrors: Int = 0,
     val parseErrors: Int = 0,
     val dataInsufficient: Int = 0,
+    val dataUnavailable: Int = 0,
     val integrityRejected: Int = 0,
     val analysisErrors: Int = 0,
     val noSignal: Int = 0,
@@ -65,10 +67,6 @@ data class ScanState(
     val errorMessage: String? = null
 )
 
-/**
- * Her sembol terminal duruma ulaşır. null/filterNotNull ile sessiz atlama yapılmaz.
- * Provider hataları, veri bütünlüğü reddi, analiz hatası ve sinyal yok durumu ayrı tutulur.
- */
 class BistScanner(private val provider: MarketDataProvider) {
 
     suspend fun scan(onState: (ScanState) -> Unit): ScanState {
@@ -96,10 +94,8 @@ class BistScanner(private val provider: MarketDataProvider) {
             }
 
             val normalized = normalizeProviderResults(report.results, total)
-            val fetchFailures = normalized.filter { it.status != ProviderSymbolStatus.SUCCESS }
-                .map { it.toTerminal() }
-            val stocks = normalized.filter { it.status == ProviderSymbolStatus.SUCCESS }
-                .mapNotNull { it.stock }
+            val fetchFailures = normalized.filter { it.status != ProviderSymbolStatus.SUCCESS }.map { it.toTerminal() }
+            val stocks = normalized.filter { it.status == ProviderSymbolStatus.SUCCESS }.mapNotNull { it.stock }
 
             val terminalResults = Collections.synchronizedList(fetchFailures.toMutableList())
             val analyzedDone = AtomicInteger(0)
@@ -128,8 +124,7 @@ class BistScanner(private val provider: MarketDataProvider) {
             }
 
             val allTerminals = (fetchFailures + analysisResults).sortedBy { it.symbol }
-            val opportunities = allTerminals.mapNotNull { it.opportunity }
-                .sortedByDescending { it.finalSignalScore }
+            val opportunities = allTerminals.mapNotNull { it.opportunity }.sortedByDescending { it.finalSignalScore }
 
             val finalState = buildState(
                 status = ScanStatus.COMPLETED,
@@ -139,7 +134,7 @@ class BistScanner(private val provider: MarketDataProvider) {
                 terminals = allTerminals,
                 results = opportunities
             )
-            Log.i(TAG, "[BIST_SCAN] COMPLETE total=$total terminal=${allTerminals.size} signal=${finalState.signalCount} noSignal=${finalState.noSignal} timeout=${finalState.timeout} http=${finalState.httpErrors} rateLimit=${finalState.rateLimited} insufficient=${finalState.dataInsufficient} integrity=${finalState.integrityRejected} analysis=${finalState.analysisErrors}")
+            Log.i(TAG, "[BIST_SCAN] COMPLETE total=$total terminal=${allTerminals.size} data=$successfulDataCount signal=${finalState.signalCount} noSignal=${finalState.noSignal} timeout=${finalState.timeout} rateLimit=${finalState.rateLimited} http=${finalState.httpErrors} network=${finalState.networkErrors} parse=${finalState.parseErrors} insufficient=${finalState.dataInsufficient} unavailable=${finalState.dataUnavailable} integrity=${finalState.integrityRejected} analysis=${finalState.analysisErrors}")
             onState(finalState)
             finalState
         } catch (ce: CancellationException) {
@@ -182,48 +177,30 @@ class BistScanner(private val provider: MarketDataProvider) {
             validateDelayedHistorical(stock)
         }
         if (integrityError != null) {
-            return SymbolTerminalResult(
-                symbol = stock.symbol,
-                status = SymbolTerminalStatus.INTEGRITY_REJECTED,
-                errorMessage = integrityError
-            )
+            return SymbolTerminalResult(stock.symbol, SymbolTerminalStatus.INTEGRITY_REJECTED, errorMessage = integrityError)
         }
         return try {
             val opportunity = OpportunityEngine.score(stock)
             when {
                 opportunity == null -> SymbolTerminalResult(
-                    symbol = stock.symbol,
-                    status = if (stock.candles.size < MIN_CANDLES) SymbolTerminalStatus.DATA_INSUFFICIENT else SymbolTerminalStatus.ANALYSIS_ERROR,
+                    stock.symbol,
+                    if (stock.candles.size < MIN_CANDLES) SymbolTerminalStatus.DATA_INSUFFICIENT else SymbolTerminalStatus.ANALYSIS_ERROR,
                     errorMessage = if (stock.candles.size < MIN_CANDLES) "Teknik analiz için mum sayısı yetersiz" else "Teknik analiz geçerli sonuç üretmedi"
                 )
                 opportunity.finalSignalScore < SIGNAL_THRESHOLD -> SymbolTerminalResult(
-                    symbol = stock.symbol,
-                    status = SymbolTerminalStatus.NO_SIGNAL,
-                    opportunity = null,
+                    stock.symbol,
+                    SymbolTerminalStatus.NO_SIGNAL,
                     errorMessage = "Nihai sinyal eşiği altında: ${opportunity.finalSignalScore}/100"
                 )
-                else -> SymbolTerminalResult(
-                    symbol = stock.symbol,
-                    status = SymbolTerminalStatus.SIGNAL,
-                    opportunity = opportunity
-                )
+                else -> SymbolTerminalResult(stock.symbol, SymbolTerminalStatus.SIGNAL, opportunity = opportunity)
             }
         } catch (ce: CancellationException) {
             throw ce
         } catch (t: Throwable) {
-            SymbolTerminalResult(
-                symbol = stock.symbol,
-                status = SymbolTerminalStatus.ANALYSIS_ERROR,
-                errorMessage = t.message ?: t.javaClass.simpleName
-            )
+            SymbolTerminalResult(stock.symbol, SymbolTerminalStatus.ANALYSIS_ERROR, errorMessage = t.message ?: t.javaClass.simpleName)
         }
     }
 
-    /**
-     * Yedek/gecikmeli sağlayıcılar canlı veri olarak kabul edilmez; ancak yeterli ve güncel
-     * günlük OHLCV geçmişi varsa teknik tarama yapılabilir. Sonuçlar Opportunity üzerinde
-     * isRealtime=false kaldığı için UI'da CANLI etiketi alamaz.
-     */
     private fun validateDelayedHistorical(stock: Stock): String? {
         if (stock.candles.size < MIN_CANDLES) return "Teknik analiz için en az $MIN_CANDLES OHLCV mumu gerekli."
         if (stock.dataTimestamp <= 0L) return "Gecikmeli verinin zaman bilgisi yok."
@@ -231,12 +208,8 @@ class BistScanner(private val provider: MarketDataProvider) {
         if (age < -15_000L) return "Veri zamanı cihaz saatinden ileride."
         if (age > MAX_DELAYED_DATA_AGE_MS) return "Gecikmeli veri çok eski: ${age / 86_400_000L} gün."
         val last = stock.candles.lastOrNull() ?: return "OHLCV verisi yok."
-        if (listOf(last.open, last.high, last.low, last.close, last.volume).any { !it.isFinite() }) {
-            return "Son OHLCV kaydı geçersiz."
-        }
-        if (last.close <= 0.0 || last.high < last.low || last.volume < 0.0) {
-            return "Son OHLCV kaydı piyasa kurallarına uymuyor."
-        }
+        if (listOf(last.open, last.high, last.low, last.close, last.volume).any { !it.isFinite() }) return "Son OHLCV kaydı geçersiz."
+        if (last.close <= 0.0 || last.high < last.low || last.volume < 0.0) return "Son OHLCV kaydı piyasa kurallarına uymuyor."
         return null
     }
 
@@ -265,14 +238,13 @@ class BistScanner(private val provider: MarketDataProvider) {
         val signal = count(SymbolTerminalStatus.SIGNAL)
         val noSignal = count(SymbolTerminalStatus.NO_SIGNAL)
         val successful = signal + noSignal
-        val skipped = terminalCount - successful
         return ScanState(
             status = status,
             progress = safeProgress(processed, total),
             processed = processed,
             total = total,
             successful = successful,
-            skipped = skipped.coerceAtLeast(0),
+            skipped = (terminalCount - successful).coerceAtLeast(0),
             dataReceived = dataReceived,
             timeout = count(SymbolTerminalStatus.TIMEOUT),
             rateLimited = count(SymbolTerminalStatus.RATE_LIMIT),
@@ -280,6 +252,7 @@ class BistScanner(private val provider: MarketDataProvider) {
             networkErrors = count(SymbolTerminalStatus.NETWORK_ERROR),
             parseErrors = count(SymbolTerminalStatus.PARSE_ERROR),
             dataInsufficient = count(SymbolTerminalStatus.DATA_INSUFFICIENT),
+            dataUnavailable = count(SymbolTerminalStatus.DATA_UNAVAILABLE),
             integrityRejected = count(SymbolTerminalStatus.INTEGRITY_REJECTED),
             analysisErrors = count(SymbolTerminalStatus.ANALYSIS_ERROR) + count(SymbolTerminalStatus.UNKNOWN_ERROR),
             noSignal = noSignal,
@@ -312,6 +285,7 @@ class BistScanner(private val provider: MarketDataProvider) {
             ProviderSymbolStatus.NETWORK_ERROR -> SymbolTerminalStatus.NETWORK_ERROR
             ProviderSymbolStatus.PARSE_ERROR -> SymbolTerminalStatus.PARSE_ERROR
             ProviderSymbolStatus.DATA_INSUFFICIENT -> SymbolTerminalStatus.DATA_INSUFFICIENT
+            ProviderSymbolStatus.DATA_UNAVAILABLE -> SymbolTerminalStatus.DATA_UNAVAILABLE
             ProviderSymbolStatus.UNKNOWN_ERROR -> SymbolTerminalStatus.UNKNOWN_ERROR
         }
         return SymbolTerminalResult(symbol, mapped, attempt = attempt, httpCode = httpCode, errorMessage = errorMessage)
