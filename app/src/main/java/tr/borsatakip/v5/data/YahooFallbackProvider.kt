@@ -1,97 +1,203 @@
 package tr.borsatakip.v5.data
 
 import android.content.Context
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import org.json.JSONException
 import org.json.JSONObject
 import tr.borsatakip.v5.BuildConfig
 import tr.borsatakip.v5.model.Candle
 import tr.borsatakip.v5.model.Stock
+import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
+import java.util.concurrent.atomic.AtomicInteger
 
-/**
- * Yalnızca yedek/gecikmeli veri sağlayıcısıdır. Ana sağlayıcı başarısız olduğunda ve kullanıcı
- * Ayarlar'da yedeği açık bıraktığında devreye girer. Canlı veri olarak etiketlenmez.
- *
- * Önemli: Sabit 28 hisselik bir evren kullanmaz. Yalnızca ana sağlayıcıdan daha önce başarıyla
- * alınmış dinamik BIST sembol önbelleğini kullanır. Böylece yedek kaynak da ana sağlayıcının
- * gerçek sembol evrenine bağlı kalır.
- */
+/** Deneysel yedek/gecikmeli veri sağlayıcısıdır. Hiçbir zaman REALTIME olarak etiketlenmez. */
 class YahooFallbackProvider(context: Context) : MarketDataProvider {
     private val settings = SettingsStore(context)
     override val id = "yahoo_fallback"
     override val displayName = "Yahoo Finance • YEDEK / GECİKMELİ"
 
-    override suspend fun scan(onProgress: (done: Int, total: Int) -> Unit): List<Stock> = coroutineScope {
-        val symbols = settings.cachedBistSymbols.toList().sorted()
-        require(symbols.isNotEmpty()) {
-            "Dinamik BIST sembol önbelleği boş. Önce ana mobil veri sağlayıcısından /v1/bist/symbols alınmalıdır."
-        }
+    override suspend fun scan(onProgress: (done: Int, total: Int) -> Unit): List<Stock> =
+        scanDetailed { _, done, total -> onProgress(done, total) }.successfulStocks
 
-        val semaphore = Semaphore(6)
-        var done = 0
-        symbols.map { symbol ->
+    override suspend fun scanDetailed(
+        onProgress: (result: ProviderSymbolResult, done: Int, total: Int) -> Unit
+    ): ProviderScanReport = coroutineScope {
+        val symbols = loadSymbols()
+        require(symbols.isNotEmpty()) {
+            "BIST sembol evreni alınamadı. İnternet bağlantısını kontrol edin veya Production backend yapılandırın."
+        }
+        // Yahoo yedek servisinde 429 riskini azaltmak için bilinçli olarak düşük tutulur.
+        val semaphore = Semaphore(MAX_CONCURRENCY)
+        val done = AtomicInteger(0)
+        val results = symbols.map { symbol ->
             async(Dispatchers.IO) {
-                val stock = semaphore.withPermit { fetch(symbol) }
-                synchronized(this@YahooFallbackProvider) {
-                    done++
-                    onProgress(done, symbols.size)
-                }
-                stock
+                val result = semaphore.withPermit { fetchWithRetry(symbol) }
+                val current = done.incrementAndGet()
+                onProgress(result, current, symbols.size)
+                result
             }
-        }.awaitAll().filterNotNull()
+        }.awaitAll()
+        ProviderScanReport(symbols.size, results)
     }
 
     override suspend fun fetchOne(symbol: String): Stock? = withContext(Dispatchers.IO) {
-        fetch(symbol.trim().uppercase())
+        fetchWithRetry(symbol.trim().uppercase()).stock
     }
 
-    private fun fetch(symbol: String): Stock? {
+    private suspend fun loadSymbols(): List<String> = withContext(Dispatchers.IO) {
+        val cached = settings.cachedBistSymbols.map { it.trim().uppercase() }
+            .filter { it.matches(SYMBOL_REGEX) }.distinct().sorted()
+        if (cached.isNotEmpty()) return@withContext cached
+        val discovered = discoverBistSymbols()
+        if (discovered.isNotEmpty()) settings.cachedBistSymbols = discovered.toSet()
+        discovered
+    }
+
+    private fun discoverBistSymbols(): List<String> {
+        var con: HttpURLConnection? = null
+        return try {
+            con = URL("https://m.doviz.com/borsa/hisseler").openConnection() as HttpURLConnection
+            con.requestMethod = "GET"
+            con.connectTimeout = 8_000
+            con.readTimeout = 12_000
+            con.instanceFollowRedirects = true
+            con.setRequestProperty("Accept", "text/html,application/xhtml+xml")
+            con.setRequestProperty("User-Agent", "Mozilla/5.0 BorsaTakip/${BuildConfig.VERSION_NAME} Android")
+            if (con.responseCode !in 200..299) return emptyList()
+            val html = con.inputStream.bufferedReader().use { it.readText() }
+            val regex = Regex("(?:https://borsa\\.doviz\\.com)?/hisseler/([a-z0-9_]{3,12})-", RegexOption.IGNORE_CASE)
+            regex.findAll(html).mapNotNull { it.groupValues.getOrNull(1)?.trim()?.uppercase()?.takeIf { s -> s.matches(SYMBOL_REGEX) } }
+                .distinct().sorted().toList()
+        } catch (_: Exception) {
+            emptyList()
+        } finally { runCatching { con?.disconnect() } }
+    }
+
+    private suspend fun fetchWithRetry(symbol: String): ProviderSymbolResult {
+        var last: ProviderSymbolResult? = null
+        for (attempt in 1..MAX_ATTEMPTS) {
+            var retryDelay = backoffMs(attempt)
+            try {
+                val stock = withTimeout(SYMBOL_TIMEOUT_MS) { fetchOrThrow(symbol) }
+                return ProviderSymbolResult(symbol, ProviderSymbolStatus.SUCCESS, stock, attempt)
+            } catch (t: TimeoutCancellationException) {
+                last = ProviderSymbolResult(symbol, ProviderSymbolStatus.TIMEOUT, attempt = attempt, errorMessage = "Yahoo isteği zaman aşımına uğradı")
+            } catch (ce: CancellationException) {
+                throw ce
+            } catch (e: DataInsufficientException) {
+                return ProviderSymbolResult(symbol, ProviderSymbolStatus.DATA_INSUFFICIENT, attempt = attempt, errorMessage = e.message)
+            } catch (e: HttpStatusException) {
+                val status = if (e.statusCode == 429) ProviderSymbolStatus.RATE_LIMIT else ProviderSymbolStatus.HTTP_ERROR
+                last = ProviderSymbolResult(symbol, status, attempt = attempt, httpCode = e.statusCode, errorMessage = e.message)
+                // 400/404 gibi kalıcı hatalar yeniden denenmez.
+                if (!isRetryableHttp(e.statusCode)) return last
+                retryDelay = maxOf(retryDelay, e.retryAfterMs ?: 0L)
+            } catch (e: JSONException) {
+                return ProviderSymbolResult(symbol, ProviderSymbolStatus.PARSE_ERROR, attempt = attempt, errorMessage = e.message)
+            } catch (e: IOException) {
+                last = ProviderSymbolResult(symbol, ProviderSymbolStatus.NETWORK_ERROR, attempt = attempt, errorMessage = e.message)
+            } catch (t: Throwable) {
+                last = ProviderSymbolResult(symbol, ProviderSymbolStatus.UNKNOWN_ERROR, attempt = attempt, errorMessage = t.message)
+            }
+            if (attempt < MAX_ATTEMPTS) delay(retryDelay)
+        }
+        return last ?: ProviderSymbolResult(symbol, ProviderSymbolStatus.UNKNOWN_ERROR, attempt = MAX_ATTEMPTS, errorMessage = "Bilinmeyen Yahoo hatası")
+    }
+
+    private fun fetchOrThrow(symbol: String): Stock {
         val encoded = URLEncoder.encode("$symbol.IS", "UTF-8")
         val con = URL("https://query1.finance.yahoo.com/v8/finance/chart/$encoded?range=1y&interval=1d&events=history")
             .openConnection() as HttpURLConnection
-        con.connectTimeout = 7000
-        con.readTimeout = 7000
+        con.connectTimeout = 7_000
+        con.readTimeout = 7_000
+        con.setRequestProperty("Accept", "application/json")
         con.setRequestProperty("User-Agent", "Mozilla/5.0 BorsaTakip/${BuildConfig.VERSION_NAME} Android")
-        return try {
-            if (con.responseCode !in 200..299) return null
-            parse(con.inputStream.bufferedReader().use { it.readText() }, symbol)
-        } catch (_: Exception) {
-            null
-        } finally {
-            con.disconnect()
-        }
+        try {
+            val code = con.responseCode
+            if (code !in 200..299) {
+                val retryAfterMs = parseRetryAfterMs(con.getHeaderField("Retry-After"))
+                throw HttpStatusException(code, retryAfterMs, "HTTP $code")
+            }
+            val body = con.inputStream.bufferedReader().use { it.readText() }
+            return parseOrThrow(body, symbol)
+        } finally { con.disconnect() }
     }
 
-    private fun parse(json: String, fallback: String): Stock? {
-        val r = JSONObject(json).optJSONObject("chart")?.optJSONArray("result")?.optJSONObject(0) ?: return null
-        val ts = r.optJSONArray("timestamp") ?: return null
-        val q = r.optJSONObject("indicators")?.optJSONArray("quote")?.optJSONObject(0) ?: return null
-        val o = q.optJSONArray("open") ?: return null
-        val h = q.optJSONArray("high") ?: return null
-        val l = q.optJSONArray("low") ?: return null
-        val c = q.optJSONArray("close") ?: return null
-        val v = q.optJSONArray("volume") ?: return null
+    private fun parseOrThrow(json: String, fallback: String): Stock {
+        val r = JSONObject(json).optJSONObject("chart")?.optJSONArray("result")?.optJSONObject(0)
+            ?: throw JSONException("Yahoo chart.result bulunamadı")
+        val ts = r.optJSONArray("timestamp") ?: throw JSONException("timestamp bulunamadı")
+        val q = r.optJSONObject("indicators")?.optJSONArray("quote")?.optJSONObject(0)
+            ?: throw JSONException("quote bulunamadı")
+        val o = q.optJSONArray("open") ?: throw JSONException("open bulunamadı")
+        val h = q.optJSONArray("high") ?: throw JSONException("high bulunamadı")
+        val l = q.optJSONArray("low") ?: throw JSONException("low bulunamadı")
+        val c = q.optJSONArray("close") ?: throw JSONException("close bulunamadı")
+        val v = q.optJSONArray("volume") ?: throw JSONException("volume bulunamadı")
         val candles = mutableListOf<Candle>()
         for (i in 0 until ts.length()) {
             if (o.isNull(i) || h.isNull(i) || l.isNull(i) || c.isNull(i) || v.isNull(i)) continue
-            candles += Candle(ts.getLong(i) * 1000, o.getDouble(i), h.getDouble(i), l.getDouble(i), c.getDouble(i), v.getDouble(i))
+            val candle = Candle(ts.getLong(i) * 1000, o.getDouble(i), h.getDouble(i), l.getDouble(i), c.getDouble(i), v.getDouble(i))
+            if (listOf(candle.open, candle.high, candle.low, candle.close, candle.volume).any { !it.isFinite() }) continue
+            if (candle.open <= 0.0 || candle.high <= 0.0 || candle.low <= 0.0 || candle.close <= 0.0 || candle.volume < 0.0) continue
+            if (candle.high < maxOf(candle.open, candle.close) || candle.low > minOf(candle.open, candle.close) || candle.high < candle.low) continue
+            candles += candle
         }
-        if (candles.size < 220) return null
+        if (candles.size < MIN_CANDLES) throw DataInsufficientException("En az $MIN_CANDLES mum gerekli; ${candles.size} mum alındı")
+        val sorted = candles.sortedBy { it.timestamp }.distinctBy { it.timestamp }
         val meta = r.optJSONObject("meta")
         return Stock(
             symbol = fallback,
             companyName = meta?.optString("longName")?.takeIf { it.isNotBlank() },
-            candles = candles,
+            candles = sorted,
             source = displayName,
-            dataTimestamp = candles.last().timestamp
+            dataTimestamp = sorted.last().timestamp,
+            isRealtime = false,
+            delaySeconds = null,
+            currentSessionIncluded = false
         )
+    }
+
+    private fun isRetryableHttp(code: Int): Boolean = code == 408 || code == 429 || code in 500..599
+
+    private fun backoffMs(attempt: Int): Long = when (attempt) {
+        1 -> 1_000L
+        2 -> 2_500L
+        else -> 5_000L
+    }
+
+    private fun parseRetryAfterMs(value: String?): Long? {
+        val seconds = value?.trim()?.toLongOrNull() ?: return null
+        return (seconds * 1_000L).coerceIn(0L, MAX_RETRY_AFTER_MS)
+    }
+
+    private class HttpStatusException(
+        val statusCode: Int,
+        val retryAfterMs: Long?,
+        message: String
+    ) : IOException(message)
+
+    private class DataInsufficientException(message: String) : IllegalStateException(message)
+
+    companion object {
+        private val SYMBOL_REGEX = Regex("[A-Z0-9_]{3,12}")
+        private const val MAX_CONCURRENCY = 3
+        private const val MAX_ATTEMPTS = 3
+        private const val MIN_CANDLES = 220
+        private const val SYMBOL_TIMEOUT_MS = 15_000L
+        private const val MAX_RETRY_AFTER_MS = 30_000L
     }
 }
