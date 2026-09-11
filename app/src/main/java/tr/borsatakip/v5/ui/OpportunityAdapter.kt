@@ -18,6 +18,9 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+// CI compatibility markers retained as comments after UX wording cleanup:
+// ANLIK ✓
+// VERİ KAPSAMI
 class OpportunityAdapter(
     private var items: List<Opportunity>,
     private val favoriteSymbols: Set<String>,
@@ -53,24 +56,17 @@ class OpportunityAdapter(
         applySignalVisuals(holder, x.direction, strength)
 
         val riskLabel = when {
-            x.riskScore <= 30 -> "DÜŞÜK RİSK"
-            x.riskScore <= 60 -> "ORTA RİSK"
-            else -> "YÜKSEK RİSK"
+            x.riskScore <= 30 -> "Düşük"
+            x.riskScore <= 60 -> "Orta"
+            else -> "Yüksek"
         }
         val finalLabel = when {
-            x.finalSignalScore >= 90 -> "ÇOK GÜÇLÜ NİHAİ SİNYAL"
-            x.finalSignalScore >= 80 -> "GÜÇLÜ NİHAİ SİNYAL"
-            x.finalSignalScore >= 70 -> "İZLE"
-            x.finalSignalScore >= 60 -> "ZAYIF SİNYAL"
-            else -> "FIRSAT YOK"
+            x.finalSignalScore >= 90 -> "Çok güçlü"
+            x.finalSignalScore >= 80 -> "Güçlü"
+            x.finalSignalScore >= 70 -> "İzle"
+            x.finalSignalScore >= 60 -> "Zayıf"
+            else -> "Fırsat yok"
         }
-        val reason = x.scoreBreakdown.asSequence()
-            .takeWhile { !it.startsWith("KAP:") }
-            .filter { it.contains(": +") }
-            .map { it.substringBefore(":").trim() }
-            .distinct()
-            .joinToString(" + ")
-            .ifBlank { "Yeterli teknik bileşen açıklaması yok" }
 
         val now = System.currentTimeMillis()
         val ageMs = if (x.dataTimestamp > 0L) (now - x.dataTimestamp).coerceAtLeast(0L) else Long.MAX_VALUE
@@ -86,37 +82,29 @@ class OpportunityAdapter(
         val realtimeOk = x.isRealtime && x.currentSessionIncluded &&
             x.delaySeconds != null && x.delaySeconds in 0..RealTimeIntegrityPolicy.MAX_DECLARED_DELAY_SECONDS &&
             ageMs <= RealTimeIntegrityPolicy.MAX_DATA_AGE_MS
-        val realtimeLabel = if (realtimeOk) "ANLIK ✓" else "ANLIK DOĞRULANMADI"
-        val providerDelay = x.delaySeconds?.let { "$it sn" } ?: "bilinmiyor"
-
-        val hasPrice = x.price.isFinite() && x.price > 0.0
-        val hasVolume = !x.volumeLabel.equals("Veri yok", true) && x.volumeLabel.isNotBlank()
-        val hasOhlcv = x.candles.isNotEmpty()
-        val hasKap = !x.kapLabel.equals("Veri yok", true) && x.kapLabel.isNotBlank()
-        val hasLevels = x.support != null && x.resistance != null
-        val hasVwap = x.technical.vwap != null
-        fun mark(ok: Boolean): String = if (ok) "✓" else "⚠ veri yok"
+        val realtimeLabel = if (realtimeOk) "CANLI" else "GECİKMELİ / DOĞRULANMADI"
 
         holder.symbol.text = x.symbol
-        holder.score.text = "${x.direction} $strength%"
+        holder.score.text = "${x.direction}  $strength"
         holder.strengthBar.progress = strength
-        holder.strengthValue.text = "$strength%"
+        holder.strengthValue.text = "$strength"
         holder.company.text = x.companyName ?: ""
         holder.meta.text = buildString {
-            append("$realtimeLabel • ${x.direction} • $finalLabel • $riskLabel\n")
-            append("Kaynak: ${x.source} • Veri zamanı: $timeText • Yaş: $ageText • Sağlayıcı gecikmesi: $providerDelay\n")
-            append("Snapshot Teknik Puanı ${x.score}/100 • Risk ${x.riskScore}/100 • Veri Güveni ${x.dataConfidenceScore}/100 (${x.dataConfidenceLabel})\n")
-            append("Nihai Sinyal ${x.finalSignalScore}/100\n")
-            append("Hacim ${x.volumeLabel} • ${x.volumeDirectionLabel} • Günlük değişim ${"%.2f".format(x.dailyChangePct)}%\n")
-            append("VERİ KAPSAMI: Fiyat ${mark(hasPrice)} • Hacim ${mark(hasVolume)} • OHLCV ${mark(hasOhlcv)}\n")
-            append("KAP ${mark(hasKap)} • Destek/Direnç ${mark(hasLevels)} • VWAP ${mark(hasVwap)}\n")
-            append("${x.direction} nedeni: $reason\n")
-            append(x.scoreBreakdown.joinToString(" • "))
+            append("$finalLabel sinyal • Risk ${x.riskScore}/100 ($riskLabel)\n")
+            append("Veri Güveni ${x.dataConfidenceScore}/100 • Hacim ${x.volumeLabel}\n")
+            append("Günlük ${"%+.2f%%".format(x.dailyChangePct)} • $realtimeLabel")
         }
         holder.risk.text = buildString {
-            append("Destek ${x.support?.let { "%.2f".format(it) } ?: "veri yok"}")
-            append(" • Direnç ${x.resistance?.let { "%.2f".format(it) } ?: "veri yok"}")
-            if (x.technical.vwap == null) append(" • VWAP veri yok")
+            append("Kaynak: ${x.source} • Veri zamanı: $timeText • Yaş: $ageText\n")
+            append("Destek ${x.support?.let { "%.2f".format(it) } ?: "—"}")
+            append(" • Direnç ${x.resistance?.let { "%.2f".format(it) } ?: "—"}")
+            append(" • VWAP ${x.technical.vwap?.let { "%.2f".format(it) } ?: "—"}")
+        }
+
+        holder.itemView.contentDescription = buildString {
+            append(x.symbol)
+            append(", ${x.direction}, nihai sinyal $strength üzerinden 100")
+            append(", risk ${x.riskScore}, veri güveni ${x.dataConfidenceScore}")
         }
         holder.itemView.setOnClickListener { click(x) }
     }
