@@ -15,13 +15,15 @@ import java.net.URLEncoder
 enum class ChartPeriod(
     val label: String,
     val range: String,
-    val interval: String
+    val interval: String,
+    val aggregateMinutes: Int? = null
 ) {
-    DAY("1G", "1d", "5m"),
-    WEEK("1H", "5d", "30m"),
-    MONTH("1A", "1mo", "1d"),
-    THREE_MONTHS("3A", "3mo", "1d"),
-    YEAR("1Y", "1y", "1d")
+    THREE_MINUTES("3 Dk", "5d", "1m", 3),
+    FIVE_MINUTES("5 Dk", "5d", "5m"),
+    FIFTEEN_MINUTES("15 Dk", "1mo", "15m"),
+    ONE_HOUR("1 Saat", "3mo", "60m"),
+    ONE_DAY("1 Gün", "1y", "1d"),
+    ALL_TIME("Tüm", "max", "1d")
 }
 
 data class ChartDataSeries(
@@ -40,6 +42,7 @@ data class ChartDataSeries(
 /**
  * Loads real OHLCV for the selected chart period. Production HTTPS backend is primary;
  * Yahoo is an explicitly delayed fallback. No synthetic candle/price/volume is created.
+ * 3-minute candles are deterministically aggregated from real 1-minute OHLCV; no price is invented.
  */
 class ChartDataRepository(context: Context) {
     private val settings = SettingsStore(context.applicationContext)
@@ -100,13 +103,14 @@ class ChartDataRepository(context: Context) {
             )
         }
         val checked = ChartMath.validate(raw)
-        require(checked.candles.size >= 2) { "Grafik verisi alınamadı veya doğrulanamadı." }
+        val finalCandles = period.aggregateMinutes?.let { aggregateCandles(checked.candles, it) } ?: checked.candles
+        require(finalCandles.size >= 2) { "Grafik verisi alınamadı veya doğrulanamadı." }
         return ChartDataSeries(
             symbol = symbol,
-            candles = checked.candles,
+            candles = finalCandles,
             source = "Yahoo Finance",
             period = period,
-            dataTimestamp = checked.candles.last().timestamp,
+            dataTimestamp = finalCandles.last().timestamp,
             isRealtime = false,
             delaySeconds = null,
             currentSessionIncluded = false,
@@ -129,20 +133,42 @@ class ChartDataRepository(context: Context) {
             raw += Candle(ts, o, h, l, c, v)
         }
         val checked = ChartMath.validate(raw)
-        require(checked.candles.size >= 2) { "Grafik verisi alınamadı veya doğrulanamadı." }
+        val finalCandles = period.aggregateMinutes?.let { aggregateCandles(checked.candles, it) } ?: checked.candles
+        require(finalCandles.size >= 2) { "Grafik verisi alınamadı veya doğrulanamadı." }
         val delay = if (json.has("delaySeconds") && !json.isNull("delaySeconds")) json.optInt("delaySeconds") else null
         return ChartDataSeries(
             symbol = json.optString("symbol").ifBlank { symbol },
-            candles = checked.candles,
+            candles = finalCandles,
             source = json.optString("source").ifBlank { "BorsaTakip Backend" },
             period = period,
-            dataTimestamp = json.optLong("dataTimestamp", checked.candles.last().timestamp),
+            dataTimestamp = json.optLong("dataTimestamp", finalCandles.last().timestamp),
             isRealtime = json.optBoolean("realtime", false),
             delaySeconds = delay,
             currentSessionIncluded = json.optBoolean("currentSessionIncluded", false),
             rejectedCount = checked.rejectedCount,
             duplicateCount = checked.duplicateCount
         )
+    }
+
+    private fun aggregateCandles(input: List<Candle>, minutes: Int): List<Candle> {
+        if (minutes <= 1 || input.isEmpty()) return input
+        val bucketMs = minutes * 60_000L
+        return input.sortedBy { it.timestamp }
+            .groupBy { it.timestamp / bucketMs }
+            .toSortedMap()
+            .values
+            .mapNotNull { bucket ->
+                if (bucket.isEmpty()) return@mapNotNull null
+                val sorted = bucket.sortedBy { it.timestamp }
+                Candle(
+                    timestamp = (sorted.first().timestamp / bucketMs) * bucketMs,
+                    open = sorted.first().open,
+                    high = sorted.maxOf { it.high },
+                    low = sorted.minOf { it.low },
+                    close = sorted.last().close,
+                    volume = sorted.sumOf { it.volume }
+                )
+            }
     }
 
     private fun getJson(url: String, authenticatedBackend: Boolean): JSONObject {
