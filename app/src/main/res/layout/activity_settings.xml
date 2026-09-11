@@ -60,6 +60,84 @@
             <TextView
                 style="@style/Sub"
                 android:layout_marginTop="18dp"
+                android:text="LINEAR REGRESSION CHANNEL" />
+
+            <Switch
+                android:id="@+id/lrcEnabled"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:text="LRC Göster"
+                android:textColor="@color/text_primary" />
+
+            <EditText
+                android:id="@+id/lrcLength"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:hint="LRC periyodu (varsayılan 100)"
+                android:inputType="number"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_secondary" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingTop="4dp"
+                android:paddingBottom="4dp"
+                android:text="Kaynak: Close • Ana kanal: ±2σ"
+                android:textColor="@color/text_secondary" />
+
+            <Switch
+                android:id="@+id/lrcSigma1"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:text="±1σ göster"
+                android:textColor="@color/text_primary" />
+
+            <Switch
+                android:id="@+id/lrcSigma2"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:text="±2σ ana kanalı göster"
+                android:textColor="@color/text_primary" />
+
+            <Switch
+                android:id="@+id/lrcSigma3"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:text="±3σ göster"
+                android:textColor="@color/text_primary" />
+
+            <Switch
+                android:id="@+id/lrcTrendColor"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:text="Trend Rengi"
+                android:textColor="@color/text_primary" />
+
+            <Switch
+                android:id="@+id/lrcPearson"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:text="Pearson R göster"
+                android:textColor="@color/text_primary" />
+
+            <Switch
+                android:id="@+id/lrcBreakoutWarning"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:text="±2σ kanal dışı uyarısı"
+                android:textColor="@color/text_primary" />
+
+            <Switch
+                android:id="@+id/lrcFill"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:text="±2σ kanal dolgusu"
+                android:textColor="@color/text_primary" />
+
+            <TextView
+                style="@style/Sub"
+                android:layout_marginTop="18dp"
                 android:text="TradingView" />
 
             <TextView
