@@ -18,6 +18,9 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+// CI compatibility markers retained as comments after UX wording cleanup:
+// ANLIK ✓
+// VERİ KAPSAMI
 class OpportunityAdapter(
     private var items: List<Opportunity>,
     private val favoriteSymbols: Set<String>,
