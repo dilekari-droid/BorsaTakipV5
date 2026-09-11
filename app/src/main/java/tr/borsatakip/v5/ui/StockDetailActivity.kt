@@ -10,6 +10,7 @@ import tr.borsatakip.v5.R
 import tr.borsatakip.v5.data.ChartDataRepository
 import tr.borsatakip.v5.data.ChartDataSeries
 import tr.borsatakip.v5.data.ChartPeriod
+import tr.borsatakip.v5.data.SettingsStore
 import tr.borsatakip.v5.model.Candle
 import tr.borsatakip.v5.ui.chart.ChartMath
 import java.text.SimpleDateFormat
@@ -25,6 +26,7 @@ class StockDetailActivity : BaseActivity() {
     private lateinit var details: TextView
     private lateinit var repository: ChartDataRepository
     private lateinit var periodButtons: Map<ChartPeriod, Button>
+    private var currentSeries: ChartDataSeries? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -38,6 +40,7 @@ class StockDetailActivity : BaseActivity() {
         chartMeta = findViewById(R.id.chartMeta)
         selectedCandle = findViewById(R.id.selectedCandle)
         details = findViewById(R.id.details)
+        applyLrcSettings()
         periodButtons = mapOf(
             ChartPeriod.THREE_MINUTES to findViewById(R.id.period3min),
             ChartPeriod.FIVE_MINUTES to findViewById(R.id.period5min),
@@ -92,6 +95,7 @@ class StockDetailActivity : BaseActivity() {
             } else null
 
             if (series == null || series.candles.size < 2) {
+                currentSeries = null
                 chart.setCandles(emptyList())
                 chartState.text = result.exceptionOrNull()?.message ?: "Grafik verisi alınamadı."
                 chartMeta.text = "Görünüm: ${period.label} • Grafik verisi alınamadı. Sahte mum veya gösterge üretilmedi."
@@ -99,6 +103,8 @@ class StockDetailActivity : BaseActivity() {
                 return@launch
             }
 
+            currentSeries = series
+            applyLrcSettings()
             chart.setCandles(series.candles)
             val status = dataStatus(series)
             chartState.text = buildString {
@@ -109,7 +115,12 @@ class StockDetailActivity : BaseActivity() {
             }
             chartMeta.text = buildString {
                 append("Görünüm: ${period.label} • Kaynak: ${series.source} • Durum: $status\n")
-                append("Grafik verisi ve EMA/RSI/MACD/Hacim aynı OHLCV dizisinden hesaplanır.")
+                append("Grafik verisi ve EMA/RSI/MACD/Hacim/LRC aynı doğrulanmış OHLCV dizisinden hesaplanır.")
+                chart.currentLrcStatus()?.let { lrc ->
+                    append("\nLRC${lrc.length}: ${trendLabel(lrc.trend)}")
+                    if (lrc.pearsonVisible) append(" • R ${"%.2f".format(Locale.US, lrc.pearsonR)}")
+                    lrc.breakout?.let { append(" • UYARI: $it") }
+                }
             }
             renderChartIndicatorSummary(series)
         }
@@ -146,11 +157,56 @@ class StockDetailActivity : BaseActivity() {
             append("MACD    ${fmt(chart.currentMacd())}\n")
             append("Sinyal  ${fmt(chart.currentMacdSignal())}\n")
             append("Hacim   ${if (volumeAvailable) "OHLCV kaynağından" else "Hacim verisi mevcut değil"}\n")
+            val lrc = chart.currentLrcStatus()
+            if (lrc != null) {
+                append("\nLRC${lrc.length}  ${trendLabel(lrc.trend)}\n")
+                append("Eğim    ${"%.6f".format(Locale.US, lrc.slope)}\n")
+                if (lrc.pearsonVisible) append("Pearson R  ${"%.3f".format(Locale.US, lrc.pearsonR)}\n")
+                append("σ       ${fmt(lrc.sigma)} • ±2σ kanal genişliği ${fmt(lrc.channelWidth2Sigma)}\n")
+                append("Orta çizgi uzaklığı ${fmt(lrc.distanceToMid)}\n")
+                append("Fiyat bölgesi ${lrc.zone}\n")
+                lrc.breakout?.let {
+                    append("UYARI: Fiyat $it • ${lrc.momentumConfirmation}\n")
+                    append("Not: LRC kanal dışı hareket tek başına AL/SAT sinyali değildir.\n")
+                }
+            } else {
+                append("\nLRC: veri sayısı ayarlanan periyot için yetersiz veya LRC kapalı.\n")
+            }
             if (candles.size < 35) append("MACD için yeterli veri olmayabilir.\n")
             if (candles.size < 200) append("EMA200 için yeterli veri yok.\n")
             append("\nTARAMA SİNYAL ÖZETİ\n")
             append("${x.direction} • Nihai ${x.finalSignalScore}/100 • Risk ${x.riskScore}/100\n\n")
             append(legacyTechnicalText())
+        }
+    }
+
+    private fun applyLrcSettings() {
+        if (!::chart.isInitialized) return
+        val s = SettingsStore(this)
+        chart.setLrcOptions(
+            enabled = s.lrcEnabled,
+            length = s.lrcLength,
+            sigma1 = s.lrcSigma1Enabled,
+            sigma2 = s.lrcSigma2Enabled,
+            sigma3 = s.lrcSigma3Enabled,
+            trendColor = s.lrcTrendColorEnabled,
+            pearson = s.lrcPearsonEnabled,
+            fill = s.lrcFillEnabled,
+            breakoutWarning = s.lrcBreakoutWarningEnabled
+        )
+    }
+
+    private fun trendLabel(trend: tr.borsatakip.v5.ui.chart.LinearRegressionChannelCalculator.Trend): String = when (trend) {
+        tr.borsatakip.v5.ui.chart.LinearRegressionChannelCalculator.Trend.UP -> "↑ Yükselen"
+        tr.borsatakip.v5.ui.chart.LinearRegressionChannelCalculator.Trend.DOWN -> "↓ Düşen"
+        tr.borsatakip.v5.ui.chart.LinearRegressionChannelCalculator.Trend.FLAT -> "→ Yatay"
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::chart.isInitialized) {
+            applyLrcSettings()
+            currentSeries?.let { renderChartIndicatorSummary(it) }
         }
     }
 
