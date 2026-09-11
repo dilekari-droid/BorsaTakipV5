@@ -26,21 +26,11 @@ class MainActivity : BaseActivity() {
             "V${BuildConfig.VERSION_NAME} • Profesyonel fırsat takibi"
         findViewById<TextView>(R.id.txtVersionBadge).text = "V${BuildConfig.VERSION_NAME}"
 
-        findViewById<Button>(R.id.btnBist).setOnClickListener {
-            startActivity(Intent(this, BistScanActivity::class.java))
-        }
-        findViewById<Button>(R.id.btnOpportunity).setOnClickListener {
-            startActivity(Intent(this, OpportunityActivity::class.java))
-        }
-        findViewById<Button>(R.id.btnViop).setOnClickListener {
-            startActivity(Intent(this, ViopActivity::class.java))
-        }
-        findViewById<Button>(R.id.btnFav).setOnClickListener {
-            startActivity(Intent(this, FavoritesActivity::class.java))
-        }
-        findViewById<Button>(R.id.btnNotifications).setOnClickListener {
-            startActivity(Intent(this, SettingsActivity::class.java))
-        }
+        findViewById<Button>(R.id.btnBist).setOnClickListener { startActivity(Intent(this, BistScanActivity::class.java)) }
+        findViewById<Button>(R.id.btnOpportunity).setOnClickListener { startActivity(Intent(this, OpportunityActivity::class.java)) }
+        findViewById<Button>(R.id.btnViop).setOnClickListener { startActivity(Intent(this, ViopActivity::class.java)) }
+        findViewById<Button>(R.id.btnFav).setOnClickListener { startActivity(Intent(this, FavoritesActivity::class.java)) }
+        findViewById<Button>(R.id.btnNotifications).setOnClickListener { startActivity(Intent(this, SettingsActivity::class.java)) }
 
         renderDashboard()
     }
@@ -52,25 +42,28 @@ class MainActivity : BaseActivity() {
 
     private fun renderDashboard() {
         val settings = SettingsStore(this)
-        val opportunities = AppSession.lastOpportunities
-            .sortedByDescending { it.finalSignalScore }
+        val opportunities = AppSession.lastOpportunities.sortedByDescending { it.finalSignalScore }
 
         val providerTime = settings.lastProviderTimestamp
             .takeIf { it > 0L }
             ?.let { SimpleDateFormat("HH:mm:ss", Locale("tr", "TR")).format(Date(it)) }
             ?: "—"
 
+        val realtimeCount = opportunities.count { it.signalEligibleRealtime }
+        val delayedCount = opportunities.size - realtimeCount
         val marketState = when {
-            opportunities.any { it.isRealtime } -> "● CANLI VERİ"
-            opportunities.isNotEmpty() -> "● GECİKMELİ / DOĞRULANMIŞ VERİ"
-            settings.lastProviderTimestamp > 0L -> "● VERİ ALINDI"
-            else -> "● VERİ BEKLENİYOR"
+            opportunities.isEmpty() && settings.lastProviderTimestamp > 0L -> "● VERİ ALINDI"
+            opportunities.isEmpty() -> "● VERİ BEKLENİYOR"
+            realtimeCount == opportunities.size -> "● CANLI VERİ"
+            realtimeCount == 0 -> "● GECİKMELİ / ARAŞTIRMA VERİSİ"
+            else -> "● KARIŞIK VERİ • CANLI $realtimeCount / GECİKMELİ $delayedCount"
         }
 
         findViewById<TextView>(R.id.txtMarketStatus).text = buildString {
             append(marketState)
             append("\nKaynak: ${settings.lastProviderLabel}")
             append("\nSon güncelleme: $providerTime")
+            if (delayedCount > 0) append("\n⚠ Gecikmeli sonuçlar gerçek zamanlı AL/SAT sinyali değildir.")
         }
 
         val longCount = opportunities.count { it.direction.equals("LONG", true) }
@@ -79,12 +72,12 @@ class MainActivity : BaseActivity() {
         findViewById<TextView>(R.id.txtScanSummary).text = if (opportunities.isEmpty()) {
             "Henüz doğrulanmış tarama sonucu yok."
         } else {
-            "${opportunities.size} fırsat adayı • LONG $longCount • SHORT $shortCount • 85+ $highCount"
+            "${opportunities.size} teknik aday • LONG $longCount • SHORT $shortCount • 85+ $highCount • Canlı $realtimeCount"
         }
 
         val top = opportunities.take(4)
         findViewById<TextView>(R.id.txtToday).text = if (top.isEmpty()) {
-            "Henüz fırsat adayı yok. Tarama başlatıldığında doğrulanmış adaylar burada gösterilir."
+            "Henüz teknik aday yok. Tarama başlatıldığında doğrulanmış sonuçlar burada gösterilir."
         } else {
             buildTodayText(top)
         }
@@ -103,6 +96,7 @@ class MainActivity : BaseActivity() {
                 out.length,
                 Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
             )
+            out.append("\nTEKNİK UYUM • ${opportunity.analysisMode}")
             out.append("\nRSI ${opportunity.technical.rsi14?.let { "%.1f".format(it) } ?: "—"} • MACD ${macdLabel(opportunity)}")
             opportunity.lrc?.let { lrc ->
                 val arrow = when (lrc.trend) {
