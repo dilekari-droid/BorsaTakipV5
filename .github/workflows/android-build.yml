@@ -140,9 +140,31 @@ jobs:
           sha256sum "$APK" | tee app/build/outputs/final/BorsaTakipV5.1.27-debug.sha256
           echo 'V5.1.27 source/build/static quality checks passed. Physical-device and live-market tests are not claimed by CI.'
 
-      - name: Package exact source snapshot
+      - name: Package source snapshot with verified Gradle 8.9 wrapper
         run: |
-          git archive --format=zip --output=app/build/outputs/final/BorsaTakipV5.1.27-source.zip HEAD
+          set -euo pipefail
+          gradle wrapper --gradle-version 8.9 --distribution-type bin
+          test -f gradlew
+          test -f gradlew.bat
+          test -f gradle/wrapper/gradle-wrapper.jar
+          test -f gradle/wrapper/gradle-wrapper.properties
+          chmod +x gradlew
+          ./gradlew --version | tee app/build/outputs/final/gradle-wrapper-version.txt
+          grep -Fq 'Gradle 8.9' app/build/outputs/final/gradle-wrapper-version.txt
+
+          rm -rf /tmp/borsatakip-source
+          mkdir -p /tmp/borsatakip-source
+          git archive HEAD | tar -x -C /tmp/borsatakip-source
+          cp gradlew gradlew.bat /tmp/borsatakip-source/
+          mkdir -p /tmp/borsatakip-source/gradle/wrapper
+          cp gradle/wrapper/gradle-wrapper.jar gradle/wrapper/gradle-wrapper.properties /tmp/borsatakip-source/gradle/wrapper/
+
+          (
+            cd /tmp/borsatakip-source
+            zip -qr "$GITHUB_WORKSPACE/app/build/outputs/final/BorsaTakipV5.1.27-source.zip" .
+          )
+          unzip -l app/build/outputs/final/BorsaTakipV5.1.27-source.zip | grep -Fq 'gradlew'
+          unzip -l app/build/outputs/final/BorsaTakipV5.1.27-source.zip | grep -Fq 'gradle/wrapper/gradle-wrapper.jar'
           sha256sum app/build/outputs/final/BorsaTakipV5.1.27-source.zip | tee app/build/outputs/final/BorsaTakipV5.1.27-source.sha256
 
       - name: Check release secrets
