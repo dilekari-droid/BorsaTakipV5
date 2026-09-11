@@ -35,7 +35,7 @@ class LicensedUpstreamProvider:
     """Generic adapter for a licensed/authorized market-data upstream.
 
     No concrete provider endpoint or secret is embedded in source control.
-    Production readiness requires separate symbols, quote and history HTTPS contracts.
+    Production readiness requires separate BIST and VIOP HTTPS contracts.
     """
 
     def __init__(self) -> None:
@@ -45,6 +45,8 @@ class LicensedUpstreamProvider:
         self.quote_url_template = os.getenv("BORSA_QUOTE_URL_TEMPLATE", "").strip()
         self.history_url_template = os.getenv("BORSA_HISTORY_URL_TEMPLATE", "").strip()
         self.viop_url = os.getenv("BORSA_VIOP_URL", "").strip()
+        self.viop_quote_url_template = os.getenv("BORSA_VIOP_QUOTE_URL_TEMPLATE", "").strip()
+        self.viop_history_url_template = os.getenv("BORSA_VIOP_HISTORY_URL_TEMPLATE", "").strip()
         self.max_attempts = max(1, min(int(os.getenv("BORSA_UPSTREAM_MAX_ATTEMPTS", "3")), 3))
 
     def configuration_ready(self) -> bool:
@@ -54,6 +56,15 @@ class LicensedUpstreamProvider:
             and "{symbol}" in self.quote_url_template
             and self.history_url_template.startswith("https://")
             and "{symbol}" in self.history_url_template
+        )
+
+    def viop_configuration_ready(self) -> bool:
+        return (
+            self.viop_url.startswith("https://")
+            and self.viop_quote_url_template.startswith("https://")
+            and "{symbol}" in self.viop_quote_url_template
+            and self.viop_history_url_template.startswith("https://")
+            and "{symbol}" in self.viop_history_url_template
         )
 
     def _headers(self) -> dict[str, str]:
