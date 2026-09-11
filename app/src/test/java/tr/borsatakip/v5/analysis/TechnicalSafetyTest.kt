@@ -59,7 +59,25 @@ class TechnicalSafetyTest {
     fun flatSeries_rsiRemainsFinite() {
         val candles = List(220) { candle(it, 25.0) }
         val t = TechnicalAnalyzer.analyze(candles)
-        assertTrue(t.rsi14 == null || t.rsi14!!.isFinite())
+        assertEquals(50.0, t.rsi14!!, 0.0001)
+    }
+
+    @Test
+    fun oneInvalidCandle_reducesDataConfidence() {
+        val candles = MutableList(221) { candle(it, 20.0 + it * 0.01) }
+        candles[100] = candles[100].copy(close = Double.NaN)
+        val result = OpportunityEngine.score(stockWith(candles))
+        assertTrue(result != null)
+        assertEquals(95, result!!.dataConfidenceScore)
+    }
+
+    @Test
+    fun flatSeries_producesNeutralDirectionAndNoFinalSignal() {
+        val candles = List(220) { candle(it, 25.0) }
+        val result = OpportunityEngine.score(stockWith(candles))
+        assertTrue(result != null)
+        assertEquals("NÖTR", result!!.direction)
+        assertEquals(0, result.finalSignalScore)
     }
 
     @Test
