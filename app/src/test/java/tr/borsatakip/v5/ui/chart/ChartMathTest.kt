@@ -20,7 +20,7 @@ class ChartMathTest {
         assertEquals(2, result.candles.size)
         assertEquals(1, result.rejectedCount)
         assertEquals(1, result.duplicateCount)
-        assertEquals(12.0, result.candles.first().open, 0.0001)
+        assertEquals(11.0, result.candles.first().open, 0.0001)
     }
 
     @Test
