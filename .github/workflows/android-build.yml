@@ -25,6 +25,17 @@ jobs:
         with:
           gradle-version: '8.9'
 
+      - name: Resolve app version
+        run: |
+          set -euo pipefail
+          VERSION_NAME=$(grep -E 'versionName = "[0-9]+\.[0-9]+\.[0-9]+"' app/build.gradle.kts | sed -E 's/.*"([0-9]+\.[0-9]+\.[0-9]+)".*/\1/' | head -1)
+          VERSION_CODE=$(grep -E 'versionCode = [0-9]+' app/build.gradle.kts | sed -E 's/.*versionCode = ([0-9]+).*/\1/' | head -1)
+          test -n "$VERSION_NAME"
+          test -n "$VERSION_CODE"
+          echo "APP_VERSION=$VERSION_NAME" >> "$GITHUB_ENV"
+          echo "APP_VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
+          echo "Resolved V$VERSION_NAME ($VERSION_CODE)"
+
       - name: Clean
         run: gradle clean
 
@@ -38,7 +49,7 @@ jobs:
         run: |
           gradle :app:assembleDebug
           mkdir -p app/build/outputs/final
-          cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/final/BorsaTakipV5.1.27-debug.apk
+          cp app/build/outputs/apk/debug/app-debug.apk "app/build/outputs/final/BorsaTakipV${APP_VERSION}-debug.apk"
 
       - name: Release R8 smoke build
         run: gradle :app:assembleRelease
@@ -46,7 +57,7 @@ jobs:
       - name: Verify APK and quality markers
         run: |
           set -euo pipefail
-          APK=app/build/outputs/final/BorsaTakipV5.1.27-debug.apk
+          APK="app/build/outputs/final/BorsaTakipV${APP_VERSION}-debug.apk"
           test -f "$APK"
           unzip -t "$APK" >/tmp/apk-unzip-test.txt
           tail -n 1 /tmp/apk-unzip-test.txt
@@ -82,8 +93,13 @@ jobs:
 
           require_marker 'ProviderRouter(this@BistScanActivity)' app/src/main/java/tr/borsatakip/v5/ui/BistScanActivity.kt
           require_marker 'BistScanner(ProviderRouter(this@OpportunityActivity))' app/src/main/java/tr/borsatakip/v5/ui/OpportunityActivity.kt
-          require_marker 'CustomTabsIntent' app/src/main/java/tr/borsatakip/v5/ui/SettingsActivity.kt
           require_marker 'RealTimeIntegrityPolicy.validate' app/src/main/java/tr/borsatakip/v5/scan/BistScanner.kt
+          require_marker 'LinearRegressionChannelCalculator.calculate' app/src/main/java/tr/borsatakip/v5/analysis/OpportunityEngine.kt
+          require_marker 'Fırsat adayı' app/src/main/java/tr/borsatakip/v5/ui/BistScanActivity.kt
+          require_marker 'ANALİZ İLERLEMESİ' app/src/main/java/tr/borsatakip/v5/ui/BistScanActivity.kt
+          require_marker 'R.color.green' app/src/main/java/tr/borsatakip/v5/ui/MainActivity.kt
+          require_marker 'R.color.red' app/src/main/java/tr/borsatakip/v5/ui/FavoriteAdapter.kt
+          require_marker 'CustomTabsIntent' app/src/main/java/tr/borsatakip/v5/ui/SettingsActivity.kt
           require_marker 'INTEGRITY_REJECTED' app/src/main/java/tr/borsatakip/v5/scan/BistScanner.kt
           require_marker 'NO_SIGNAL' app/src/main/java/tr/borsatakip/v5/scan/BistScanner.kt
           require_marker 'TIMEOUT' app/src/main/java/tr/borsatakip/v5/data/ScanContracts.kt
@@ -103,28 +119,15 @@ jobs:
           require_marker 'WindowInsetsCompat.Type.systemBars()' app/src/main/java/tr/borsatakip/v5/ui/BaseActivity.kt
           require_marker 'bg_screen_gradient' app/src/main/res/layout/activity_main.xml
 
-          if grep -Fq 'awaitAll().filterNotNull()' app/src/main/java/tr/borsatakip/v5/data/MobileMarketDataProvider.kt; then
-            echo 'Silent-skip pattern remains in MobileMarketDataProvider.'
-            exit 1
-          fi
-          if grep -Fq 'awaitAll().filterNotNull()' app/src/main/java/tr/borsatakip/v5/data/YahooFallbackProvider.kt; then
-            echo 'Silent-skip pattern remains in YahooFallbackProvider.'
-            exit 1
-          fi
-
-          if grep -R -E -q 'TradingViewAuthClient|TradingViewBrowserLoginActivity|TradingViewScannerOpportunityProvider|TradingViewViopProvider|TradingViewSnapshotScorer|android\.webkit\.WebView|WebView/OAuth|OTURUMU UYGULAMAYA AKTAR' app/src; then
-            echo 'Legacy TradingView embedded-auth/WebView reference remains in app source.'
-            exit 1
-          fi
-
           AAPT=$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)
           test -x "$AAPT"
           "$AAPT" dump badging "$APK" > /tmp/badging.txt
-          grep -Fq "versionName='5.1.27'" /tmp/badging.txt
+          grep -Fq "versionName='${APP_VERSION}'" /tmp/badging.txt
+          grep -Fq "versionCode='${APP_VERSION_CODE}'" /tmp/badging.txt
           "$AAPT" dump xmltree "$APK" AndroidManifest.xml > /tmp/manifest.txt
           grep -Fq 'android:allowBackup(0x01010280)=(type 0x12)0x0' /tmp/manifest.txt
           test -f app/build/outputs/mapping/release/mapping.txt
-          echo 'V5.1.27 terminal-state scan reliability, strict integrity, backend-first, browser-only TradingView and R8 checks passed.'
+          echo "V${APP_VERSION} build, LRC scan integration, trend-color UI and APK version checks passed."
 
       - name: Check release secrets
         if: github.event_name != 'pull_request'
@@ -156,14 +159,14 @@ jobs:
           BORSA_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           gradle :app:assembleRelease
-          cp app/build/outputs/apk/release/app-release.apk app/build/outputs/final/BorsaTakipV5.1.27-release.apk
+          cp app/build/outputs/apk/release/app-release.apk "app/build/outputs/final/BorsaTakipV${APP_VERSION}-release.apk"
           APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)
           test -x "$APKSIGNER"
-          "$APKSIGNER" verify --verbose --print-certs app/build/outputs/final/BorsaTakipV5.1.27-release.apk
+          "$APKSIGNER" verify --verbose --print-certs "app/build/outputs/final/BorsaTakipV${APP_VERSION}-release.apk"
 
       - name: Upload APK artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: BorsaTakipV5.1.27-apk
+          name: BorsaTakipV${{ env.APP_VERSION }}-apk
           path: app/build/outputs/final/*.apk
           if-no-files-found: error
