@@ -147,13 +147,28 @@ class TechnicalOhlcvChartView(context: Context, attrs: android.util.AttributeSet
         r.forEach { i -> val q = candles[i]; val p = if (q.close >= q.open) up else down; val xx = x(i); c.drawLine(xx, y(q.high), xx, y(q.low), p); p.style = Paint.Style.FILL; c.drawRect(xx - step*.28f, y(max(q.open,q.close)), xx + step*.28f, max(y(min(q.open,q.close)), y(max(q.open,q.close))+dp(1f)), p); p.style = Paint.Style.STROKE }
         drawSeries(c,r,ema20,rect,scale,e20p); drawSeries(c,r,ema50,rect,scale,e50p); drawSeries(c,r,ema200,rect,scale,e200p)
         c.drawText("FİYAT + EMA20/50/200", rect.left, rect.top-dp(8f), text)
-        lrcSnapshots.getOrNull(r.last)?.let { s -> if (lrcEnabled) { val a = when(s.trend){LinearRegressionChannelCalculator.Trend.UP->"↑";LinearRegressionChannelCalculator.Trend.DOWN->"↓";else->"→"}; text.color=lrcColor(s); c.drawText("LRC${s.length} $a${if(lrcPearson) "  R ${"%.2f".format(Locale.US,s.pearsonR)}" else ""}", rect.left, rect.top+dp(12f), text); text.color=color(R.color.text_secondary) } }
+        lrcSnapshots.getOrNull(r.last)?.let { s ->
+            if (lrcEnabled) {
+                val arrow = when (s.trend) {
+                    LinearRegressionChannelCalculator.Trend.UP -> "↑"
+                    LinearRegressionChannelCalculator.Trend.DOWN -> "↓"
+                    else -> "→"
+                }
+                val pearsonText = if (lrcPearson) "  R %.2f".format(Locale.US, s.pearsonR) else ""
+                text.color = lrcColor(s)
+                c.drawText("LRC${s.length} $arrow$pearsonText", rect.left, rect.top + dp(12f), text)
+                text.color = color(R.color.text_secondary)
+            }
+        }
         drawTimeAxis(c,r,rect)
     }
 
     private fun drawLrc(c: Canvas, r: IntRange, rect: RectF, lo: Double, hi: Double) {
         if (!lrcEnabled) return; val s = lrcSnapshots.getOrNull(r.last) ?: return; val a=max(r.first,s.startIndex); val b=min(r.last,s.endIndex); if(a>=b)return
-        val step=rect.width()/r.count(); fun x(i:Int)=rect.left+(i-r.first+.5f)*step; fun y(v:Double)=rect.bottom-((v-lo)/(hi-lo)).toFloat()*rect.height(); val col=lrcColor(s)
+        val step = rect.width() / r.count()
+        fun x(i: Int): Float = rect.left + (i - r.first + .5f) * step
+        fun y(v: Double): Float = rect.bottom - ((v - lo) / (hi - lo)).toFloat() * rect.height()
+        val col = lrcColor(s)
         listOf(lrcMid,lrcBand,lrcMinor).forEach{it.color=col}; lrcFillPaint.color=col; lrcFillPaint.alpha=26
         if(lrcFill&&lrcSigma2){val p=Path();p.moveTo(x(a),y(s.upperAt(a,2.0)));p.lineTo(x(b),y(s.upperAt(b,2.0)));p.lineTo(x(b),y(s.lowerAt(b,2.0)));p.lineTo(x(a),y(s.lowerAt(a,2.0)));p.close();c.drawPath(p,lrcFillPaint)}
         fun band(k:Double,p:Paint){c.drawLine(x(a),y(s.upperAt(a,k)),x(b),y(s.upperAt(b,k)),p);c.drawLine(x(a),y(s.lowerAt(a,k)),x(b),y(s.lowerAt(b,k)),p)}
