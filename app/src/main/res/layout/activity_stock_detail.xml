@@ -53,17 +53,24 @@
                 android:textStyle="bold"
                 android:textSize="17sp" />
 
-            <LinearLayout
+            <HorizontalScrollView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="10dp"
-                android:orientation="horizontal">
-                <Button android:id="@+id/period1d" android:layout_width="0dp" android:layout_height="46dp" android:layout_weight="1" android:text="1G" />
-                <Button android:id="@+id/period1w" android:layout_width="0dp" android:layout_height="46dp" android:layout_weight="1" android:text="1H" />
-                <Button android:id="@+id/period1m" android:layout_width="0dp" android:layout_height="46dp" android:layout_weight="1" android:text="1A" />
-                <Button android:id="@+id/period3m" android:layout_width="0dp" android:layout_height="46dp" android:layout_weight="1" android:text="3A" />
-                <Button android:id="@+id/period1y" android:layout_width="0dp" android:layout_height="46dp" android:layout_weight="1" android:text="1Y" />
-            </LinearLayout>
+                android:scrollbars="none">
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+                    <Button android:id="@+id/period3min" android:layout_width="88dp" android:layout_height="46dp" android:text="3 Dk" />
+                    <Button android:id="@+id/period5min" android:layout_width="88dp" android:layout_height="46dp" android:text="5 Dk" />
+                    <Button android:id="@+id/period15min" android:layout_width="92dp" android:layout_height="46dp" android:text="15 Dk" />
+                    <Button android:id="@+id/period1hour" android:layout_width="96dp" android:layout_height="46dp" android:text="1 Saat" />
+                    <Button android:id="@+id/period1day" android:layout_width="92dp" android:layout_height="46dp" android:text="1 Gün" />
+                    <Button android:id="@+id/periodAll" android:layout_width="120dp" android:layout_height="46dp" android:text="Tüm Zamanlar" />
+                </LinearLayout>
+            </HorizontalScrollView>
 
             <TextView
                 android:id="@+id/chartState"
