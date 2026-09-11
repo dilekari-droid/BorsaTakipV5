@@ -12,3 +12,5 @@ Bu dalda Hisse Detay ekranındaki eski basit fiyat çizgisi kaldırılmış, ger
 - Sahte mum, fiyat, hacim veya indikatör üretilmez.
 
 Kabul notu: Derleme ve runtime doğrulaması başarısızsa özellik TAMAMLANDI olarak raporlanmamalıdır.
+
+CI tetikleme notu: Bu revizyon PR doğrulama derlemesini ve kaynak paketlemesini yeniden tetiklemek için güncellenmiştir.
