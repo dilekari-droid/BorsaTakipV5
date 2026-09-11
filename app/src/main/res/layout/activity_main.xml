@@ -21,95 +21,165 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:gravity="center_vertical">
+
                 <LinearLayout
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:orientation="vertical">
+
                     <TextView style="@style/Title" android:text="BORSA TAKİP" />
-                    <TextView style="@style/Sub" android:text="V5.1.21 • Profesyonel fırsat takibi" android:layout_marginTop="2dp" />
+
+                    <TextView
+                        android:id="@+id/txtVersionSubtitle"
+                        style="@style/Sub"
+                        android:layout_marginTop="2dp"
+                        android:text="Profesyonel fırsat takibi" />
                 </LinearLayout>
+
                 <TextView
+                    android:id="@+id/txtVersionBadge"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="V5.1.21"
-                    android:textStyle="bold"
-                    android:textColor="@color/blue"
                     android:background="@drawable/bg_card"
                     android:paddingHorizontal="10dp"
-                    android:paddingVertical="6dp" />
+                    android:paddingVertical="6dp"
+                    android:textColor="@color/blue"
+                    android:textStyle="bold" />
             </LinearLayout>
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:layout_marginBottom="18dp"
-                android:text="Borsa fırsatlarını tek ekranda izle; veri kaynağı ve zamanını sonuçlarda doğrula."
-                android:textColor="@color/text_secondary"
-                android:textSize="14sp" />
-
-            <Button
-                android:id="@+id/btnBist"
-                style="@style/CardButton"
-                android:background="@drawable/bg_card_blue"
-                android:text="⌕   BIST TARA\n      BIST hisselerini tara ve fırsatları bul" />
-
-            <Button
-                android:id="@+id/btnOpportunity"
-                style="@style/CardButton"
-                android:background="@drawable/bg_card_green"
-                android:text="★   FIRSAT KONTROL ET\n      LONG / SHORT sinyallerini güçlerine göre sırala" />
-
-            <Button
-                android:id="@+id/btnViop"
-                style="@style/CardButton"
-                android:background="@drawable/bg_card_purple"
-                android:text="▮▮   VİOP TARA\n      Vadeli sözleşmeleri ayrı veri akışıyla incele" />
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:layout_marginTop="2dp">
-                <Button
-                    android:id="@+id/btnFav"
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
-                    android:layout_height="80dp"
-                    android:layout_marginEnd="6dp"
-                    android:background="@drawable/bg_card"
+                android:layout_marginTop="16dp"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="PİYASA / VERİ DURUMU"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/txtMarketStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Veri bekleniyor"
                     android:textColor="@color/text_primary"
-                    android:text="★\nTakip Listem" />
-                <Button
-                    android:id="@+id/btnNotifications"
-                    android:layout_width="0dp"
-                    android:layout_weight="1"
-                    android:layout_height="80dp"
-                    android:layout_marginStart="6dp"
-                    android:background="@drawable/bg_card"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="TARAMA DURUMU"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/txtScanSummary"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Henüz tarama yapılmadı"
                     android:textColor="@color/text_primary"
-                    android:text="🔔\nBildirimler" />
+                    android:textSize="15sp" />
+
+                <Button
+                    android:id="@+id/btnBist"
+                    android:layout_width="match_parent"
+                    android:layout_height="56dp"
+                    android:layout_marginTop="12dp"
+                    android:background="@drawable/bg_card_blue"
+                    android:text="BIST TARAMAYI BAŞLAT"
+                    android:textColor="@color/white"
+                    android:textStyle="bold" />
             </LinearLayout>
 
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="14dp"
-                android:background="@drawable/bg_card"
-                android:padding="14dp"
+                android:layout_marginTop="16dp"
+                android:text="GÜNÜN FIRSATLARI"
                 android:textColor="@color/text_secondary"
-                android:text="Piyasa Özeti\nKaynak, veri zamanı ve gecikme durumu her sonuç ekranında ayrıca gösterilir." />
+                android:textSize="12sp"
+                android:textStyle="bold" />
 
             <TextView
                 android:id="@+id/txtToday"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
+                android:layout_marginTop="8dp"
                 android:background="@drawable/bg_card"
-                android:padding="14dp"
+                android:padding="16dp"
+                android:text="Henüz tarama yapılmadı."
                 android:textColor="@color/text_primary"
-                android:text="Günün Fırsatları\nHenüz tarama yapılmadı." />
+                android:textSize="15sp" />
+
+            <Button
+                android:id="@+id/btnOpportunity"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_card_green"
+                android:text="TÜM FIRSATLARI GÖR"
+                android:textColor="@color/white"
+                android:textStyle="bold" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/btnViop"
+                    android:layout_width="0dp"
+                    android:layout_height="56dp"
+                    android:layout_marginEnd="5dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_card_purple"
+                    android:text="VİOP"
+                    android:textColor="@color/white"
+                    android:textStyle="bold" />
+
+                <Button
+                    android:id="@+id/btnFav"
+                    android:layout_width="0dp"
+                    android:layout_height="56dp"
+                    android:layout_marginHorizontal="5dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_card"
+                    android:text="FAVORİLER"
+                    android:textColor="@color/text_primary"
+                    android:textStyle="bold" />
+
+                <Button
+                    android:id="@+id/btnNotifications"
+                    android:layout_width="0dp"
+                    android:layout_height="56dp"
+                    android:layout_marginStart="5dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_card"
+                    android:text="AYARLAR"
+                    android:textColor="@color/text_primary"
+                    android:textStyle="bold" />
+            </LinearLayout>
         </LinearLayout>
     </ScrollView>
 
