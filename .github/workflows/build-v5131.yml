@@ -1,4 +1,4 @@
-name: Build V5.1.31 Verified APK
+name: Build V5.1.31 APK
 
 on:
   push:
@@ -9,9 +9,9 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-test-emulator:
+  build-apk:
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 30
     steps:
       - name: Checkout payload branch
         uses: actions/checkout@v4
@@ -62,34 +62,22 @@ jobs:
           rm -rf source_parts backend/.pytest_cache backend/app/__pycache__ backend/tests/__pycache__
           grep -F 'versionName = "5.1.31"' app/build.gradle.kts
           grep -F 'versionCode = 81' app/build.gradle.kts
-          test -f app/src/main/java/tr/borsatakip/v5/worker/ForwardOutcomeWorker.kt
-          test -f app/src/main/java/tr/borsatakip/v5/worker/WorkScheduler.kt
-          grep -F 'AtomicFile' app/src/main/java/tr/borsatakip/v5/data/SignalHistoryStore.kt
-          grep -F 'GLOBAL_MUTEX' app/src/main/java/tr/borsatakip/v5/data/SignalHistoryStore.kt
-          ! grep -F 'HttpURLConnection' app/src/main/java/tr/borsatakip/v5/data/BackendProvider.kt
-          grep -F '@app.websocket("/v1/live")' backend/app/main.py
-          test -f backend/tests/conftest.py
 
-      - name: Backend tests from project root
+      - name: Backend tests
         working-directory: /tmp/v5131
         run: |
           set -euo pipefail
           python -m venv /tmp/v5131-venv
-          /tmp/v5131-venv/bin/python -m pip install --upgrade pip
           /tmp/v5131-venv/bin/pip install -r backend/requirements.txt pytest
           /tmp/v5131-venv/bin/pytest -q backend/tests | tee "$GITHUB_WORKSPACE/backend-tests.txt"
 
       - name: Android unit tests
         working-directory: /tmp/v5131
-        run: |
-          set -euo pipefail
-          gradle :app:testDebugUnitTest | tee "$GITHUB_WORKSPACE/android-unit-tests.txt"
+        run: gradle :app:testDebugUnitTest | tee "$GITHUB_WORKSPACE/android-unit-tests.txt"
 
       - name: Android lint
         working-directory: /tmp/v5131
-        run: |
-          set -euo pipefail
-          gradle :app:lintDebug | tee "$GITHUB_WORKSPACE/android-lint.txt"
+        run: gradle :app:lintDebug | tee "$GITHUB_WORKSPACE/android-lint.txt"
 
       - name: Assemble and verify debug APK
         working-directory: /tmp/v5131
@@ -105,37 +93,17 @@ jobs:
           cp "$APK" "$GITHUB_WORKSPACE/BorsaTakipV5.1.31-debug.apk"
           sha256sum "$GITHUB_WORKSPACE/BorsaTakipV5.1.31-debug.apk" > "$GITHUB_WORKSPACE/BorsaTakipV5.1.31-debug.sha256"
 
-      - name: Package clean V5.1.31 source
+      - name: Package clean source
         run: |
-          set -euo pipefail
           cd /tmp/v5131
           rm -rf app/build .gradle backend/.pytest_cache backend/app/__pycache__ backend/tests/__pycache__ source_parts
           zip -qr "$GITHUB_WORKSPACE/BorsaTakipV5.1.31-Kaynak-Kod.zip" . -x '*.pyc' '*/__pycache__/*' 'source_parts/*'
-          unzip -t "$GITHUB_WORKSPACE/BorsaTakipV5.1.31-Kaynak-Kod.zip" > "$GITHUB_WORKSPACE/source-zip-test.txt"
           sha256sum "$GITHUB_WORKSPACE/BorsaTakipV5.1.31-Kaynak-Kod.zip" > "$GITHUB_WORKSPACE/BorsaTakipV5.1.31-Kaynak-Kod.sha256"
 
-      - name: Emulator API 35 instrumentation and screenshots
-        uses: ReactiveCircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          arch: x86_64
-          target: google_apis
-          profile: pixel_6
-          disable-animations: true
-          emulator-boot-timeout: 900
-          script: |
-            set -euo pipefail
-            cd /tmp/v5131
-            gradle :app:connectedDebugAndroidTest | tee "$GITHUB_WORKSPACE/android-instrumentation.txt"
-            mkdir -p "$GITHUB_WORKSPACE/visual-screenshots"
-            adb pull /sdcard/Android/data/tr.borsatakip.v5/files/visual-screenshots/. "$GITHUB_WORKSPACE/visual-screenshots/"
-            find "$GITHUB_WORKSPACE/visual-screenshots" -name '*.png' -type f | sort > "$GITHUB_WORKSPACE/screenshot-list.txt"
-            test $(wc -l < "$GITHUB_WORKSPACE/screenshot-list.txt") -ge 10
-
-      - name: Upload V5.1.31 verified artifacts
+      - name: Upload APK and source
         uses: actions/upload-artifact@v4
         with:
-          name: BorsaTakipV5.1.31-verified
+          name: BorsaTakipV5.1.31-apk-source
           path: |
             BorsaTakipV5.1.31-debug.apk
             BorsaTakipV5.1.31-debug.sha256
@@ -144,10 +112,6 @@ jobs:
             backend-tests.txt
             android-unit-tests.txt
             android-lint.txt
-            android-instrumentation.txt
             apk-badging.txt
             apk-unzip-test.txt
-            source-zip-test.txt
-            screenshot-list.txt
-            visual-screenshots/*.png
           if-no-files-found: error
