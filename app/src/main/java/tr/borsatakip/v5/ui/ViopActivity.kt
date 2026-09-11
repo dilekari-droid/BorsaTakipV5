@@ -12,16 +12,22 @@ import androidx.appcompat.app.AlertDialog
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import tr.borsatakip.v5.R
+import tr.borsatakip.v5.analysis.ViopScanner
+import tr.borsatakip.v5.data.BackendProvider
 import tr.borsatakip.v5.data.SettingsStore
 import tr.borsatakip.v5.data.ViopRepository
 import tr.borsatakip.v5.model.DataMode
 import tr.borsatakip.v5.model.SignalValidity
 import tr.borsatakip.v5.model.ViopContract
+import tr.borsatakip.v5.model.ViopScanProgress
 
 class ViopActivity : BaseActivity() {
     private lateinit var repo: ViopRepository
+    private lateinit var scanner: ViopScanner
     private lateinit var list: RecyclerView
     private lateinit var status: TextView
     private lateinit var providerStatus: TextView
@@ -32,6 +38,7 @@ class ViopActivity : BaseActivity() {
         setContentView(R.layout.activity_viop)
         setupBottomNav()
         repo = ViopRepository(this)
+        scanner = ViopScanner(BackendProvider(this))
         list = findViewById(R.id.list)
         status = findViewById(R.id.status)
         providerStatus = findViewById(R.id.providerStatus)
@@ -48,7 +55,7 @@ class ViopActivity : BaseActivity() {
                 startActivity(Intent(this, SettingsActivity::class.java))
                 return@setOnClickListener
             }
-            refreshContracts()
+            runOpportunityScan()
         }
         findViewById<Button>(R.id.addContract).setOnClickListener { showAddDialog() }
     }
@@ -56,15 +63,11 @@ class ViopActivity : BaseActivity() {
     private fun showManualOnlyIfPresent() {
         val manual = repo.loadManual()
         if (manual.isNotEmpty()) {
-            render(manual)
+            renderContracts(manual)
             status.text = "MANUEL / DEMO • ${manual.size} kayıt • gerçek Production taraması değildir • fiyat/sinyal uydurulmaz"
         } else {
             val s = SettingsStore(this)
-            status.text = if (s.baseUrl.startsWith("https://")) {
-                "Hazır • VİOP taraması başlatılmadı"
-            } else {
-                "BLOCKED • Production VİOP backend'i yapılandırılmamış"
-            }
+            status.text = if (s.baseUrl.startsWith("https://")) "Hazır • gerçek VİOP fırsat taraması başlatılmadı" else "BLOCKED • Production VİOP backend'i yapılandırılmamış"
         }
     }
 
@@ -73,34 +76,36 @@ class ViopActivity : BaseActivity() {
         providerStatus.text = buildString {
             append("Ana VİOP kaynağı: HTTPS Production Backend\n")
             append("Backend: ${if (s.baseUrl.startsWith("https://")) "YAPILANDIRILMIŞ" else "YAPILANDIRILMAMIŞ"}\n")
-            append("Kontrol: HTTPS → Contract Universe → Quote alanları → veri tazeliği\n")
+            append("Akış: Contract Universe → Quote → History → Teknik Analiz → LONG/SHORT → Nihai Sinyal\n")
             append("TradingView: yalnız harici görüntüleme • VİOP veri kaynağı değil")
         }
     }
 
-    private fun refreshContracts() {
-        status.text = "1/4 Backend kontrolü • 2/4 Aktif sözleşme evreni bekleniyor..."
+    private fun runOpportunityScan() {
         scanButton.isEnabled = false
+        status.text = "Backend kontrolü → aktif sözleşme evreni alınıyor..."
         lifecycleScope.launch {
             try {
-                val r = repo.refreshDetailed()
-                if (r.productionItems.isEmpty()) {
-                    render(r.manualItems)
-                    status.text = buildString {
-                        append(r.message)
-                        append("\nGerçek sözleşme verisi alınamadı; sahte kontrat/fiyat/hacim/açık pozisyon/sinyal üretilmedi.")
-                        if (r.manualItems.isNotEmpty()) append("\nMANUEL / DEMO: ${r.manualItems.size} kayıt ayrı gösteriliyor.")
+                val result = withContext(Dispatchers.IO) {
+                    scanner.scan { p ->
+                        runOnUiThread { status.text = progressText(p) }
                     }
-                    return@launch
                 }
-
-                render(r.productionItems)
-                val usable = r.validCount + r.watchCount
+                if (result.opportunities.isNotEmpty()) {
+                    list.adapter = ViopOpportunityAdapter(result.opportunities)
+                } else {
+                    list.adapter = ViopOpportunityAdapter(emptyList())
+                }
                 status.text = buildString {
-                    append("4/4 Production VİOP taraması tamamlandı\n")
-                    append("Sözleşme evreni: ${r.totalProduction} • Doğrulanmış: ${r.validCount} • İzleme: ${r.watchCount}\n")
-                    append("Yetersiz: ${r.insufficientCount} • Reddedilen: ${r.rejectedCount} • Yayınlanabilir: $usable\n")
-                    append("Not: Ayrı VİOP history/teknik-sinyal endpoint'i doğrulanmadıkça LONG/SHORT sinyali üretilmez.")
+                    append("${result.status.name} • Production VİOP taraması tamamlandı\n")
+                    append(progressText(result.progress))
+                    append("\nFırsat: ${result.opportunities.size} • LONG: ${result.progress.longCount} • SHORT: ${result.progress.shortCount}")
+                    if (result.errors.isNotEmpty()) {
+                        append("\nHata/elenen: ")
+                        append(result.errors.take(5).joinToString(" | ") { "${it.symbol}:${it.code}" })
+                        if (result.errors.size > 5) append(" +${result.errors.size - 5}")
+                    }
+                    if (result.opportunities.isEmpty()) append("\nGerçek veri/analiz koşullarını geçen fırsat bulunamadı; sahte sinyal üretilmedi.")
                 }
             } finally {
                 scanButton.isEnabled = true
@@ -109,7 +114,10 @@ class ViopActivity : BaseActivity() {
         }
     }
 
-    private fun render(items: List<ViopContract>) {
+    private fun progressText(p: ViopScanProgress): String =
+        "Toplam ${p.total} • Quote ${p.quoteSuccess} • History ${p.historySuccess} • Analiz ${p.analyzed} • Yetersiz ${p.insufficient} • Elenen ${p.eliminated} • Hata ${p.failed}"
+
+    private fun renderContracts(items: List<ViopContract>) {
         list.adapter = ViopAdapter(items) { contract -> confirmDelete(contract) }
     }
 
@@ -156,12 +164,8 @@ class ViopActivity : BaseActivity() {
                                 validityReason = "Manuel kayıt piyasa verisi değildir; fiyat, hacim, açık pozisyon ve sinyal üretilmez."
                             )
                         )
-                        result.onSuccess {
-                            showManualOnlyIfPresent()
-                            dialog.dismiss()
-                        }.onFailure {
-                            symbol.error = it.message ?: "Sözleşme kaydedilemedi."
-                        }
+                        result.onSuccess { showManualOnlyIfPresent(); dialog.dismiss() }
+                            .onFailure { symbol.error = it.message ?: "Sözleşme kaydedilemedi." }
                     }
                 }
             }
@@ -175,10 +179,7 @@ class ViopActivity : BaseActivity() {
             .setTitle("Manuel kaydı sil")
             .setMessage("${contract.symbol} MANUEL / DEMO kaydı silinsin mi?")
             .setNegativeButton("İPTAL", null)
-            .setPositiveButton("SİL") { _, _ ->
-                repo.removeManual(contract.symbol)
-                showManualOnlyIfPresent()
-            }
+            .setPositiveButton("SİL") { _, _ -> repo.removeManual(contract.symbol); showManualOnlyIfPresent() }
             .show()
     }
 
