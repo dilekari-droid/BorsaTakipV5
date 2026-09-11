@@ -5,10 +5,18 @@
     android:orientation="vertical"
     android:padding="18dp">
 
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Bu kayıt yalnız geliştirme amacıyla sözleşme metadata'sı tutar. Fiyat, hacim, alış/satış ve açık pozisyon girilmez veya üretilmez."
+        android:textColor="@color/text_secondary"
+        android:textSize="12sp" />
+
     <EditText
         android:id="@+id/inputUnderlying"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
         android:hint="Dayanak (örn. XU030)"
         android:inputType="textCapCharacters" />
 
@@ -25,12 +33,6 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
-        android:hint="Gerçek sözleşme kodu"
+        android:hint="Sözleşme kodu"
         android:inputType="textCapCharacters" />
-
-    <Spinner
-        android:id="@+id/inputProvider"
-        android:layout_width="match_parent"
-        android:layout_height="48dp"
-        android:layout_marginTop="8dp" />
 </LinearLayout>
