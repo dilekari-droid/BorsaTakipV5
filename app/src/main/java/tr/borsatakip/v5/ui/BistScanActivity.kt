@@ -13,6 +13,7 @@ import tr.borsatakip.v5.R
 import tr.borsatakip.v5.data.BackendPreflightClient
 import tr.borsatakip.v5.data.ProviderRouter
 import tr.borsatakip.v5.data.SettingsStore
+import tr.borsatakip.v5.data.SignalHistoryRecorder
 import tr.borsatakip.v5.model.Opportunity
 import tr.borsatakip.v5.model.ScanRunStatus
 import tr.borsatakip.v5.scan.BistScanner
@@ -82,7 +83,10 @@ class BistScanActivity : BaseActivity() {
                         debug.text = "Yahoo fallback kullanıcı tarafından açıkça etkinleştirildi."
                     }
 
-                    val scanner = BistScanner(ProviderRouter(this@BistScanActivity))
+                    val scanner = BistScanner(
+                        ProviderRouter(this@BistScanActivity),
+                        SignalHistoryRecorder(this@BistScanActivity)
+                    )
                     val finalState = scanner.scan { state ->
                         runOnUiThread {
                             progress.progress = state.progress
@@ -102,7 +106,9 @@ class BistScanActivity : BaseActivity() {
                                 }
                                 ScanStatus.COMPLETED -> {
                                     status.text = "Tarama döngüsü tamamlandı • Analiz sonucu ${state.successful} • ${state.scanRun?.status ?: "?"}"
-                                    debug.text = "Başarılı analiz ${state.successful} • Hatalı/atlanan ${state.skipped} • Veri güvenilirliği uyarısı ${state.integrityRejected}"
+                                    val historyText = state.historyError?.let { " • History hata: $it" }
+                                        ?: " • Geçmişe ${state.historyPersisted} yeni kayıt"
+                                    debug.text = "Başarılı analiz ${state.successful} • Hatalı/atlanan ${state.skipped} • Veri güvenilirliği uyarısı ${state.integrityRejected}$historyText"
                                 }
                                 ScanStatus.ERROR -> {
                                     status.text = "BIST taraması başarısız • ${state.errorMessage ?: "Veri alınamadı"}"
@@ -124,7 +130,7 @@ class BistScanActivity : BaseActivity() {
                             progress.progress = 100
                             txt.text = "Tarama ilerlemesi: ${finalState.processed}/${finalState.total} • %100"
                             status.text = "BIST taraması tamamlandı • Başarılı ${finalState.successful}/${finalState.total}"
-                            debug.text = "ScanRun=COMPLETE • Hata/atlanan 0 • son başarılı tarama güncellendi."
+                            debug.text = "ScanRun=COMPLETE • Hata/atlanan 0 • merkezi history kaydı ${finalState.historyPersisted}."
                             startActivity(Intent(this@BistScanActivity, OpportunityActivity::class.java))
                         }
 
@@ -135,7 +141,7 @@ class BistScanActivity : BaseActivity() {
                             progress.progress = 100
                             txt.text = "Tarama ilerlemesi: ${finalState.processed}/${finalState.total} • %100"
                             status.text = "Kısmi tarama • Başarılı ${finalState.successful} • Hatalı/atlanan ${finalState.skipped}"
-                            debug.text = "ScanRun=PARTIAL • Veri güvenilirliği uyarısı ${finalState.integrityRejected} • sonuçlar gösteriliyor; son COMPLETE tarama kaydı ezilmedi."
+                            debug.text = "ScanRun=PARTIAL • Veri güvenilirliği uyarısı ${finalState.integrityRejected} • merkezi history kaydı ${finalState.historyPersisted} • son COMPLETE tarama kaydı ezilmedi."
                             startActivity(
                                 Intent(this@BistScanActivity, OpportunityActivity::class.java)
                                     .putExtra(OpportunityActivity.EXTRA_SCAN_WARNING, "KISMİ TARAMA • Başarılı ${finalState.successful}/${finalState.total} • Hatalı/atlanan ${finalState.skipped}")
