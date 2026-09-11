@@ -39,7 +39,8 @@ class YahooFallbackProvider(context: Context) : MarketDataProvider {
         require(symbols.isNotEmpty()) {
             "BIST sembol evreni alınamadı. İnternet bağlantısını kontrol edin veya Production backend yapılandırın."
         }
-        val semaphore = Semaphore(6)
+        // Yahoo yedek servisinde 429 riskini azaltmak için bilinçli olarak düşük tutulur.
+        val semaphore = Semaphore(MAX_CONCURRENCY)
         val done = AtomicInteger(0)
         val results = symbols.map { symbol ->
             async(Dispatchers.IO) {
@@ -88,6 +89,7 @@ class YahooFallbackProvider(context: Context) : MarketDataProvider {
     private suspend fun fetchWithRetry(symbol: String): ProviderSymbolResult {
         var last: ProviderSymbolResult? = null
         for (attempt in 1..MAX_ATTEMPTS) {
+            var retryDelay = backoffMs(attempt)
             try {
                 val stock = withTimeout(SYMBOL_TIMEOUT_MS) { fetchOrThrow(symbol) }
                 return ProviderSymbolResult(symbol, ProviderSymbolStatus.SUCCESS, stock, attempt)
@@ -100,7 +102,9 @@ class YahooFallbackProvider(context: Context) : MarketDataProvider {
             } catch (e: HttpStatusException) {
                 val status = if (e.statusCode == 429) ProviderSymbolStatus.RATE_LIMIT else ProviderSymbolStatus.HTTP_ERROR
                 last = ProviderSymbolResult(symbol, status, attempt = attempt, httpCode = e.statusCode, errorMessage = e.message)
-                if (!(e.statusCode == 408 || e.statusCode == 429 || e.statusCode in 500..599)) return last
+                // 400/404 gibi kalıcı hatalar yeniden denenmez.
+                if (!isRetryableHttp(e.statusCode)) return last
+                retryDelay = maxOf(retryDelay, e.retryAfterMs ?: 0L)
             } catch (e: JSONException) {
                 return ProviderSymbolResult(symbol, ProviderSymbolStatus.PARSE_ERROR, attempt = attempt, errorMessage = e.message)
             } catch (e: IOException) {
@@ -108,7 +112,7 @@ class YahooFallbackProvider(context: Context) : MarketDataProvider {
             } catch (t: Throwable) {
                 last = ProviderSymbolResult(symbol, ProviderSymbolStatus.UNKNOWN_ERROR, attempt = attempt, errorMessage = t.message)
             }
-            if (attempt < MAX_ATTEMPTS) delay(if (attempt == 1) 500L else 1_200L)
+            if (attempt < MAX_ATTEMPTS) delay(retryDelay)
         }
         return last ?: ProviderSymbolResult(symbol, ProviderSymbolStatus.UNKNOWN_ERROR, attempt = MAX_ATTEMPTS, errorMessage = "Bilinmeyen Yahoo hatası")
     }
@@ -119,10 +123,14 @@ class YahooFallbackProvider(context: Context) : MarketDataProvider {
             .openConnection() as HttpURLConnection
         con.connectTimeout = 7_000
         con.readTimeout = 7_000
+        con.setRequestProperty("Accept", "application/json")
         con.setRequestProperty("User-Agent", "Mozilla/5.0 BorsaTakip/${BuildConfig.VERSION_NAME} Android")
         try {
             val code = con.responseCode
-            if (code !in 200..299) throw HttpStatusException(code, "HTTP $code")
+            if (code !in 200..299) {
+                val retryAfterMs = parseRetryAfterMs(con.getHeaderField("Retry-After"))
+                throw HttpStatusException(code, retryAfterMs, "HTTP $code")
+            }
             val body = con.inputStream.bufferedReader().use { it.readText() }
             return parseOrThrow(body, symbol)
         } finally { con.disconnect() }
@@ -144,11 +152,12 @@ class YahooFallbackProvider(context: Context) : MarketDataProvider {
             if (o.isNull(i) || h.isNull(i) || l.isNull(i) || c.isNull(i) || v.isNull(i)) continue
             val candle = Candle(ts.getLong(i) * 1000, o.getDouble(i), h.getDouble(i), l.getDouble(i), c.getDouble(i), v.getDouble(i))
             if (listOf(candle.open, candle.high, candle.low, candle.close, candle.volume).any { !it.isFinite() }) continue
-            if (candle.high < candle.low || candle.close <= 0.0 || candle.volume < 0.0) continue
+            if (candle.open <= 0.0 || candle.high <= 0.0 || candle.low <= 0.0 || candle.close <= 0.0 || candle.volume < 0.0) continue
+            if (candle.high < maxOf(candle.open, candle.close) || candle.low > minOf(candle.open, candle.close) || candle.high < candle.low) continue
             candles += candle
         }
         if (candles.size < MIN_CANDLES) throw DataInsufficientException("En az $MIN_CANDLES mum gerekli; ${candles.size} mum alındı")
-        val sorted = candles.sortedBy { it.timestamp }
+        val sorted = candles.sortedBy { it.timestamp }.distinctBy { it.timestamp }
         val meta = r.optJSONObject("meta")
         return Stock(
             symbol = fallback,
@@ -162,13 +171,33 @@ class YahooFallbackProvider(context: Context) : MarketDataProvider {
         )
     }
 
-    private class HttpStatusException(val statusCode: Int, message: String) : IOException(message)
+    private fun isRetryableHttp(code: Int): Boolean = code == 408 || code == 429 || code in 500..599
+
+    private fun backoffMs(attempt: Int): Long = when (attempt) {
+        1 -> 1_000L
+        2 -> 2_500L
+        else -> 5_000L
+    }
+
+    private fun parseRetryAfterMs(value: String?): Long? {
+        val seconds = value?.trim()?.toLongOrNull() ?: return null
+        return (seconds * 1_000L).coerceIn(0L, MAX_RETRY_AFTER_MS)
+    }
+
+    private class HttpStatusException(
+        val statusCode: Int,
+        val retryAfterMs: Long?,
+        message: String
+    ) : IOException(message)
+
     private class DataInsufficientException(message: String) : IllegalStateException(message)
 
     companion object {
         private val SYMBOL_REGEX = Regex("[A-Z0-9_]{3,12}")
+        private const val MAX_CONCURRENCY = 3
         private const val MAX_ATTEMPTS = 3
         private const val MIN_CANDLES = 220
         private const val SYMBOL_TIMEOUT_MS = 15_000L
+        private const val MAX_RETRY_AFTER_MS = 30_000L
     }
 }
