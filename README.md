@@ -83,6 +83,7 @@ GitHub Actions:
 - backend README / route sözleşmesi senkronizasyon kontrolü
 - `.env.example` Production BIST/VİOP değişken kontrolü
 - backend Docker build smoke testi
+- kaynak teslim paketine doğrulanmış Gradle 8.9 Wrapper üretimi
 
 Başarılı build, gerçek production provider'ın çalıştığı anlamına gelmez. Nihai kabul için telefonda gerçek backend URL'siyle şu zincir görülmelidir:
 
@@ -103,17 +104,19 @@ Bu secret'lar yoksa workflow yalnız debug APK üretir. Release signing secret'l
 
 ## Derleme
 
-Bu repository şu anda Gradle Wrapper binary'sini (`gradle-wrapper.jar`) taşımıyor. Bu nedenle yerel build için **Gradle 8.9** kullanın; CI da Gradle 8.9'u sabitler. Wrapper jar kaynağı doğrulanmadan binary eklenmemelidir.
+Git deposunda binary `gradle-wrapper.jar` tutulmaz. Bunun yerine GitHub Actions, doğrulanmış Gradle 8.9 ile `gradle wrapper --gradle-version 8.9` çalıştırır ve teslim edilen `BorsaTakipV5.1.27-source.zip` paketine `gradlew`, `gradlew.bat`, `gradle-wrapper.jar` ve `gradle-wrapper.properties` dosyalarını ekler. Böylece teslim kaynak paketi yerel olarak wrapper ile yeniden derlenebilir.
 
-Android:
+CI kaynağından indirilen teslim ZIP'i ile:
 
 ```bash
-gradle --version   # 8.9 olmalı
-gradle clean
-gradle :app:testDebugUnitTest
-gradle :app:lintDebug
-gradle :app:assembleDebug
+./gradlew --version      # Gradle 8.9
+./gradlew clean
+./gradlew :app:testDebugUnitTest
+./gradlew :app:lintDebug
+./gradlew :app:assembleDebug
 ```
+
+Repository checkout'u doğrudan kullanılıyorsa sistem Gradle 8.9 ile aynı komutlar `gradle ...` biçiminde çalıştırılabilir.
 
 Backend:
 
