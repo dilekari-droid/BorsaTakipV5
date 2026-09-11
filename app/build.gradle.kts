@@ -12,8 +12,8 @@ android {
         applicationId = "tr.borsatakip.v5"
         minSdk = 26
         targetSdk = 35
-        versionCode = 77
-        versionName = "5.1.27"
+        versionCode = 78
+        versionName = "5.1.28"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
