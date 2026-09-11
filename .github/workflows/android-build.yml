@@ -89,14 +89,21 @@ jobs:
           }
 
           require_marker 'ProviderRouter(this@BistScanActivity)' app/src/main/java/tr/borsatakip/v5/ui/BistScanActivity.kt
+          require_marker 'SignalHistoryRecorder(this@BistScanActivity)' app/src/main/java/tr/borsatakip/v5/ui/BistScanActivity.kt
           require_marker 'ScanRunStatus.COMPLETE' app/src/main/java/tr/borsatakip/v5/ui/BistScanActivity.kt
-          require_marker 'BistScanner(ProviderRouter(this@OpportunityActivity))' app/src/main/java/tr/borsatakip/v5/ui/OpportunityActivity.kt
+          require_marker 'ProviderRouter(this@OpportunityActivity)' app/src/main/java/tr/borsatakip/v5/ui/OpportunityActivity.kt
+          require_marker 'SignalHistoryRecorder(this@OpportunityActivity)' app/src/main/java/tr/borsatakip/v5/ui/OpportunityActivity.kt
           require_marker 'OpportunityFilterPolicy.apply' app/src/main/java/tr/borsatakip/v5/ui/OpportunityActivity.kt
           require_marker 'LastSuccessfulScanStore' app/src/main/java/tr/borsatakip/v5/ui/OpportunityActivity.kt
-          require_marker 'SignalHistoryStore' app/src/main/java/tr/borsatakip/v5/ui/OpportunityActivity.kt
           require_marker 'CustomTabsIntent' app/src/main/java/tr/borsatakip/v5/ui/SettingsActivity.kt
+          require_marker 'ProviderReadinessService' app/src/main/java/tr/borsatakip/v5/ui/SettingsActivity.kt
+          require_marker 'ProviderReadinessService' app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt
           require_marker 'RealTimeIntegrityPolicy.validate' app/src/main/java/tr/borsatakip/v5/scan/BistScanner.kt
+          require_marker 'historyRecorder.record' app/src/main/java/tr/borsatakip/v5/scan/BistScanner.kt
           require_marker 'ScanRunStatus.PARTIAL' app/src/main/java/tr/borsatakip/v5/scan/BistScanner.kt
+          require_marker 'signal_history_v1.json' app/src/main/java/tr/borsatakip/v5/data/SignalHistoryStore.kt
+          require_marker 'VIOP_CONTRACTS_ERROR' app/src/main/java/tr/borsatakip/v5/data/BackendPreflightClient.kt
+          require_marker 'VIOP_HISTORY_ERROR' app/src/main/java/tr/borsatakip/v5/data/BackendPreflightClient.kt
           require_marker 'MAX_DATA_AGE_MS = 60_000L' app/src/main/java/tr/borsatakip/v5/data/RealTimeIntegrityPolicy.kt
           require_marker 'MAX_DECLARED_DELAY_SECONDS = 5' app/src/main/java/tr/borsatakip/v5/data/RealTimeIntegrityPolicy.kt
           require_marker 'receivedElapsedRealtime' app/src/main/java/tr/borsatakip/v5/data/MobileMarketDataProvider.kt
@@ -108,7 +115,6 @@ jobs:
           require_marker 'Nihai Sinyal' app/src/main/java/tr/borsatakip/v5/ui/OpportunityAdapter.kt
           require_marker 'VERİ KAPSAMI' app/src/main/java/tr/borsatakip/v5/ui/OpportunityAdapter.kt
           require_marker 'PriceChartView.Range.THREE_MONTHS' app/src/main/java/tr/borsatakip/v5/ui/StockDetailActivity.kt
-          require_marker 'signal_history_v1.json' app/src/main/java/tr/borsatakip/v5/data/SignalHistoryStore.kt
           require_marker 'last_successful_scan_v2.json' app/src/main/java/tr/borsatakip/v5/data/LastSuccessfulScanStore.kt
           require_marker 'currentSessionIncluded' backend/app/main.py
           require_marker 'strictRealtime' backend/app/main.py
