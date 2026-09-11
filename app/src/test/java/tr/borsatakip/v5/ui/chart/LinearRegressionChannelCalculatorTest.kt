@@ -55,4 +55,25 @@ class LinearRegressionChannelCalculatorTest {
         assertEquals(185.25, r.lastRegression, 1e-9)
         assertTrue(r.sigma < 1e-9)
     }
+
+    @Test fun rolling_returnsNullBeforeWindowThenMatchesDirectCalculation() {
+        val values = List(140) { i -> 50.0 + i * 0.2 + if (i % 2 == 0) 0.1 else -0.1 }
+        val rolling = LinearRegressionChannelCalculator.rolling(values, 100)
+        assertEquals(values.size, rolling.size)
+        assertTrue((0 until 99).all { rolling[it] == null })
+        val direct = LinearRegressionChannelCalculator.calculate(values, 100, 139)!!
+        val cached = rolling[139]!!
+        assertEquals(direct.slope, cached.slope, 1e-12)
+        assertEquals(direct.pearsonR, cached.pearsonR, 1e-12)
+        assertEquals(direct.sigma, cached.sigma, 1e-12)
+    }
+
+    @Test fun twoSigmaBoundsAlwaysContainRegressionLine() {
+        val values = List(100) { i -> 100.0 + i * 0.1 + (i % 7) * 0.05 }
+        val r = LinearRegressionChannelCalculator.calculate(values, 100)!!
+        val idx = r.endIndex
+        val mid = r.regressionAt(idx)
+        assertTrue(r.upperAt(idx, 2.0) >= mid)
+        assertTrue(r.lowerAt(idx, 2.0) <= mid)
+    }
 }
