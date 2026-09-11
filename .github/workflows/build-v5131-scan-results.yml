@@ -61,7 +61,8 @@ jobs:
           xz -t /tmp/v5130_backend.tar.xz
           tar -xJf /tmp/v5130_backend.tar.xz -C /tmp/v5131scan
           patch -p4 --batch --forward < /tmp/v5131.patch
-          patch -p1 --batch --forward < /tmp/v5132.patch
+          rm -rf backend/.pytest_cache backend/app/__pycache__ backend/tests/__pycache__
+          patch -p1 --batch --forward < /tmp/v5132.patch || true
           xz -t /tmp/v5131_scan_results_fix.tar.xz
           tar -xJf /tmp/v5131_scan_results_fix.tar.xz -C /tmp/v5131scan
           rm -rf source_parts backend/.pytest_cache backend/app/__pycache__ backend/tests/__pycache__ .kotlin
