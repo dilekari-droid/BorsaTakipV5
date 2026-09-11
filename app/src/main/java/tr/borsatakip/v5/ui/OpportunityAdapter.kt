@@ -82,7 +82,11 @@ class OpportunityAdapter(
         val realtimeOk = x.isRealtime && x.currentSessionIncluded &&
             x.delaySeconds != null && x.delaySeconds in 0..RealTimeIntegrityPolicy.MAX_DECLARED_DELAY_SECONDS &&
             ageMs <= RealTimeIntegrityPolicy.MAX_DATA_AGE_MS
-        val realtimeLabel = if (realtimeOk) "CANLI" else "GECİKMELİ / DOĞRULANMADI"
+        val realtimeLabel = when {
+            realtimeOk -> "CANLI"
+            x.source.contains("Yahoo", ignoreCase = true) -> "YEDEK / GECİKMELİ • CANLI DEĞİL"
+            else -> "DOĞRULANMAMIŞ / CANLI DEĞİL"
+        }
 
         holder.symbol.text = x.symbol
         holder.score.text = "${x.direction}  $strength"

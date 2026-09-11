@@ -1,13 +1,9 @@
 package tr.borsatakip.v5.ui
 
+import android.content.Intent
 import android.os.Bundle
-import android.view.LayoutInflater
-import android.widget.ArrayAdapter
 import android.widget.Button
-import android.widget.EditText
-import android.widget.Spinner
 import android.widget.TextView
-import androidx.appcompat.app.AlertDialog
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -22,6 +18,7 @@ class ViopActivity : BaseActivity() {
     private lateinit var list: RecyclerView
     private lateinit var status: TextView
     private lateinit var providerStatus: TextView
+    private lateinit var refreshButton: Button
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -32,117 +29,73 @@ class ViopActivity : BaseActivity() {
         list = findViewById(R.id.list)
         status = findViewById(R.id.status)
         providerStatus = findViewById(R.id.providerStatus)
+        refreshButton = findViewById(R.id.refresh)
         list.layoutManager = LinearLayoutManager(this)
 
-        refreshProviderLabel()
-        render(repo.loadLocal())
-        if (repo.loadLocal().isEmpty()) {
+        refreshButton.setOnClickListener {
             val s = SettingsStore(this)
-            status.text = if (s.baseUrl.startsWith("https://")) {
-                "Henüz VİOP kaydı yok. Üretim backend sözleşmelerini yenileyin."
+            if (!s.baseUrl.startsWith("https://")) {
+                startActivity(Intent(this, SettingsActivity::class.java))
             } else {
-                "Üretim VİOP backend'i yapılandırılmamış. Yalnız manuel kayıtlar kullanılabilir."
+                refreshContracts()
             }
         }
 
-        findViewById<Button>(R.id.refresh).setOnClickListener { refreshContracts() }
-        findViewById<Button>(R.id.addContract).setOnClickListener { showAddDialog() }
+        render(repo.loadLocal())
+        refreshScreenState()
     }
 
-    private fun refreshProviderLabel() {
+    override fun onResume() {
+        super.onResume()
+        if (::repo.isInitialized) {
+            render(repo.loadLocal())
+            refreshScreenState()
+        }
+    }
+
+    private fun refreshScreenState() {
         val s = SettingsStore(this)
+        val backendReady = s.baseUrl.startsWith("https://")
+
         providerStatus.text = buildString {
             append("Ana VİOP kaynağı: HTTPS backend\n")
-            append("Backend: ${if (s.baseUrl.startsWith("https://")) "YAPILANDIRILMIŞ" else "YAPILANDIRILMAMIŞ"}\n")
+            append("Backend: ${if (backendReady) "YAPILANDIRILMIŞ" else "YAPILANDIRILMAMIŞ"}\n")
             append("TradingView: yalnız harici görüntüleme • VİOP veri kaynağı değil")
+        }
+
+        if (backendReady) {
+            refreshButton.text = "VİOP TARAMASINI BAŞLAT"
+            refreshButton.contentDescription = "VİOP sözleşmelerini HTTPS backend üzerinden tara"
+            status.text = if (repo.loadLocal().isEmpty()) {
+                "VİOP veri kaynağı hazır. Gerçek sözleşme verisini almak için taramayı başlatın."
+            } else {
+                "Kayıtlı VİOP sözleşmeleri gösteriliyor. Yenilemek için taramayı başlatın."
+            }
+        } else {
+            refreshButton.text = "VERİ KAYNAĞINI YAPILANDIR"
+            refreshButton.contentDescription = "VİOP veri kaynağını Ayarlar ekranında yapılandır"
+            status.text = "VİOP veri kaynağı hazır değil.\nGerçek sözleşme verisi alınamadığı için tarama başlatılamıyor. HTTPS backend yapılandırıldığında bu alan aktifleşecektir. Sahte veri üretilmez."
         }
     }
 
     private fun refreshContracts() {
-        val s = SettingsStore(this)
-        status.text = if (s.baseUrl.startsWith("https://")) {
-            "Üretim VİOP backend sözleşmeleri alınıyor..."
-        } else {
-            "Üretim VİOP backend'i yapılandırılmamış."
-        }
+        status.text = "Üretim VİOP backend sözleşmeleri alınıyor..."
+        refreshButton.isEnabled = false
         lifecycleScope.launch {
-            val (items, message) = repo.refresh()
-            render(items)
-            status.text = if (items.isEmpty()) {
-                "$message\nGerçek sözleşme verisi alınamadı; sahte veri üretilmedi."
-            } else message
-            refreshProviderLabel()
+            try {
+                val (items, message) = repo.refresh()
+                render(items)
+                status.text = if (items.isEmpty()) {
+                    "$message\nGerçek sözleşme verisi alınamadı; sahte veri üretilmedi."
+                } else message
+            } finally {
+                refreshButton.isEnabled = true
+                refreshScreenState()
+            }
         }
     }
 
     private fun render(items: List<ViopContract>) {
-        list.adapter = ViopAdapter(items) { contract -> confirmDelete(contract) }
-    }
-
-    private fun showAddDialog() {
-        val view = LayoutInflater.from(this).inflate(R.layout.dialog_viop_contract, null, false)
-        val underlying = view.findViewById<EditText>(R.id.inputUnderlying)
-        val expiry = view.findViewById<EditText>(R.id.inputExpiry)
-        val symbol = view.findViewById<EditText>(R.id.inputSymbol)
-        val provider = view.findViewById<Spinner>(R.id.inputProvider)
-        val providers = listOf("Manuel / Veri Yok", "Üretim Backend")
-        provider.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item, providers)
-
-        val dialog = AlertDialog.Builder(this)
-            .setTitle("VİOP Sözleşme Ekle")
-            .setView(view)
-            .setNegativeButton("İPTAL", null)
-            .setPositiveButton("EKLE", null)
-            .create()
-
-        dialog.setOnShowListener {
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                val u = underlying.text.toString().trim().uppercase()
-                val e = expiry.text.toString().trim()
-                val s = symbol.text.toString().trim().uppercase()
-
-                when {
-                    u.isBlank() -> underlying.error = "Dayanak zorunlu"
-                    !e.matches(Regex("\\d{4}-\\d{2}")) -> expiry.error = "Vade YYYY-MM biçiminde olmalı"
-                    s.isBlank() -> symbol.error = "Gerçek sözleşme kodu zorunlu"
-                    else -> {
-                        val backendSelected = provider.selectedItemPosition == 1
-                        val result = repo.addManual(
-                            ViopContract(
-                                symbol = s,
-                                underlying = u,
-                                expiry = e,
-                                providerId = if (backendSelected) "backend" else "manual",
-                                providerLabel = if (backendSelected) "Üretim Backend" else "Manuel",
-                                isManual = true,
-                                status = if (backendSelected) "Provider doğrulaması bekleniyor" else "Veri bekleniyor",
-                                dataTimestamp = System.currentTimeMillis()
-                            )
-                        )
-                        result.onSuccess {
-                            render(repo.loadLocal())
-                            status.text = "$s sözleşmesi kaydedildi."
-                            dialog.dismiss()
-                        }.onFailure {
-                            symbol.error = it.message ?: "Sözleşme kaydedilemedi."
-                        }
-                    }
-                }
-            }
-        }
-        dialog.show()
-    }
-
-    private fun confirmDelete(contract: ViopContract) {
-        AlertDialog.Builder(this)
-            .setTitle("Sözleşmeyi sil")
-            .setMessage("${contract.symbol} manuel kaydı silinsin mi?")
-            .setNegativeButton("İPTAL", null)
-            .setPositiveButton("SİL") { _, _ ->
-                repo.removeManual(contract.symbol)
-                render(repo.loadLocal())
-                status.text = "${contract.symbol} silindi."
-            }
-            .show()
+        list.adapter = ViopAdapter(items) { /* Üretim ekranında manuel silme aksiyonu yok. */ }
     }
 }
