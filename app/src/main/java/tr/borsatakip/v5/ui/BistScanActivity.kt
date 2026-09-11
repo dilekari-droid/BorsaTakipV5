@@ -119,21 +119,23 @@ class BistScanActivity : BaseActivity() {
     }
 
     private fun renderUserState(state: ScanState, delayedMode: Boolean): String {
-        val failures = hardFailureCount(state)
+        val hardFailures = hardFailureCount(state)
         return when (state.status) {
             ScanStatus.IDLE -> "Hazır"
             ScanStatus.RUNNING -> buildString {
                 append("Tarama çalışıyor\n")
-                append("Veri alındı: ${state.dataReceived} • Hata: $failures • Fırsat: ${state.signalCount}")
+                append("Veri alındı: ${state.dataReceived} • Hata: $hardFailures • Yetersiz: ${state.dataInsufficient} • Veri yok: ${state.dataUnavailable}\n")
+                append("Fırsat: ${state.signalCount} • Sinyal yok: ${state.noSignal}")
                 if (delayedMode) append("\nYedek/gecikmeli veri kullanılıyor; CANLI değildir.")
             }
             ScanStatus.COMPLETED -> buildString {
                 append("Tarama: Tamamlandı\n")
                 append("İşlenen: ${state.processed}/${state.total} • Veri alındı: ${state.dataReceived}\n")
-                append("Başarılı analiz: ${state.successful} • Hata: $failures\n")
+                append("Başarılı analiz: ${state.successful} • Hata: $hardFailures\n")
+                append("Yetersiz geçmiş: ${state.dataInsufficient} • Veri yok: ${state.dataUnavailable}\n")
                 append("Fırsat: ${state.signalCount} • Sinyal yok: ${state.noSignal}")
-                if (failures >= state.total && state.total > 0) {
-                    append("\nVERİ İŞLENEMEDİ: tüm semboller hata ile sonuçlandı. Teknik veri detayını açın.")
+                if (state.terminalResults.size != state.total) {
+                    append("\nUYARI: Terminal sonuç ${state.terminalResults.size}/${state.total}")
                 } else if (delayedMode) {
                     append("\nUYARI: Sonuçlar gecikmeli/yedek veriye dayanır; canlı veri değildir.")
                 }
@@ -145,7 +147,7 @@ class BistScanActivity : BaseActivity() {
 
     private fun hardFailureCount(state: ScanState): Int =
         state.timeout + state.rateLimited + state.httpErrors + state.networkErrors +
-            state.parseErrors + state.dataInsufficient + state.integrityRejected + state.analysisErrors
+            state.parseErrors + state.integrityRejected + state.analysisErrors
 
     private fun renderTechnicalState(state: ScanState, providerLabel: String): String {
         val failures = state.terminalResults
@@ -154,7 +156,7 @@ class BistScanActivity : BaseActivity() {
             .joinToString("\n") {
                 buildString {
                     append("${it.symbol}: ${it.status}")
-                    if (it.attempt > 1) append(" • deneme ${it.attempt}")
+                    if (it.attempt > 0) append(" • deneme ${it.attempt}")
                     it.httpCode?.let { code -> append(" • HTTP $code") }
                     if (!it.errorMessage.isNullOrBlank()) append(" • ${it.errorMessage}")
                 }
@@ -166,10 +168,11 @@ class BistScanActivity : BaseActivity() {
             append("Toplam: ${state.total} • İşlenen: ${state.processed} • Veri alındı: ${state.dataReceived}\n")
             append("Sinyal: ${state.signalCount} • Sinyal yok: ${state.noSignal}\n")
             append("Timeout: ${state.timeout} • Rate limit: ${state.rateLimited} • HTTP: ${state.httpErrors}\n")
-            append("Ağ: ${state.networkErrors} • Parse: ${state.parseErrors} • Yetersiz veri: ${state.dataInsufficient}\n")
-            append("Doğrulama reddi: ${state.integrityRejected} • Analiz hatası: ${state.analysisErrors}\n")
+            append("Ağ: ${state.networkErrors} • Parse: ${state.parseErrors}\n")
+            append("Yetersiz veri: ${state.dataInsufficient} • Yahoo veri yok: ${state.dataUnavailable}\n")
+            append("Doğrulama reddi: ${state.integrityRejected} • Analiz/diğer: ${state.analysisErrors}\n")
             append("Terminal sonuç: ${state.terminalResults.size}/${state.total}\n\n")
-            append("SEMBOL BAZLI RAPOR (ilk 20):\n$failures")
+            append("SEMBOL | DURUM | DENEME | HTTP | AÇIKLAMA (ilk 20):\n$failures")
         }
     }
 
