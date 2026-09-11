@@ -1,7 +1,6 @@
 package tr.borsatakip.v5.scan
 
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -26,7 +25,7 @@ class BistScannerTest {
         assertEquals(ScanRunStatus.FAILED,state.scanRun?.status)
     }
 
-    @Test fun allSymbolsFail_isPartialAndNotComplete() = runBlocking {
+    @Test fun allSymbolsFail_isFailedAndHasZeroSuccessfulAnalysis() = runBlocking {
         val provider=object:MarketDataProvider{
             override val id="all_fail"; override val displayName="all_fail"
             override suspend fun scan(onProgress:(Int,Int)->Unit):List<Stock>{ (1..3).forEach{onProgress(it,3)}; return emptyList() }
@@ -34,8 +33,12 @@ class BistScannerTest {
         }
         val state=BistScanner(provider).scan{}
         assertEquals(ScanStatus.COMPLETED,state.status)
+        assertEquals(3,state.processed)
+        assertEquals(3,state.total)
+        assertEquals(100,state.progress)
+        assertEquals(0,state.successful)
         assertEquals(3,state.skipped)
-        assertEquals(ScanRunStatus.PARTIAL,state.scanRun?.status)
+        assertEquals(ScanRunStatus.FAILED,state.scanRun?.status)
     }
 
     @Test fun deterministicVerifiedProvider_isComplete() = runBlocking {
@@ -50,10 +53,12 @@ class BistScannerTest {
         assertEquals(ScanStatus.COMPLETED,state.status)
         assertEquals(ScanRunStatus.COMPLETE,state.scanRun?.status)
         assertEquals(4,state.successful)
+        assertEquals(0,state.skipped)
+        assertEquals(0,state.integrityRejected)
         assertTrue(state.results.isNotEmpty())
     }
 
-    @Test fun unverifiedAnalyzableData_isVisibleButPartial() = runBlocking {
+    @Test fun unverifiedAnalyzableData_isVisibleSuccessfulAnalysisButPartial() = runBlocking {
         val now=System.currentTimeMillis()
         val stock=verifiedStock("DELAY",now,1).copy(isRealtime=false,delaySeconds=null,currentSessionIncluded=false)
         val provider=object:MarketDataProvider{
@@ -62,7 +67,10 @@ class BistScannerTest {
             override suspend fun fetchOne(symbol:String)=stock
         }
         val state=BistScanner(provider).scan{}
+        assertEquals(ScanStatus.COMPLETED,state.status)
         assertEquals(ScanRunStatus.PARTIAL,state.scanRun?.status)
+        assertEquals(1,state.successful)
+        assertEquals(0,state.skipped)
         assertEquals(1,state.integrityRejected)
         assertEquals(1,state.results.size)
     }
