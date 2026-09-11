@@ -58,7 +58,7 @@ class BistScanActivity : BaseActivity() {
 
         refreshSourceLabel()
         status.text = if (delayedMode()) {
-            "Hazır • Gecikmeli/yedek veri taranabilir; sonuçlar CANLI olarak etiketlenmez."
+            "Hazır • Gecikmeli/yedek veri yalnız teknik araştırma adayı üretir; gerçek zamanlı AL/SAT sinyali üretmez."
         } else {
             "Hazır • Tarama başlatılabilir"
         }
@@ -88,7 +88,6 @@ class BistScanActivity : BaseActivity() {
                             txt.text = "ANALİZ İLERLEMESİ\n$analyzed / ${state.total} • %$analysisProgress tamamlandı"
                             status.text = renderUserState(state, delayedMode())
                             debug.text = renderTechnicalState(state, settings.lastProviderLabel)
-                            // Tarama sürerken bulunan gerçek fırsat adaylarını koru; kullanıcı diğer ekrana geçerse kaybolmasın.
                             AppSession.lastOpportunities = state.results.sortedByDescending { it.finalSignalScore }
                         }
                     }
@@ -102,7 +101,7 @@ class BistScanActivity : BaseActivity() {
                         status.text = renderUserState(finalState, delayedMode())
                         debug.text = renderTechnicalState(finalState, settings.lastProviderLabel)
 
-                        if (finalState.signalCount > 0) {
+                        if (finalState.signalCount + finalState.researchCandidateCount > 0) {
                             startActivity(Intent(this@BistScanActivity, OpportunityActivity::class.java))
                         }
                     }
@@ -138,19 +137,19 @@ class BistScanActivity : BaseActivity() {
                 append("Başarılı veri: ${state.dataReceived} • Yetersiz veri: ${state.dataInsufficient} • Veri yok: ${state.dataUnavailable} • Hata: $hardFailures\n\n")
                 append("TARAMA DURUMU\n● Tarama çalışıyor\n")
                 append("Analiz: $analyzed / ${state.total}\n")
-                append("Fırsat adayı: ${state.signalCount} • Net sinyal yok: ${state.noSignal}")
-                if (delayedMode) append("\nYedek/gecikmeli veri kullanılıyor; CANLI VERİ DEĞİL.")
+                append("Canlı sinyal: ${state.signalCount} • Araştırma adayı: ${state.researchCandidateCount} • Net sinyal yok: ${state.noSignal}")
+                if (delayedMode) append("\n⚠ GECİKMELİ VERİ • GERÇEK ZAMANLI AL/SAT SİNYALİ DEĞİLDİR.")
             }
             ScanStatus.COMPLETED -> buildString {
                 append("VERİ DURUMU\n")
                 append("Başarılı veri: ${state.dataReceived} • Yetersiz veri: ${state.dataInsufficient} • Veri yok: ${state.dataUnavailable} • Hata: $hardFailures\n\n")
                 append("TARAMA DURUMU\n● Tarama tamamlandı\n")
                 append("Analiz: $analyzed / ${state.total}\n")
-                append("Fırsat adayı: ${state.signalCount} • Net sinyal yok: ${state.noSignal}")
+                append("Canlı sinyal: ${state.signalCount} • Araştırma adayı: ${state.researchCandidateCount} • Net sinyal yok: ${state.noSignal}")
                 if (state.terminalResults.size != state.total) {
                     append("\nUYARI: Terminal sonuç ${state.terminalResults.size}/${state.total}")
                 } else if (delayedMode) {
-                    append("\nUYARI: Sonuçlar gecikmeli/yedek veriye dayanır; canlı veri değildir.")
+                    append("\n⚠ GECİKMELİ VERİ • sonuçlar araştırma amaçlıdır; canlı sinyal değildir.")
                 }
             }
             ScanStatus.ERROR -> "Tarama tamamlanamadı\n${state.errorMessage ?: "Veri alınamadı"}"
@@ -164,7 +163,11 @@ class BistScanActivity : BaseActivity() {
 
     private fun renderTechnicalState(state: ScanState, providerLabel: String): String {
         val failures = state.terminalResults
-            .filter { it.status != SymbolTerminalStatus.SIGNAL && it.status != SymbolTerminalStatus.NO_SIGNAL }
+            .filter {
+                it.status != SymbolTerminalStatus.SIGNAL &&
+                    it.status != SymbolTerminalStatus.RESEARCH_CANDIDATE &&
+                    it.status != SymbolTerminalStatus.NO_SIGNAL
+            }
             .take(20)
             .joinToString("\n") {
                 buildString {
@@ -181,19 +184,20 @@ class BistScanActivity : BaseActivity() {
             if (lrc == null) {
                 "${opportunity.symbol}: LRC unavailable"
             } else {
-                "${opportunity.symbol}: LRC${lrc.period} ${lrc.trend} • eğim ${"%.6f".format(lrc.slope)} • R ${"%.2f".format(lrc.pearsonR)} • ${lrc.channelPosition} • genişlik ${"%.4f".format(lrc.channelWidth)}"
+                val normalized = lrc.normalizedSlopePct?.let { " • norm ${"%.4f".format(it)}%/bar" } ?: ""
+                "${opportunity.symbol}: LRC${lrc.period} ${lrc.trend} • eğim ${"%.6f".format(lrc.slope)}$normalized • R ${"%.2f".format(lrc.pearsonR)} • ${lrc.channelPosition}"
             }
         }.ifBlank { "Henüz LRC analiz sonucu yok." }
 
         return buildString {
             append("Provider: $providerLabel\n")
             append("VERİ TOPLAMA → Toplam ${state.total} • Veri alınan ${state.dataReceived} • Yetersiz ${state.dataInsufficient} • Veri yok ${state.dataUnavailable}\n")
-            append("TEKNİK ANALİZ → Analiz ${analyzedCount(state)} • Fırsat adayı ${state.signalCount} • Net sinyal yok ${state.noSignal}\n")
+            append("TEKNİK ANALİZ → Analiz ${analyzedCount(state)} • Canlı sinyal ${state.signalCount} • Araştırma adayı ${state.researchCandidateCount} • Net sinyal yok ${state.noSignal}\n")
             append("Timeout: ${state.timeout} • Rate limit: ${state.rateLimited} • HTTP: ${state.httpErrors}\n")
             append("Ağ: ${state.networkErrors} • Parse: ${state.parseErrors}\n")
             append("Doğrulama reddi: ${state.integrityRejected} • Analiz/diğer: ${state.analysisErrors}\n")
             append("Terminal sonuç: ${state.terminalResults.size}/${state.total}\n\n")
-            append("LRC TEKNİK DETAY (ilk 12 fırsat):\n$lrcDetails\n\n")
+            append("LRC TEKNİK DETAY (ilk 12 aday):\n$lrcDetails\n\n")
             append("SEMBOL | DURUM | DENEME | HTTP | AÇIKLAMA (ilk 20):\n$failures")
         }
     }
