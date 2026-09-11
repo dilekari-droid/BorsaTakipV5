@@ -1,0 +1,172 @@
+name: F01-F28 Final Fix Build V3
+
+on:
+  push:
+    branches: [ v5.1.27-f01-f28-active ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  verify-build-commit:
+    if: ${{ !contains(github.event.head_commit.message || '', '[f01-f28-applied]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Reconstruct and apply audited F01-F28 patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat ci/f01_f28/part*.b64 > /tmp/f01_f28.b64
+          echo '6926b1f2acc5529957a023280cbf91c3a4b4da1d0921012f77c886a7f203da96  /tmp/f01_f28.b64' | sha256sum -c -
+          base64 --decode /tmp/f01_f28.b64 | gzip -dc > /tmp/f01_f28.patch
+          echo '3766d5d4caa9e530f7e4bd6a46da29624681a4aaadd2a6100a84df850920f938  /tmp/f01_f28.patch' | sha256sum -c -
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('/tmp/f01_f28.patch').read_text()
+          chunks = p.split('diff -ruN ')
+          out = [chunks[0]]
+          for chunk in chunks[1:]:
+              header = chunk.splitlines()[0] if chunk.splitlines() else ''
+              if 'source_parts/' in header:
+                  continue
+              out.append('diff -ruN ' + chunk)
+          Path('/tmp/f01_f28.filtered.patch').write_text(''.join(out))
+          PY
+          git checkout 259cddccb39ab9b4be668aff0e680fc26a3cb1eb -- backend/.env.example backend/Dockerfile backend/requirements.txt
+          patch -p1 --batch < /tmp/f01_f28.filtered.patch
+          rm -rf source_parts ci/f01_f28
+          rm -f BORSA-TAKIP-V5.0.0-KAYNAK-KOD.zip
+          rm -f app/src/main/java/tr/borsatakip/v5/data/LiveMarketSocket.kt
+          test -f app/src/main/java/tr/borsatakip/v5/data/OhlcvIntegrityPolicy.kt
+          test -f app/src/main/java/tr/borsatakip/v5/data/BackendHttpClient.kt
+          test -f app/src/main/java/tr/borsatakip/v5/worker/OutcomeWorker.kt
+          grep -Fq 'fetchObservation' app/src/main/java/tr/borsatakip/v5/data/MarketDataProvider.kt
+          grep -Fq 'measurementStatus' app/src/main/java/tr/borsatakip/v5/data/SignalHistoryStore.kt
+          grep -Fq 'POST_NOTIFICATIONS' app/src/main/java/tr/borsatakip/v5/ui/SettingsActivity.kt
+          grep -Fq 'lastTradingAt' app/src/main/java/tr/borsatakip/v5/data/BackendProvider.kt
+          grep -Fq 'previousClose' app/src/main/java/tr/borsatakip/v5/model/Models.kt
+          grep -Fq 'OhlcvIntegrityPolicy' app/src/main/java/tr/borsatakip/v5/data/MobileMarketDataProvider.kt
+          grep -Fq 'BORSA_UPSTREAM_MAX_RESPONSE_BYTES' backend/app/provider_adapter.py
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Backend verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd backend
+          pip install -r requirements-dev.txt
+          pip check
+          python -m compileall app
+          python -m pytest -q tests
+          docker build -t borsatakip-backend-f01-f28 .
+
+      - name: Android unit tests and lint
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle clean
+          gradle :app:testDebugUnitTest
+          gradle :app:lintDebug
+
+      - name: Build and verify APKs
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle :app:assembleDebug
+          gradle :app:assembleRelease
+          mkdir -p app/build/outputs/final
+          cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/final/BorsaTakipV5.1.27-F01-F28-debug.apk
+          APK=app/build/outputs/final/BorsaTakipV5.1.27-F01-F28-debug.apk
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)
+          AAPT=$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee app/build/outputs/final/apksigner.txt
+          "$AAPT" dump badging "$APK" | tee app/build/outputs/final/aapt-badging.txt
+          grep -Fq "versionName='5.1.27'" app/build/outputs/final/aapt-badging.txt
+          grep -Fq "versionCode='77'" app/build/outputs/final/aapt-badging.txt
+          unzip -t "$APK" >/dev/null
+          sha256sum "$APK" | tee app/build/outputs/final/BorsaTakipV5.1.27-F01-F28-debug.sha256
+
+      - name: Commit verified source fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Apply F01-F28 technical fixes [f01-f28-applied] [skip ci]'
+          git push origin HEAD:v5.1.27-f01-f28-active
+          git rev-parse HEAD | tee app/build/outputs/final/source-commit.txt
+
+      - name: Package verified source snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle wrapper --gradle-version 8.9 --distribution-type bin
+          chmod +x gradlew
+          ./gradlew --version | grep -F 'Gradle 8.9'
+          rm -rf /tmp/borsatakip-source && mkdir -p /tmp/borsatakip-source
+          rsync -a --delete --exclude='.git' --exclude='app/build' --exclude='backend/.venv' ./ /tmp/borsatakip-source/
+          (cd /tmp/borsatakip-source && zip -qr "$GITHUB_WORKSPACE/app/build/outputs/final/BorsaTakipV5.1.27-F01-F28-source.zip" .)
+          unzip -t app/build/outputs/final/BorsaTakipV5.1.27-F01-F28-source.zip >/dev/null
+          sha256sum app/build/outputs/final/BorsaTakipV5.1.27-F01-F28-source.zip | tee app/build/outputs/final/BorsaTakipV5.1.27-F01-F28-source.sha256
+
+      - name: Release signing status
+        env:
+          KS: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KSP: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KA: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KP: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          if [ -n "$KS" ] && [ -n "$KSP" ] && [ -n "$KA" ] && [ -n "$KP" ]; then
+            echo 'release-signing-secrets: AVAILABLE' | tee app/build/outputs/final/release-signing-status.txt
+          else
+            echo 'release-signing-secrets: NOT_CONFIGURED' | tee app/build/outputs/final/release-signing-status.txt
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BorsaTakipV5.1.27-F01-F28-final-v3
+          path: app/build/outputs/final/*
+          if-no-files-found: error
+
+  runtime-verifier:
+    needs: verify-build-commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v5.1.27-f01-f28-active
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: API 35 runtime verifier
+        uses: ReactiveCircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          script: gradle :app:connectedDebugAndroidTest
