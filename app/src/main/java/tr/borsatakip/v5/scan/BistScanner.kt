@@ -32,10 +32,21 @@ data class ScanState(
     val integrityRejected: Int = 0,
     val results: List<Opportunity> = emptyList(),
     val errorMessage: String? = null,
-    val scanRun: ScanRun? = null
+    val scanRun: ScanRun? = null,
+    /** Merkezi HistoryRecorder tarafından yeni eklenen kayıt sayısı. */
+    val historyPersisted: Int = 0,
+    /** Tarama sonucu başarılı olsa bile history yazımı ayrıca hata verebilir. */
+    val historyError: String? = null
 )
 
-class BistScanner(private val provider: MarketDataProvider) {
+/**
+ * HistoryRecorder zorunlu bağımlılıktır. Böylece BistScanner hangi ekrandan veya servisten
+ * çağrılırsa çağrılsın başarılı COMPLETE/PARTIAL sonuçların history akışı atlanamaz.
+ */
+class BistScanner(
+    private val provider: MarketDataProvider,
+    private val historyRecorder: HistoryRecorder
+) {
 
     suspend fun scan(onState: (ScanState) -> Unit): ScanState {
         val scanStartedAt = System.currentTimeMillis()
@@ -61,7 +72,6 @@ class BistScanner(private val provider: MarketDataProvider) {
                         progress = safeProgress(processed, total),
                         processed = processed,
                         total = total,
-                        // Fetch aşamasında henüz analiz başarısı bilinmez; bunu başarı sayısı gibi göstermiyoruz.
                         successful = 0,
                         skipped = 0,
                         scanRun = run(ScanRunStatus.STARTED)
@@ -101,9 +111,9 @@ class BistScanner(private val provider: MarketDataProvider) {
                 else -> ScanRunStatus.FAILED
             }
 
-            val finalState = ScanState(
+            val rawFinalState = ScanState(
                 status = ScanStatus.COMPLETED,
-                progress = 100, // yalnızca döngünün tamamlandığını gösterir
+                progress = 100,
                 processed = total,
                 total = total,
                 successful = successful,
@@ -113,11 +123,23 @@ class BistScanner(private val provider: MarketDataProvider) {
                 errorMessage = if (successful == 0) "Hiçbir sembol geçerli analiz sonucu üretmedi." else null,
                 scanRun = run(runStatus, completed, successful, errorCount)
             )
+
+            val history = try {
+                historyRecorder.record(rawFinalState)
+            } catch (t: Throwable) {
+                HistoryRecordResult(errorMessage = t.message ?: "Sinyal geçmişi kaydı başarısız")
+            }
+            val finalState = rawFinalState.copy(
+                historyPersisted = history.inserted,
+                historyError = history.errorMessage
+            )
+
             Log.i(
                 TAG,
                 "[BIST_SCAN] ${runStatus.name} id=$scanRunId processed=$total/$total successful=$successful " +
-                    "skipped=$structuralSkipped integrityWarning=$productionIntegrityWarnings"
+                    "skipped=$structuralSkipped integrityWarning=$productionIntegrityWarnings history=${history.inserted}"
             )
+            history.errorMessage?.let { Log.e(TAG, "[BIST_SCAN] HISTORY_ERROR $it") }
             onState(finalState)
             finalState
         } catch (ce: CancellationException) {
@@ -163,11 +185,6 @@ class BistScanner(private val provider: MarketDataProvider) {
         val integrityRejected: Int
     )
 
-    /**
-     * Teknik olarak analiz edilebilir gecikmeli/EOD veri kaydı tamamen yok edilmez; OpportunityEngine
-     * onu WATCH/REJECTED olarak etiketleyebilir. Bu kayıtlar sonuç listesinde kalabilir fakat production
-     * bütünlük uyarısı nedeniyle ScanRun COMPLETE olamaz. Malformed/bozuk/yetersiz veri ise sonuç üretmeden atlanır.
-     */
     private suspend fun analyzeSafely(stocks: List<Stock>): AnalysisResult = withContext(Dispatchers.Default) {
         supervisorScope {
             data class Row(val opportunity: Opportunity?, val accepted: Boolean)
