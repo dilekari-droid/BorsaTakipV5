@@ -35,16 +35,21 @@ class BistScanActivity : BaseActivity() {
         val debug = findViewById<TextView>(R.id.txtDebugState)
         val settings = SettingsStore(this)
 
+        fun delayedMode(): Boolean =
+            !settings.baseUrl.startsWith("https://") &&
+                settings.experimentalProvidersEnabled && settings.yahooFallbackEnabled
+
         fun refreshSourceLabel() {
-            source.text = if (settings.baseUrl.startsWith("https://")) {
-                "● CANLI VERİ KAYNAĞI HAZIR"
-            } else if (settings.experimentalProvidersEnabled && settings.yahooFallbackEnabled) {
-                "● YEDEK / GECİKMELİ VERİ MODU"
-            } else {
-                "● VERİ KAYNAĞI AYARLANMAMIŞ"
+            source.text = when {
+                settings.baseUrl.startsWith("https://") -> "● CANLI VERİ KAYNAĞI HAZIR"
+                delayedMode() -> "● YEDEK / GECİKMELİ VERİ MODU • CANLI DEĞİL"
+                else -> "● VERİ KAYNAĞI AYARLANMAMIŞ"
             }
         }
 
+        technicalBtn.isEnabled = true
+        technicalBtn.alpha = 1f
+        technicalBtn.contentDescription = "Tarama hata ve terminal durum ayrıntılarını göster veya gizle"
         technicalBtn.setOnClickListener {
             val show = debug.visibility != View.VISIBLE
             debug.visibility = if (show) View.VISIBLE else View.GONE
@@ -52,8 +57,12 @@ class BistScanActivity : BaseActivity() {
         }
 
         refreshSourceLabel()
-        status.text = "Hazır • Tarama başlatılabilir"
-        txt.text = "0 / 0 • %0"
+        status.text = if (delayedMode()) {
+            "Hazır • Gecikmeli/yedek veri taranabilir; sonuçlar CANLI olarak etiketlenmez."
+        } else {
+            "Hazır • Tarama başlatılabilir"
+        }
+        txt.text = "İşlenen: 0 / 0"
         debug.text = "Motor: HAZIR\nProvider: ${settings.lastProviderLabel}\nTarama: 0/0\nTerminal sonuç: 0"
 
         btn.setOnClickListener {
@@ -74,14 +83,12 @@ class BistScanActivity : BaseActivity() {
                     val finalState = scanner.scan { state ->
                         runOnUiThread {
                             progress.progress = state.progress
-                            txt.text = "${state.processed} / ${state.total} • %${state.progress}"
-                            status.text = when (state.status) {
-                                ScanStatus.IDLE -> "Hazır"
-                                ScanStatus.RUNNING -> "Tarama çalışıyor • Veri ${state.dataReceived} • Sinyal ${state.signalCount} • Hata ${hardFailureCount(state)}"
-                                ScanStatus.COMPLETED -> "Tarama tamamlandı • ${state.signalCount} fırsat • ${state.noSignal} sinyal yok"
-                                ScanStatus.ERROR -> "Tarama tamamlanamadı • ${state.errorMessage ?: "Veri alınamadı"}"
-                                ScanStatus.CANCELLED -> "Tarama durduruldu"
+                            txt.text = if (state.status == ScanStatus.COMPLETED) {
+                                "İşlenen: ${state.processed} / ${state.total} • Tarama tamamlandı"
+                            } else {
+                                "İşlenen: ${state.processed} / ${state.total} • İlerleme %${state.progress}"
                             }
+                            status.text = renderUserState(state, delayedMode())
                             debug.text = renderTechnicalState(state, settings.lastProviderLabel)
                         }
                     }
@@ -89,22 +96,50 @@ class BistScanActivity : BaseActivity() {
                     if (finalState.status == ScanStatus.COMPLETED) {
                         AppSession.lastOpportunities = finalState.results.sortedByDescending { it.finalSignalScore }
                         progress.progress = 100
-                        txt.text = "${finalState.processed} / ${finalState.total} • %100"
-                        status.text = "Tarama tamamlandı • ${finalState.signalCount} fırsat • ${finalState.noSignal} sinyal yok • ${hardFailureCount(finalState)} hata"
+                        txt.text = "İşlenen: ${finalState.processed} / ${finalState.total} • Tarama tamamlandı"
+                        status.text = renderUserState(finalState, delayedMode())
                         debug.text = renderTechnicalState(finalState, settings.lastProviderLabel)
-                        startActivity(Intent(this@BistScanActivity, OpportunityActivity::class.java))
+
+                        if (finalState.signalCount > 0) {
+                            startActivity(Intent(this@BistScanActivity, OpportunityActivity::class.java))
+                        }
                     }
                 } catch (ce: CancellationException) {
                     status.text = "Tarama durduruldu"
                     throw ce
                 } catch (t: Throwable) {
-                    status.text = "Tarama başlatılamadı • Veri kaynağını Ayarlar bölümünden kontrol edin."
+                    status.text = "Tarama başlatılamadı.\nVeri kaynağını Ayarlar bölümünden kontrol edin."
                     debug.text = "Hata: ${t.message ?: "Beklenmeyen hata"}\nSahte/demo verisine geçilmedi."
                 } finally {
                     btn.text = "BIST TARAMASINI BAŞLAT"
                     refreshSourceLabel()
                 }
             }
+        }
+    }
+
+    private fun renderUserState(state: ScanState, delayedMode: Boolean): String {
+        val failures = hardFailureCount(state)
+        return when (state.status) {
+            ScanStatus.IDLE -> "Hazır"
+            ScanStatus.RUNNING -> buildString {
+                append("Tarama çalışıyor\n")
+                append("Veri alındı: ${state.dataReceived} • Hata: $failures • Fırsat: ${state.signalCount}")
+                if (delayedMode) append("\nYedek/gecikmeli veri kullanılıyor; CANLI değildir.")
+            }
+            ScanStatus.COMPLETED -> buildString {
+                append("Tarama: Tamamlandı\n")
+                append("İşlenen: ${state.processed}/${state.total} • Veri alındı: ${state.dataReceived}\n")
+                append("Başarılı analiz: ${state.successful} • Hata: $failures\n")
+                append("Fırsat: ${state.signalCount} • Sinyal yok: ${state.noSignal}")
+                if (failures >= state.total && state.total > 0) {
+                    append("\nVERİ İŞLENEMEDİ: tüm semboller hata ile sonuçlandı. Teknik veri detayını açın.")
+                } else if (delayedMode) {
+                    append("\nUYARI: Sonuçlar gecikmeli/yedek veriye dayanır; canlı veri değildir.")
+                }
+            }
+            ScanStatus.ERROR -> "Tarama tamamlanamadı\n${state.errorMessage ?: "Veri alınamadı"}"
+            ScanStatus.CANCELLED -> "Tarama durduruldu"
         }
     }
 
