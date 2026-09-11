@@ -13,6 +13,7 @@ import tr.borsatakip.v5.R
 import tr.borsatakip.v5.data.BackendPreflightClient
 import tr.borsatakip.v5.data.ProviderRouter
 import tr.borsatakip.v5.data.SettingsStore
+import tr.borsatakip.v5.model.Opportunity
 import tr.borsatakip.v5.model.ScanRunStatus
 import tr.borsatakip.v5.scan.BistScanner
 import tr.borsatakip.v5.scan.ScanStatus
@@ -40,7 +41,7 @@ class BistScanActivity : BaseActivity() {
         status.text = "Hazır • tarama başlatılmadı"
         txt.text = "TARAMA BAŞLAMADI"
         progress.progress = 0
-        debug.text = "Tarama ancak veri sağlayıcısı hazır olduğunda başlar. 0/0 başarılı tarama olarak gösterilmez."
+        debug.text = "Tarama ilerlemesi ile başarılı analiz sayısı ayrı gösterilir."
 
         configure.setOnClickListener {
             startActivity(Intent(this, SettingsActivity::class.java))
@@ -56,7 +57,7 @@ class BistScanActivity : BaseActivity() {
             btn.text = "DURDUR"
             status.text = "Veri sağlayıcısı doğrulanıyor..."
             txt.text = "TARAMA BAŞLAMADI"
-            debug.text = "Kontrol: Backend → Health → Authentication → BIST Symbols → History"
+            debug.text = "Kontrol: Backend → Health → Authentication → BIST Symbols → Quote → History"
             refreshSourceLabel()
 
             scanJob = lifecycleScope.launch {
@@ -73,9 +74,9 @@ class BistScanActivity : BaseActivity() {
                             return@launch
                         }
                         announcedTotal = preflight.symbolCount
-                        txt.text = "0 / $announcedTotal • %0"
+                        txt.text = "Tarama ilerlemesi: 0 / $announcedTotal • %0"
                         status.text = "Veri sağlayıcısı hazır • BIST taraması başlatılıyor"
-                        debug.text = "Health ✓ • Authentication ✓ • Symbols ✓ (${preflight.symbolCount}) • History ✓"
+                        debug.text = "Health ✓ • Authentication ✓ • Symbols ✓ (${preflight.symbolCount}) • Quote ✓ • History ✓"
                     } else {
                         status.text = "DENEYSEL sağlayıcı açık • üretim verisi olarak etiketlenmeyecek"
                         debug.text = "Yahoo fallback kullanıcı tarafından açıkça etkinleştirildi."
@@ -88,7 +89,7 @@ class BistScanActivity : BaseActivity() {
                             val visibleTotal = if (state.total > 0) state.total else announcedTotal
                             if (visibleTotal > 0) {
                                 val visibleProcessed = state.processed.coerceIn(0, visibleTotal)
-                                txt.text = "$visibleProcessed / $visibleTotal • %${state.progress}"
+                                txt.text = "Tarama ilerlemesi: $visibleProcessed / $visibleTotal • %${state.progress}"
                             } else if (state.status == ScanStatus.RUNNING) {
                                 txt.text = "SEMBOL LİSTESİ ALINIYOR"
                             }
@@ -97,9 +98,12 @@ class BistScanActivity : BaseActivity() {
                                 ScanStatus.IDLE -> status.text = "Hazır"
                                 ScanStatus.RUNNING -> {
                                     status.text = "BIST taraması çalışıyor"
-                                    debug.text = "ProviderRouter • İşlenen ${state.processed}/${visibleTotal.coerceAtLeast(state.total)} • Atlanan ${state.skipped}"
+                                    debug.text = "İşlenen ${state.processed}/${visibleTotal.coerceAtLeast(state.total)} • Analiz sonucu ${state.successful} • Hatalı/atlanan ${state.skipped}"
                                 }
-                                ScanStatus.COMPLETED -> status.text = "BIST taraması tamamlandı • ${state.results.size} sonuç • ${state.scanRun?.status ?: "?"}"
+                                ScanStatus.COMPLETED -> {
+                                    status.text = "Tarama döngüsü tamamlandı • Analiz sonucu ${state.successful} • ${state.scanRun?.status ?: "?"}"
+                                    debug.text = "Başarılı analiz ${state.successful} • Hatalı/atlanan ${state.skipped} • Veri güvenilirliği uyarısı ${state.integrityRejected}"
+                                }
                                 ScanStatus.ERROR -> {
                                     status.text = "BIST taraması başarısız • ${state.errorMessage ?: "Veri alınamadı"}"
                                     if (state.total <= 0) txt.text = "TARAMA BAŞLAMADI"
@@ -109,20 +113,46 @@ class BistScanActivity : BaseActivity() {
                         }
                     }
 
-                    if (finalState.status == ScanStatus.COMPLETED && finalState.scanRun?.status == ScanRunStatus.COMPLETE) {
-                        AppSession.lastOpportunities = finalState.results.sortedWith(
-                            compareByDescending<tr.borsatakip.v5.model.Opportunity> { it.finalSignalScore }.thenBy { it.symbol }
-                        )
-                        progress.progress = 100
-                        txt.text = "${finalState.processed} / ${finalState.total} • %100"
-                        status.text = "BIST taraması tamamlandı • ${finalState.results.size} sonuç • Atlanan ${finalState.skipped}"
-                        debug.text = "Aktif kaynak: ${settings.lastProviderLabel}\nScanRun=COMPLETE • son başarılı tarama güncellendi."
-                        startActivity(Intent(this@BistScanActivity, OpportunityActivity::class.java))
-                    } else if (finalState.status == ScanStatus.COMPLETED) {
-                        val pct = if (finalState.total > 0) finalState.progress else 0
-                        txt.text = if (finalState.total > 0) "${finalState.processed} / ${finalState.total} • %$pct" else "TARAMA BAŞLAMADI"
-                        status.text = "BIST taraması kısmi/eksik tamamlandı • son başarılı tarama korunuyor"
-                        debug.text = "ScanRun=${finalState.scanRun?.status ?: "?"} • hata/atlanan=${finalState.skipped + finalState.integrityRejected}"
+                    val runStatus = finalState.scanRun?.status
+                    val sortedResults = finalState.results.sortedWith(
+                        compareByDescending<Opportunity> { it.finalSignalScore }.thenBy { it.symbol }
+                    )
+
+                    when {
+                        finalState.status == ScanStatus.COMPLETED && runStatus == ScanRunStatus.COMPLETE -> {
+                            AppSession.lastOpportunities = sortedResults
+                            progress.progress = 100
+                            txt.text = "Tarama ilerlemesi: ${finalState.processed}/${finalState.total} • %100"
+                            status.text = "BIST taraması tamamlandı • Başarılı ${finalState.successful}/${finalState.total}"
+                            debug.text = "ScanRun=COMPLETE • Hata/atlanan 0 • son başarılı tarama güncellendi."
+                            startActivity(Intent(this@BistScanActivity, OpportunityActivity::class.java))
+                        }
+
+                        finalState.status == ScanStatus.COMPLETED &&
+                            runStatus == ScanRunStatus.PARTIAL &&
+                            finalState.successful > 0 -> {
+                            AppSession.lastOpportunities = sortedResults
+                            progress.progress = 100
+                            txt.text = "Tarama ilerlemesi: ${finalState.processed}/${finalState.total} • %100"
+                            status.text = "Kısmi tarama • Başarılı ${finalState.successful} • Hatalı/atlanan ${finalState.skipped}"
+                            debug.text = "ScanRun=PARTIAL • Veri güvenilirliği uyarısı ${finalState.integrityRejected} • sonuçlar gösteriliyor; son COMPLETE tarama kaydı ezilmedi."
+                            startActivity(
+                                Intent(this@BistScanActivity, OpportunityActivity::class.java)
+                                    .putExtra(OpportunityActivity.EXTRA_SCAN_WARNING, "KISMİ TARAMA • Başarılı ${finalState.successful}/${finalState.total} • Hatalı/atlanan ${finalState.skipped}")
+                            )
+                        }
+
+                        finalState.status == ScanStatus.COMPLETED && finalState.successful == 0 -> {
+                            val pct = if (finalState.total > 0) finalState.progress else 0
+                            txt.text = if (finalState.total > 0) "Tarama ilerlemesi: ${finalState.processed}/${finalState.total} • %$pct" else "TARAMA BAŞLAMADI"
+                            status.text = "Tarama tamamlandı ancak başarılı analiz yok"
+                            debug.text = "ScanRun=${runStatus ?: "?"} • Başarılı 0 • Hatalı/atlanan ${finalState.skipped} • Hisseler ekranına geçilmedi."
+                        }
+
+                        finalState.status == ScanStatus.COMPLETED -> {
+                            status.text = "Tarama tamamlandı ancak yayınlanabilir sonuç oluşmadı"
+                            debug.text = "ScanRun=${runStatus ?: "?"} • son başarılı tarama korunuyor."
+                        }
                     }
                 } catch (_: CancellationException) {
                     status.text = "Tarama durduruldu • son başarılı tarama korunuyor"
@@ -145,7 +175,7 @@ class BistScanActivity : BaseActivity() {
 
     private fun refreshSourceLabel() {
         source.text = if (settings.baseUrl.startsWith("https://")) {
-            "Kaynak: Production Backend • tarama öncesi Health/Symbols/History doğrulaması"
+            "Kaynak: Production Backend • tarama öncesi Health/Symbols/Quote/History doğrulaması"
         } else if (experimentalOnly()) {
             "Kaynak: Yahoo Finance • DENEYSEL/YEDEK/GEÇİKMELİ"
         } else {
