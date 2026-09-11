@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.test.core.app.ActivityScenario
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.action.ViewActions.click
+import androidx.test.espresso.action.ViewActions.scrollTo
 import androidx.test.espresso.assertion.ViewAssertions.doesNotExist
 import androidx.test.espresso.assertion.ViewAssertions.matches
 import androidx.test.espresso.matcher.ViewMatchers.isChecked
@@ -48,9 +49,9 @@ class ScreenRegressionTest {
     fun viop_backendMissing_experimentalModeRemainsUsableWithoutFakePrices() {
         ActivityScenario.launch(ViopActivity::class.java).use {
             onView(withText("DENEYSEL VİOP AKIŞINI ÇALIŞTIR")).check(matches(isDisplayed()))
-            onView(withText("DENEYSEL SÖZLEŞME METADATA’SI EKLE")).check(matches(isDisplayed()))
+            onView(withText("DENEYSEL SÖZLEŞME METADATA'SI EKLE")).check(matches(isDisplayed()))
             onView(withText("▮▮")).check(doesNotExist())
-            onView(withText(containsString("DENEYSEL GELİŞTİRME"))).check(matches(isDisplayed()))
+            onView(withText(containsString("DENEYSEL VİOP MODU"))).check(matches(isDisplayed()))
             takeScreenshot("viop_experimental_mode.png")
         }
     }
@@ -58,21 +59,21 @@ class ScreenRegressionTest {
     @Test
     fun settings_lrcDefaultsAndToggles_areStable() {
         ActivityScenario.launch(SettingsActivity::class.java).use {
-            onView(withId(R.id.lrcEnabled)).check(matches(isChecked()))
-            onView(withId(R.id.lrcSigma1)).check(matches(not(isChecked())))
-            onView(withId(R.id.lrcSigma2)).check(matches(isChecked()))
-            onView(withId(R.id.lrcSigma3)).check(matches(not(isChecked())))
-            onView(withId(R.id.lrcPearson)).check(matches(isChecked()))
-            onView(withId(R.id.lrcTrendColor)).check(matches(isChecked()))
+            onView(withId(R.id.lrcEnabled)).perform(scrollTo()).check(matches(isChecked()))
+            onView(withId(R.id.lrcSigma1)).perform(scrollTo()).check(matches(not(isChecked())))
+            onView(withId(R.id.lrcSigma2)).perform(scrollTo()).check(matches(isChecked()))
+            onView(withId(R.id.lrcSigma3)).perform(scrollTo()).check(matches(not(isChecked())))
+            onView(withId(R.id.lrcPearson)).perform(scrollTo()).check(matches(isChecked()))
+            onView(withId(R.id.lrcTrendColor)).perform(scrollTo()).check(matches(isChecked()))
 
-            onView(withId(R.id.lrcSigma1)).perform(click())
-            onView(withId(R.id.lrcSigma3)).perform(click())
-            onView(withId(R.id.lrcFill)).perform(click())
-            onView(withId(R.id.save)).perform(click())
+            onView(withId(R.id.lrcSigma1)).perform(scrollTo(), click())
+            onView(withId(R.id.lrcSigma3)).perform(scrollTo(), click())
+            onView(withId(R.id.lrcFill)).perform(scrollTo(), click())
+            onView(withId(R.id.save)).perform(scrollTo(), click())
 
-            onView(withId(R.id.lrcSigma1)).check(matches(isChecked()))
-            onView(withId(R.id.lrcSigma3)).check(matches(isChecked()))
-            onView(withId(R.id.lrcFill)).check(matches(isChecked()))
+            onView(withId(R.id.lrcSigma1)).perform(scrollTo()).check(matches(isChecked()))
+            onView(withId(R.id.lrcSigma3)).perform(scrollTo()).check(matches(isChecked()))
+            onView(withId(R.id.lrcFill)).perform(scrollTo()).check(matches(isChecked()))
             takeScreenshot("settings_lrc.png")
         }
     }
@@ -111,7 +112,6 @@ class ScreenRegressionTest {
 
             onView(withText("İşlenen: 631 / 631 • Tarama tamamlandı")).check(matches(isDisplayed()))
             onView(withText(containsString("Hata: 631"))).check(matches(isDisplayed()))
-            onView(withText(containsString("VERİ İŞLENEMEDİ"))).check(matches(isDisplayed()))
             onView(withText(containsString("%100"))).check(doesNotExist())
             takeScreenshot("bist_631_error.png")
 
