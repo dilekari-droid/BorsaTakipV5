@@ -17,7 +17,7 @@ import tr.borsatakip.v5.analysis.OpportunityFilterPolicy
 import tr.borsatakip.v5.data.LastSuccessfulScanStore
 import tr.borsatakip.v5.data.ProviderRouter
 import tr.borsatakip.v5.data.SettingsStore
-import tr.borsatakip.v5.data.SignalHistoryStore
+import tr.borsatakip.v5.data.SignalHistoryRecorder
 import tr.borsatakip.v5.data.favorites.FavoriteRepository
 import tr.borsatakip.v5.model.Opportunity
 import tr.borsatakip.v5.model.ScanRun
@@ -34,7 +34,6 @@ class OpportunityActivity : BaseActivity() {
     private var lastSuccessfulRun: ScanRun? = null
     private lateinit var favoriteRepository: FavoriteRepository
     private lateinit var historyStore: LastSuccessfulScanStore
-    private lateinit var signalHistoryStore: SignalHistoryStore
     private var favoriteSymbols: Set<String> = emptySet()
     private lateinit var summary: TextView
     private lateinit var list: RecyclerView
@@ -49,7 +48,6 @@ class OpportunityActivity : BaseActivity() {
         setupBottomNav()
         favoriteRepository = FavoriteRepository.get(this)
         historyStore = LastSuccessfulScanStore(this)
-        signalHistoryStore = SignalHistoryStore(this)
         summary = findViewById(R.id.txtSummary)
         list = findViewById(R.id.list)
         val scanButton = findViewById<Button>(R.id.btnRealOpportunityScan)
@@ -89,7 +87,10 @@ class OpportunityActivity : BaseActivity() {
                         settings.experimentalProvidersEnabled && settings.yahooFallbackEnabled -> "Backend yok • Yahoo deneysel/gecikmeli yedek taraması başlatılıyor..."
                         else -> "Üretim backend yapılandırılmamış. TradingView veri kaynağı değildir."
                     }
-                    val scanner = BistScanner(ProviderRouter(this@OpportunityActivity))
+                    val scanner = BistScanner(
+                        ProviderRouter(this@OpportunityActivity),
+                        SignalHistoryRecorder(this@OpportunityActivity)
+                    )
                     val finalState = scanner.scan { state ->
                         runOnUiThread {
                             summary.text = when (state.status) {
@@ -102,20 +103,20 @@ class OpportunityActivity : BaseActivity() {
                         }
                     }
                     val run = finalState.scanRun
+                    val historySuffix = finalState.historyError?.let { " • Geçmiş kaydı hatası: $it" }
+                        ?: " • Geçmişe ${finalState.historyPersisted} yeni sinyal yazıldı"
                     when {
                         finalState.status == ScanStatus.COMPLETED && run?.status == ScanRunStatus.COMPLETE -> {
                             val results = OpportunityFilterPolicy.apply(finalState.results, OpportunityFilter.ALL)
                             AppSession.lastOpportunities = results
                             lastSuccessfulRun = run
                             historyStore.save(run, results)
-                            val persisted = signalHistoryStore.recordScan(run, results)
-                            applyFilter("SON BAŞARILI TARAMA • ${formatRunTime(run)} • ${results.size} kayıt • Geçmişe $persisted sinyal yazıldı • Kaynak: ${settings.lastProviderLabel}")
+                            applyFilter("SON BAŞARILI TARAMA • ${formatRunTime(run)} • ${results.size} kayıt$historySuffix • Kaynak: ${settings.lastProviderLabel}")
                         }
                         finalState.status == ScanStatus.COMPLETED && run?.status == ScanRunStatus.PARTIAL && finalState.successful > 0 -> {
                             val partial = OpportunityFilterPolicy.apply(finalState.results, OpportunityFilter.ALL)
                             AppSession.lastOpportunities = partial
-                            val persisted = signalHistoryStore.recordScan(run, partial)
-                            bindFiltered(partial, "KISMİ TARAMA • Başarılı ${finalState.successful}/${finalState.total} • Hatalı/atlanan ${finalState.skipped} • Geçmişe $persisted geçerli sinyal yazıldı • Son COMPLETE tarama kaydı değiştirilmedi")
+                            bindFiltered(partial, "KISMİ TARAMA • Başarılı ${finalState.successful}/${finalState.total} • Hatalı/atlanan ${finalState.skipped}$historySuffix • Son COMPLETE tarama kaydı değiştirilmedi")
                         }
                         finalState.status == ScanStatus.COMPLETED -> bindFiltered(emptyList(), "Tarama tamamlandı ancak başarılı analiz sonucu oluşmadı • geçmiş kaydı oluşturulmadı")
                     }
