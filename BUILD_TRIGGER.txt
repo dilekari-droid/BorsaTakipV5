@@ -1,1 +1,1 @@
-GitHub Actions build trigger for BorsaTakipV5 V5.0.0.
+GitHub Actions build trigger for BorsaTakipV5 V5.1.29.

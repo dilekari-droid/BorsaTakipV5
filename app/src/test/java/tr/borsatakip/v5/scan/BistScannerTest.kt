@@ -7,30 +7,23 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import tr.borsatakip.v5.data.MarketDataProvider
+import tr.borsatakip.v5.data.ProviderScanReport
+import tr.borsatakip.v5.data.ProviderSymbolResult
+import tr.borsatakip.v5.data.ProviderSymbolStatus
 import tr.borsatakip.v5.model.Candle
 import tr.borsatakip.v5.model.Stock
 
 class BistScannerTest {
 
-    @Test
-    fun progress_totalZero_isZero() {
-        assertEquals(0, BistScanner.safeProgress(5, 0))
-    }
-
-    @Test
-    fun progress_isClampedTo100() {
-        assertEquals(100, BistScanner.safeProgress(11, 10))
-    }
+    @Test fun progress_totalZero_isZero() { assertEquals(0, BistScanner.safeProgress(5, 0)) }
+    @Test fun progress_isClampedTo100() { assertEquals(100, BistScanner.safeProgress(11, 10)) }
 
     @Test
     fun emptySymbolUniverse_returnsErrorNotCrash() = runBlocking {
         val provider = object : MarketDataProvider {
             override val id = "empty"
             override val displayName = "empty"
-            override suspend fun scan(onProgress: (Int, Int) -> Unit): List<Stock> {
-                onProgress(0, 0)
-                return emptyList()
-            }
+            override suspend fun scan(onProgress: (Int, Int) -> Unit): List<Stock> { onProgress(0, 0); return emptyList() }
             override suspend fun fetchOne(symbol: String): Stock? = null
         }
         val state = BistScanner(provider).scan { }
@@ -39,26 +32,25 @@ class BistScannerTest {
     }
 
     @Test
-    fun allSymbolsFail_returnsCompletedWithSkipped() = runBlocking {
+    fun allSymbolsFail_returnsCompletedWithTerminalFailures() = runBlocking {
         val provider = object : MarketDataProvider {
             override val id = "all_fail"
             override val displayName = "all_fail"
             override suspend fun scan(onProgress: (Int, Int) -> Unit): List<Stock> {
-                onProgress(1, 3)
-                onProgress(2, 3)
-                onProgress(3, 3)
-                return emptyList()
+                onProgress(1, 3); onProgress(2, 3); onProgress(3, 3); return emptyList()
             }
             override suspend fun fetchOne(symbol: String): Stock? = null
         }
         val state = BistScanner(provider).scan { }
         assertEquals(ScanStatus.COMPLETED, state.status)
+        assertEquals(3, state.total)
+        assertEquals(3, state.terminalResults.size)
         assertEquals(3, state.skipped)
         assertEquals(0, state.successful)
     }
 
     @Test
-    fun deterministicProvider_completesWithoutNetwork() = runBlocking {
+    fun deterministicProvider_everySymbolGetsTerminalState() = runBlocking {
         val now = System.currentTimeMillis()
         val stocks = (1..4).map { idx ->
             Stock(
@@ -66,14 +58,7 @@ class BistScannerTest {
                 companyName = "Test $idx",
                 candles = List(240) { i ->
                     val close = 20.0 + idx + i * 0.03
-                    Candle(
-                        timestamp = i.toLong() + 1,
-                        open = close,
-                        high = close + 0.4,
-                        low = close - 0.4,
-                        close = close,
-                        volume = 1000.0 + i
-                    )
+                    Candle(i.toLong() + 1, close, close + 0.4, close - 0.4, close, 1000.0 + i)
                 },
                 source = "unit",
                 dataTimestamp = now,
@@ -94,8 +79,76 @@ class BistScannerTest {
         val state = BistScanner(provider).scan { }
         assertEquals(ScanStatus.COMPLETED, state.status)
         assertEquals(4, state.total)
-        assertTrue(state.successful > 0)
-        assertTrue(state.results.isNotEmpty())
+        assertEquals(4, state.terminalResults.size)
+        assertTrue(state.terminalResults.all { it.status == SymbolTerminalStatus.SIGNAL || it.status == SymbolTerminalStatus.NO_SIGNAL })
+        assertEquals(0, state.researchCandidateCount)
+    }
+
+    @Test
+    fun detailedProvider_preservesTimeoutAndHttpError() = runBlocking {
+        val provider = object : MarketDataProvider {
+            override val id = "terminal"
+            override val displayName = "terminal"
+            override suspend fun scan(onProgress: (Int, Int) -> Unit): List<Stock> = emptyList()
+            override suspend fun scanDetailed(onProgress: (ProviderSymbolResult, Int, Int) -> Unit): ProviderScanReport {
+                val items = listOf(
+                    ProviderSymbolResult("AAA", ProviderSymbolStatus.TIMEOUT, attempt = 3, errorMessage = "timeout"),
+                    ProviderSymbolResult("BBB", ProviderSymbolStatus.HTTP_ERROR, attempt = 1, httpCode = 500, errorMessage = "HTTP 500")
+                )
+                items.forEachIndexed { index, item -> onProgress(item, index + 1, items.size) }
+                return ProviderScanReport(items.size, items)
+            }
+            override suspend fun fetchOne(symbol: String): Stock? = null
+        }
+        val state = BistScanner(provider).scan { }
+        assertEquals(ScanStatus.COMPLETED, state.status)
+        assertEquals(2, state.terminalResults.size)
+        assertEquals(1, state.timeout)
+        assertEquals(1, state.httpErrors)
+        assertEquals(2, state.skipped)
+    }
+
+    @Test
+    fun delayedHistoricalProvider_becomesResearchCandidateNeverRealtimeSignal() = runBlocking {
+        val now = System.currentTimeMillis()
+        val stock = Stock(
+            symbol = "YHOO",
+            companyName = "Delayed Test",
+            candles = List(240) { i ->
+                val close = 30.0 + i * 0.05
+                Candle(
+                    timestamp = now - (240L - i) * 86_400_000L,
+                    open = close,
+                    high = close + 0.4,
+                    low = close - 0.4,
+                    close = close,
+                    volume = 1_000_000.0 + i
+                )
+            },
+            source = "Yahoo Finance • YEDEK / GECİKMELİ",
+            dataTimestamp = now - 60_000L,
+            isRealtime = false,
+            delaySeconds = null,
+            currentSessionIncluded = false
+        )
+        val provider = object : MarketDataProvider {
+            override val id = "delayed"
+            override val displayName = "delayed"
+            override suspend fun scan(onProgress: (Int, Int) -> Unit): List<Stock> { onProgress(1, 1); return listOf(stock) }
+            override suspend fun fetchOne(symbol: String): Stock? = stock
+        }
+
+        val state = BistScanner(provider).scan { }
+        assertEquals(ScanStatus.COMPLETED, state.status)
+        assertEquals(1, state.terminalResults.size)
+        assertEquals(SymbolTerminalStatus.RESEARCH_CANDIDATE, state.terminalResults.single().status)
+        assertEquals(0, state.signalCount)
+        assertEquals(1, state.researchCandidateCount)
+        val opportunity = state.results.single()
+        assertTrue(!opportunity.isRealtime)
+        assertTrue(!opportunity.signalEligibleRealtime)
+        assertEquals("ARAŞTIRMA / GECİKMELİ", opportunity.analysisMode)
+        assertTrue(opportunity.dataConfidenceScore < 100)
     }
 
     @Test
@@ -103,20 +156,11 @@ class BistScannerTest {
         val provider = object : MarketDataProvider {
             override val id = "slow"
             override val displayName = "slow"
-            override suspend fun scan(onProgress: (Int, Int) -> Unit): List<Stock> {
-                delay(5_000)
-                return emptyList()
-            }
+            override suspend fun scan(onProgress: (Int, Int) -> Unit): List<Stock> { delay(5_000); return emptyList() }
             override suspend fun fetchOne(symbol: String): Stock? = null
         }
         var cancelled = false
-        try {
-            runBlocking {
-                throw CancellationException("test")
-            }
-        } catch (_: CancellationException) {
-            cancelled = true
-        }
+        try { runBlocking { throw CancellationException("test") } } catch (_: CancellationException) { cancelled = true }
         assertTrue(cancelled)
     }
 }

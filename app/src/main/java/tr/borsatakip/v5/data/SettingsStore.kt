@@ -22,12 +22,12 @@ class SettingsStore(c: Context) {
         set(v) = putEncrypted("api_key_encrypted", v)
 
     /**
-     * Üretim veri modu varsayılandır. Bu anahtar yalnız Yahoo'nun gecikmeli BIST yedeği
-     * gibi açıkça deneysel olarak etiketlenmiş fallback kaynaklarını etkinleştirir.
-     * TradingView BIST/VİOP veri sağlayıcısı değildir.
+     * Production backend remains the primary source. On a fresh install the experimental
+     * Yahoo fallback is enabled so BIST scanning can still work when no backend is configured.
+     * Yahoo data is always labelled delayed/experimental and is never presented as real-time.
      */
     var experimentalProvidersEnabled: Boolean
-        get() = p.getBoolean("experimental_providers_enabled", false)
+        get() = p.getBoolean("experimental_providers_enabled", true)
         set(v) = p.edit().putBoolean("experimental_providers_enabled", v).apply()
 
     /** V5.1.24 ve öncesinden kalmış TradingView kimlik/oturum kayıtlarını siler. */
@@ -51,7 +51,7 @@ class SettingsStore(c: Context) {
         set(v) = p.edit().putBoolean("notifications", v).apply()
 
     var yahooFallbackEnabled: Boolean
-        get() = p.getBoolean("yahoo_fallback_enabled", false)
+        get() = p.getBoolean("yahoo_fallback_enabled", true)
         set(v) = p.edit().putBoolean("yahoo_fallback_enabled", v).apply()
 
     var lastProviderId: String
@@ -69,6 +69,65 @@ class SettingsStore(c: Context) {
     var cachedBistSymbols: Set<String>
         get() = p.getStringSet("cached_bist_symbols", emptySet())?.toSet().orEmpty()
         set(v) = p.edit().putStringSet("cached_bist_symbols", v).apply()
+
+    /** Yahoo'da daha önce gerçek OHLCV ile doğrulanmış semboller. */
+    var yahooSupportedSymbols: Set<String>
+        get() = p.getStringSet("yahoo_supported_symbols", emptySet())?.toSet().orEmpty()
+        set(v) = p.edit().putStringSet("yahoo_supported_symbols", v).apply()
+
+    /** Yahoo'nun kalıcı olarak 400/404/veri-yok döndürdüğü semboller. TTL dolunca yeniden doğrulanır. */
+    var yahooUnsupportedSymbols: Set<String>
+        get() = p.getStringSet("yahoo_unsupported_symbols", emptySet())?.toSet().orEmpty()
+        set(v) = p.edit().putStringSet("yahoo_unsupported_symbols", v).apply()
+
+    var yahooSymbolCacheUpdatedAt: Long
+        get() = p.getLong("yahoo_symbol_cache_updated_at", 0L)
+        set(v) = p.edit().putLong("yahoo_symbol_cache_updated_at", v).apply()
+
+    // Linear Regression Channel (LRC) chart settings. Existing settings remain untouched.
+    var lrcEnabled: Boolean
+        get() = p.getBoolean("lrc_enabled", true)
+        set(v) = p.edit().putBoolean("lrc_enabled", v).apply()
+
+    var lrcLength: Int
+        get() = p.getInt("lrc_length", 100).coerceIn(20, 500)
+        set(v) = p.edit().putInt("lrc_length", v.coerceIn(20, 500)).apply()
+
+    var lrcSigma1Enabled: Boolean
+        get() = p.getBoolean("lrc_sigma_1", false)
+        set(v) = p.edit().putBoolean("lrc_sigma_1", v).apply()
+
+    var lrcSigma2Enabled: Boolean
+        get() = p.getBoolean("lrc_sigma_2", true)
+        set(v) = p.edit().putBoolean("lrc_sigma_2", v).apply()
+
+    var lrcSigma3Enabled: Boolean
+        get() = p.getBoolean("lrc_sigma_3", false)
+        set(v) = p.edit().putBoolean("lrc_sigma_3", v).apply()
+
+    var lrcTrendColorEnabled: Boolean
+        get() = p.getBoolean("lrc_trend_color", true)
+        set(v) = p.edit().putBoolean("lrc_trend_color", v).apply()
+
+    var lrcPearsonEnabled: Boolean
+        get() = p.getBoolean("lrc_pearson", true)
+        set(v) = p.edit().putBoolean("lrc_pearson", v).apply()
+
+    var lrcFillEnabled: Boolean
+        get() = p.getBoolean("lrc_fill", false)
+        set(v) = p.edit().putBoolean("lrc_fill", v).apply()
+
+    var lrcBreakoutWarningEnabled: Boolean
+        get() = p.getBoolean("lrc_breakout_warning", true)
+        set(v) = p.edit().putBoolean("lrc_breakout_warning", v).apply()
+
+    fun clearYahooSymbolCompatibilityCache() {
+        p.edit()
+            .remove("yahoo_supported_symbols")
+            .remove("yahoo_unsupported_symbols")
+            .remove("yahoo_symbol_cache_updated_at")
+            .apply()
+    }
 
     private fun getEncrypted(key: String): String {
         val encrypted = p.getString(key, null)
