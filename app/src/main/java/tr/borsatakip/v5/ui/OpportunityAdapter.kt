@@ -45,14 +45,17 @@ class OpportunityAdapter(
 
     override fun onBindViewHolder(holder: H, position: Int) {
         val x = items[position]
-        val normalized = FavoriteRepository.normalizeSymbol(x.symbol)
+        val symbolUpper = x.symbol.trim().uppercase(Locale.ROOT)
+        val companyUpper = (x.companyName ?: symbolUpper).trim().uppercase(Locale.getDefault())
+        val directionUpper = x.direction.trim().uppercase(Locale.ROOT)
+        val normalized = FavoriteRepository.normalizeSymbol(symbolUpper)
         val favorite = favoriteSymbols.contains(normalized)
         holder.favorite.text = if (favorite) "★" else "☆"
         holder.favorite.contentDescription = if (favorite) "Favorilerden çıkar" else "Favoriye ekle"
         holder.favorite.setOnClickListener { toggleFavorite(x) }
 
         val strength = x.finalSignalScore.coerceIn(0, 100)
-        applySignalVisuals(holder, x.direction, strength)
+        applySignalVisuals(holder, directionUpper, strength)
 
         val riskLabel = when {
             x.riskScore <= 30 -> "DÜŞÜK RİSK"
@@ -99,11 +102,12 @@ class OpportunityAdapter(
         val hasVwap = x.technical.vwap != null
         fun mark(ok: Boolean): String = if (ok) "✓" else "⚠ veri yok"
 
-        holder.symbol.text = x.symbol
-        holder.score.text = "${x.direction} • Nihai Sinyal $strength/100"
+        // Onaylı kart sırası: şirket adı -> (SEMBOL) -> SEMBOL LONG/SHORT • Nihai Sinyal XX/100
+        holder.company.text = companyUpper
+        holder.symbol.text = "($symbolUpper)"
+        holder.score.text = "$symbolUpper $directionUpper • Nihai Sinyal $strength/100"
         holder.strengthBar.progress = strength
         holder.strengthValue.text = "$strength/100"
-        holder.company.text = x.companyName ?: ""
         holder.meta.text = buildString {
             append("$validityLabel • $riskLabel • Veri Modu: $modeLabel\n")
             append("Kaynak: ${x.source}\n")
@@ -111,7 +115,7 @@ class OpportunityAdapter(
             append("Ölçülen Veri Yaşı: $measuredAgeText • Sağlayıcı gecikmesi: ${x.delaySeconds?.let { "$it sn" } ?: "bilinmiyor"}\n")
             append("Teknik Skor ${x.score}/100 • Risk ${x.riskScore}/100 • Veri Güveni ${x.dataConfidenceScore}/100 (${x.dataConfidenceLabel})\n")
             append("VERİ KAPSAMI: Fiyat ${mark(hasPrice)} • Hacim ${mark(hasVolume)} • OHLCV ${mark(hasOhlcv)} • KAP ${mark(hasKap)} • Destek/Direnç ${mark(hasLevels)} • VWAP ${mark(hasVwap)}\n")
-            append("${x.direction} nedeni: $reason")
+            append("$directionUpper nedeni: $reason")
         }
         holder.risk.text = "${x.signalValidityReason} • Destek ${x.support?.let { "%.2f".format(it) } ?: "veri yok"} • Direnç ${x.resistance?.let { "%.2f".format(it) } ?: "veri yok"}"
         holder.itemView.setOnClickListener { click(x) }
