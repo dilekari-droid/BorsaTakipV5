@@ -176,12 +176,16 @@ class BistScanner(private val provider: MarketDataProvider) {
     }
 
     private fun analyzeStock(stock: Stock): SymbolTerminalResult {
-        val verdict = RealTimeIntegrityPolicy.validate(stock)
-        if (!verdict.accepted) {
+        val integrityError = if (stock.isRealtime) {
+            RealTimeIntegrityPolicy.validate(stock).takeUnless { it.accepted }?.reason
+        } else {
+            validateDelayedHistorical(stock)
+        }
+        if (integrityError != null) {
             return SymbolTerminalResult(
                 symbol = stock.symbol,
                 status = SymbolTerminalStatus.INTEGRITY_REJECTED,
-                errorMessage = verdict.reason
+                errorMessage = integrityError
             )
         }
         return try {
@@ -213,6 +217,27 @@ class BistScanner(private val provider: MarketDataProvider) {
                 errorMessage = t.message ?: t.javaClass.simpleName
             )
         }
+    }
+
+    /**
+     * Yedek/gecikmeli sağlayıcılar canlı veri olarak kabul edilmez; ancak yeterli ve güncel
+     * günlük OHLCV geçmişi varsa teknik tarama yapılabilir. Sonuçlar Opportunity üzerinde
+     * isRealtime=false kaldığı için UI'da CANLI etiketi alamaz.
+     */
+    private fun validateDelayedHistorical(stock: Stock): String? {
+        if (stock.candles.size < MIN_CANDLES) return "Teknik analiz için en az $MIN_CANDLES OHLCV mumu gerekli."
+        if (stock.dataTimestamp <= 0L) return "Gecikmeli verinin zaman bilgisi yok."
+        val age = System.currentTimeMillis() - stock.dataTimestamp
+        if (age < -15_000L) return "Veri zamanı cihaz saatinden ileride."
+        if (age > MAX_DELAYED_DATA_AGE_MS) return "Gecikmeli veri çok eski: ${age / 86_400_000L} gün."
+        val last = stock.candles.lastOrNull() ?: return "OHLCV verisi yok."
+        if (listOf(last.open, last.high, last.low, last.close, last.volume).any { !it.isFinite() }) {
+            return "Son OHLCV kaydı geçersiz."
+        }
+        if (last.close <= 0.0 || last.high < last.low || last.volume < 0.0) {
+            return "Son OHLCV kaydı piyasa kurallarına uymuyor."
+        }
+        return null
     }
 
     private fun providerPhaseState(results: List<ProviderSymbolResult>, processed: Int, total: Int): ScanState {
@@ -296,6 +321,7 @@ class BistScanner(private val provider: MarketDataProvider) {
         const val TAG = "BIST_SCAN"
         private const val MIN_CANDLES = 220
         private const val SIGNAL_THRESHOLD = 60
+        private const val MAX_DELAYED_DATA_AGE_MS = 10L * 24L * 60L * 60L * 1000L
 
         fun safeProgress(processed: Int, total: Int): Int {
             if (total <= 0) return 0
