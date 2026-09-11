@@ -72,7 +72,7 @@ Release anahtarı repoya eklenmez. GitHub Actions aşağıdaki repository secret
 
 Bu secret'lar yoksa workflow yalnızca debug APK üretir. Aynı `applicationId` (`tr.borsatakip.v5`) ve aynı release keystore gelecek tüm sürümlerde korunmalıdır.
 
-## Derleme
+## Derleme ve kaynak paketi
 
 GitHub Actions uygulama sürümünü `app/build.gradle.kts` içinden çözer ve çıktıları otomatik olarak:
 
@@ -80,3 +80,5 @@ GitHub Actions uygulama sürümünü `app/build.gradle.kts` içinden çözer ve 
 - `BorsaTakipV5.1.29-kaynak-kod.zip`
 
 şeklinde adlandırır. Unit test, lint, debug build, release R8 smoke build ve APK sürüm/kalite kontrolleri başarıyla geçmeden sürüm tamamlandı kabul edilmez.
+
+Kaynak paketleme workflow'u ayrıca Gradle 8.9 wrapper'ını üretip ZIP içine `gradlew`, `gradlew.bat`, `gradle/wrapper/gradle-wrapper.jar` ve `gradle-wrapper.properties` dosyalarını ekler ve `./gradlew --version` ile doğrular. Böylece indirilen kaynak paketi sistemde global Gradle kurulumu gerektirmeden derlenebilir.
