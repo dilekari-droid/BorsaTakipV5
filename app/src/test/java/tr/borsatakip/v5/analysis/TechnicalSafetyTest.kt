@@ -9,10 +9,17 @@ import tr.borsatakip.v5.data.MarketDataProvider
 import tr.borsatakip.v5.model.Candle
 import tr.borsatakip.v5.model.Stock
 import tr.borsatakip.v5.scan.BistScanner
+import tr.borsatakip.v5.scan.HistoryRecordResult
+import tr.borsatakip.v5.scan.HistoryRecorder
+import tr.borsatakip.v5.scan.ScanState
 import tr.borsatakip.v5.scan.ScanStatus
 import java.net.SocketTimeoutException
 
 class TechnicalSafetyTest {
+    private val noOpHistory = object : HistoryRecorder {
+        override suspend fun record(state: ScanState) = HistoryRecordResult()
+    }
+
     @Test fun emptyCandles_doNotCrash() {
         val t=TechnicalAnalyzer.analyze(emptyList()); assertNull(t.ema200); assertNull(t.rsi14)
     }
@@ -45,7 +52,7 @@ class TechnicalSafetyTest {
             override suspend fun scan(onProgress:(Int,Int)->Unit):List<Stock>{onProgress(1,2);onProgress(2,2);return listOf(good)}
             override suspend fun fetchOne(symbol:String):Stock?=if(symbol=="GOOD")good else null
         }
-        val state=BistScanner(provider).scan{}
+        val state=BistScanner(provider,noOpHistory).scan{}
         assertEquals(ScanStatus.COMPLETED,state.status);assertEquals(1,state.skipped);assertEquals(1,state.successful)
     }
     @Test fun providerTimeout_becomesControlledError()=runBlocking {
@@ -54,7 +61,7 @@ class TechnicalSafetyTest {
             override suspend fun scan(onProgress:(Int,Int)->Unit):List<Stock>{throw SocketTimeoutException("timeout")}
             override suspend fun fetchOne(symbol:String):Stock?=null
         }
-        assertEquals(ScanStatus.ERROR,BistScanner(provider).scan{}.status)
+        assertEquals(ScanStatus.ERROR,BistScanner(provider,noOpHistory).scan{}.status)
     }
     @Test fun networkFailure_becomesControlledError()=runBlocking {
         val provider=object:MarketDataProvider{
@@ -62,7 +69,7 @@ class TechnicalSafetyTest {
             override suspend fun scan(onProgress:(Int,Int)->Unit):List<Stock>{throw java.io.IOException("offline")}
             override suspend fun fetchOne(symbol:String):Stock?=null
         }
-        assertEquals(ScanStatus.ERROR,BistScanner(provider).scan{}.status)
+        assertEquals(ScanStatus.ERROR,BistScanner(provider,noOpHistory).scan{}.status)
     }
 
     private fun stockWith(candles:List<Candle>):Stock {
