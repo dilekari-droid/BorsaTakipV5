@@ -1,6 +1,6 @@
-# BorsaTakip V5.1.27 — LRC Entegrasyonu
+# BorsaTakip V5.1.29 — LRC Entegrasyonu
 
-Bu dal, mevcut OHLCV/Canvas grafik motorunu değiştirmeden Linear Regression Channel desteği ekler.
+Bu sürüm, mevcut OHLCV/Canvas grafik motorunu değiştirmeden Linear Regression Channel desteğini grafik ve tarama/analiz motoruyla birlikte kullanır.
 
 ## Varsayılanlar
 - LRC: açık
@@ -16,7 +16,9 @@ Bu dal, mevcut OHLCV/Canvas grafik motorunu değiştirmeden Linear Regression Ch
 ## Mimari
 LRC matematiği `LinearRegressionChannelCalculator` içinde saf Kotlin olarak tutulur. Rolling sonuçlar OHLCV değiştiğinde önceden hesaplanır; `onDraw()` içinde regresyon/standart sapma/Pearson hesabı yapılmaz. `TechnicalOhlcvChartView` yalnız cache edilmiş sonucu çizer.
 
-EMA20/50/200, RSI14, MACD/Signal ve hacim mevcut davranışlarıyla korunur. LRC aynı doğrulanmış Close dizisini kullanır. ±2σ kanal dışı durumunda RSI ve MACD yalnız doğrulama bilgisi üretir; LRC tek başına AL/SAT sinyali oluşturmaz.
+Tarama motorunda LRC sonucu `Opportunity.lrc` içine taşınır. Eğimin ham değeri yanında fiyat ölçeğine göre normalize edilmiş `%/bar` eğim de tutulur. EMA20/50/200, RSI14, MACD/Signal ve hacim mevcut davranışlarıyla korunur. LRC aynı doğrulanmış Close dizisini kullanır.
+
+LRC tek başına AL/SAT sinyali üretmez. ±2σ kanal dışı durumları yalnız teknik bağlam bilgisidir. Gecikmeli/yedek veride eşik geçilse bile sonuç `RESEARCH_CANDIDATE` olarak sınıflanır; gerçek zamanlı `SIGNAL` sayılmaz.
 
 ## Güvenlik
-Veri sayısı LRC length değerinden azsa kanal çizilmez. NaN/Infinity içeren pencere reddedilir. Sabit fiyat serisinde Pearson R güvenli biçimde 0 üretilir.
+Veri sayısı LRC length değerinden azsa kanal çizilmez. NaN/Infinity içeren pencere reddedilir. Sabit fiyat serisinde Pearson R güvenli biçimde 0 üretilir. Rolling ve kanal sınır durumları unit test kapsamındadır.
