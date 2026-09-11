@@ -70,6 +70,28 @@ class SettingsStore(c: Context) {
         get() = p.getStringSet("cached_bist_symbols", emptySet())?.toSet().orEmpty()
         set(v) = p.edit().putStringSet("cached_bist_symbols", v).apply()
 
+    /** Yahoo'da daha önce gerçek OHLCV ile doğrulanmış semboller. */
+    var yahooSupportedSymbols: Set<String>
+        get() = p.getStringSet("yahoo_supported_symbols", emptySet())?.toSet().orEmpty()
+        set(v) = p.edit().putStringSet("yahoo_supported_symbols", v).apply()
+
+    /** Yahoo'nun kalıcı olarak 400/404/veri-yok döndürdüğü semboller. TTL dolunca yeniden doğrulanır. */
+    var yahooUnsupportedSymbols: Set<String>
+        get() = p.getStringSet("yahoo_unsupported_symbols", emptySet())?.toSet().orEmpty()
+        set(v) = p.edit().putStringSet("yahoo_unsupported_symbols", v).apply()
+
+    var yahooSymbolCacheUpdatedAt: Long
+        get() = p.getLong("yahoo_symbol_cache_updated_at", 0L)
+        set(v) = p.edit().putLong("yahoo_symbol_cache_updated_at", v).apply()
+
+    fun clearYahooSymbolCompatibilityCache() {
+        p.edit()
+            .remove("yahoo_supported_symbols")
+            .remove("yahoo_unsupported_symbols")
+            .remove("yahoo_symbol_cache_updated_at")
+            .apply()
+    }
+
     private fun getEncrypted(key: String): String {
         val encrypted = p.getString(key, null)
         return if (encrypted.isNullOrBlank()) "" else decrypt(encrypted).orEmpty()
