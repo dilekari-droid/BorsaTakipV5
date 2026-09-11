@@ -1,6 +1,7 @@
 package tr.borsatakip.v5.data
 
 import android.content.Context
+import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
@@ -25,7 +26,7 @@ import java.util.concurrent.atomic.AtomicInteger
 
 /** Deneysel yedek/gecikmeli veri sağlayıcısıdır. Hiçbir zaman REALTIME olarak etiketlenmez. */
 class YahooFallbackProvider(context: Context) : MarketDataProvider {
-    private val settings = SettingsStore(context)
+    private val settings = SettingsStore(context.applicationContext)
     override val id = "yahoo_fallback"
     override val displayName = "Yahoo Finance • YEDEK / GECİKMELİ"
 
@@ -39,13 +40,28 @@ class YahooFallbackProvider(context: Context) : MarketDataProvider {
         require(symbols.isNotEmpty()) {
             "BIST sembol evreni alınamadı. İnternet bağlantısını kontrol edin veya Production backend yapılandırın."
         }
-        // Yahoo yedek servisinde 429 riskini azaltmak için bilinçli olarak düşük tutulur.
+
+        val cacheFresh = System.currentTimeMillis() - settings.yahooSymbolCacheUpdatedAt in 0..SYMBOL_CACHE_TTL_MS
+        val knownUnsupported = if (cacheFresh) settings.yahooUnsupportedSymbols else emptySet()
+        if (!cacheFresh) settings.clearYahooSymbolCompatibilityCache()
+
         val semaphore = Semaphore(MAX_CONCURRENCY)
         val done = AtomicInteger(0)
         val results = symbols.map { symbol ->
             async(Dispatchers.IO) {
-                val result = semaphore.withPermit { fetchWithRetry(symbol) }
+                val result = if (symbol in knownUnsupported) {
+                    ProviderSymbolResult(
+                        symbol = symbol,
+                        status = ProviderSymbolStatus.DATA_UNAVAILABLE,
+                        attempt = 0,
+                        errorMessage = "Yahoo uyumluluk önbelleği: veri yok (TTL dolunca yeniden doğrulanır)"
+                    )
+                } else {
+                    semaphore.withPermit { fetchWithRetry(symbol) }
+                }
+                updateCompatibilityCache(result)
                 val current = done.incrementAndGet()
+                Log.i(TAG, "[BIST_SCAN] SYMBOL=$symbol STATUS=${result.status} ATTEMPT=${result.attempt} HTTP=${result.httpCode ?: "-"}")
                 onProgress(result, current, symbols.size)
                 result
             }
@@ -97,12 +113,13 @@ class YahooFallbackProvider(context: Context) : MarketDataProvider {
                 last = ProviderSymbolResult(symbol, ProviderSymbolStatus.TIMEOUT, attempt = attempt, errorMessage = "Yahoo isteği zaman aşımına uğradı")
             } catch (ce: CancellationException) {
                 throw ce
+            } catch (e: DataUnavailableException) {
+                return ProviderSymbolResult(symbol, ProviderSymbolStatus.DATA_UNAVAILABLE, attempt = attempt, httpCode = e.httpCode, errorMessage = e.message)
             } catch (e: DataInsufficientException) {
                 return ProviderSymbolResult(symbol, ProviderSymbolStatus.DATA_INSUFFICIENT, attempt = attempt, errorMessage = e.message)
             } catch (e: HttpStatusException) {
                 val status = if (e.statusCode == 429) ProviderSymbolStatus.RATE_LIMIT else ProviderSymbolStatus.HTTP_ERROR
                 last = ProviderSymbolResult(symbol, status, attempt = attempt, httpCode = e.statusCode, errorMessage = e.message)
-                // 400/404 gibi kalıcı hatalar yeniden denenmez.
                 if (!isRetryableHttp(e.statusCode)) return last
                 retryDelay = maxOf(retryDelay, e.retryAfterMs ?: 0L)
             } catch (e: JSONException) {
@@ -127,6 +144,7 @@ class YahooFallbackProvider(context: Context) : MarketDataProvider {
         con.setRequestProperty("User-Agent", "Mozilla/5.0 BorsaTakip/${BuildConfig.VERSION_NAME} Android")
         try {
             val code = con.responseCode
+            if (code == 400 || code == 404) throw DataUnavailableException(code, "Yahoo sembol/veri bulunamadı • HTTP $code")
             if (code !in 200..299) {
                 val retryAfterMs = parseRetryAfterMs(con.getHeaderField("Retry-After"))
                 throw HttpStatusException(code, retryAfterMs, "HTTP $code")
@@ -137,10 +155,19 @@ class YahooFallbackProvider(context: Context) : MarketDataProvider {
     }
 
     private fun parseOrThrow(json: String, fallback: String): Stock {
-        val r = JSONObject(json).optJSONObject("chart")?.optJSONArray("result")?.optJSONObject(0)
-            ?: throw JSONException("Yahoo chart.result bulunamadı")
-        val ts = r.optJSONArray("timestamp") ?: throw JSONException("timestamp bulunamadı")
-        val q = r.optJSONObject("indicators")?.optJSONArray("quote")?.optJSONObject(0)
+        val chart = JSONObject(json).optJSONObject("chart") ?: throw JSONException("Yahoo chart bulunamadı")
+        val result = chart.optJSONArray("result")?.optJSONObject(0)
+        if (result == null) {
+            val error = chart.optJSONObject("error")
+            val code = error?.optString("code").orEmpty()
+            val description = error?.optString("description").orEmpty()
+            if (code.contains("Not Found", true) || description.contains("not found", true) || description.contains("no data", true)) {
+                throw DataUnavailableException(null, "Yahoo veri yok: ${description.ifBlank { code.ifBlank { "sembol desteklenmiyor" } }}")
+            }
+            throw JSONException("Yahoo chart.result bulunamadı${description.takeIf { it.isNotBlank() }?.let { ": $it" }.orEmpty()}")
+        }
+        val ts = result.optJSONArray("timestamp") ?: throw JSONException("timestamp bulunamadı")
+        val q = result.optJSONObject("indicators")?.optJSONArray("quote")?.optJSONObject(0)
             ?: throw JSONException("quote bulunamadı")
         val o = q.optJSONArray("open") ?: throw JSONException("open bulunamadı")
         val h = q.optJSONArray("high") ?: throw JSONException("high bulunamadı")
@@ -156,9 +183,10 @@ class YahooFallbackProvider(context: Context) : MarketDataProvider {
             if (candle.high < maxOf(candle.open, candle.close) || candle.low > minOf(candle.open, candle.close) || candle.high < candle.low) continue
             candles += candle
         }
-        if (candles.size < MIN_CANDLES) throw DataInsufficientException("En az $MIN_CANDLES mum gerekli; ${candles.size} mum alındı")
         val sorted = candles.sortedBy { it.timestamp }.distinctBy { it.timestamp }
-        val meta = r.optJSONObject("meta")
+        if (sorted.isEmpty()) throw DataUnavailableException(null, "Yahoo geçerli OHLCV verisi döndürmedi")
+        if (sorted.size < MIN_CANDLES) throw DataInsufficientException("En az $MIN_CANDLES mum gerekli; ${sorted.size} mum alındı")
+        val meta = result.optJSONObject("meta")
         return Stock(
             symbol = fallback,
             companyName = meta?.optString("longName")?.takeIf { it.isNotBlank() },
@@ -169,6 +197,23 @@ class YahooFallbackProvider(context: Context) : MarketDataProvider {
             delaySeconds = null,
             currentSessionIncluded = false
         )
+    }
+
+    @Synchronized
+    private fun updateCompatibilityCache(result: ProviderSymbolResult) {
+        when (result.status) {
+            ProviderSymbolStatus.SUCCESS -> {
+                settings.yahooSupportedSymbols = settings.yahooSupportedSymbols + result.symbol
+                settings.yahooUnsupportedSymbols = settings.yahooUnsupportedSymbols - result.symbol
+                settings.yahooSymbolCacheUpdatedAt = System.currentTimeMillis()
+            }
+            ProviderSymbolStatus.DATA_UNAVAILABLE -> {
+                settings.yahooUnsupportedSymbols = settings.yahooUnsupportedSymbols + result.symbol
+                settings.yahooSupportedSymbols = settings.yahooSupportedSymbols - result.symbol
+                settings.yahooSymbolCacheUpdatedAt = System.currentTimeMillis()
+            }
+            else -> Unit
+        }
     }
 
     private fun isRetryableHttp(code: Int): Boolean = code == 408 || code == 429 || code in 500..599
@@ -190,14 +235,17 @@ class YahooFallbackProvider(context: Context) : MarketDataProvider {
         message: String
     ) : IOException(message)
 
+    private class DataUnavailableException(val httpCode: Int?, message: String) : IllegalStateException(message)
     private class DataInsufficientException(message: String) : IllegalStateException(message)
 
     companion object {
+        private const val TAG = "YahooFallback"
         private val SYMBOL_REGEX = Regex("[A-Z0-9_]{3,12}")
-        private const val MAX_CONCURRENCY = 3
+        private const val MAX_CONCURRENCY = 2
         private const val MAX_ATTEMPTS = 3
         private const val MIN_CANDLES = 220
         private const val SYMBOL_TIMEOUT_MS = 15_000L
         private const val MAX_RETRY_AFTER_MS = 30_000L
+        private const val SYMBOL_CACHE_TTL_MS = 24L * 60L * 60L * 1000L
     }
 }
