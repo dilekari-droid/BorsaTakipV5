@@ -8,12 +8,13 @@ import kotlin.math.abs
 
 object OpportunityEngine {
     private const val LRC_LENGTH = 100
+    const val MIN_ANALYSIS_CANDLES = 220
 
     fun score(stock: Stock, kapLabel: String = "Veri yok"): Opportunity? {
         val c = stock.candles.filter { candle ->
             listOf(candle.open, candle.high, candle.low, candle.close, candle.volume).all { it.isFinite() }
         }
-        if (c.size < 220) return null
+        if (c.size < MIN_ANALYSIS_CANDLES) return null
 
         val price = c.last().close
         val prev = c[c.lastIndex - 1].close
@@ -33,9 +34,11 @@ object OpportunityEngine {
             val l3 = result.lowerAt(idx, 3.0)
             val width = u2 - l2
             val widthPct = if (mid.isFinite() && mid != 0.0) (width / abs(mid)) * 100.0 else null
+            val normalizedSlopePct = if (mid.isFinite() && mid != 0.0) (result.slope / abs(mid)) * 100.0 else null
             LrcTechnicalSnapshot(
                 period = LRC_LENGTH,
                 slope = result.slope,
+                normalizedSlopePct = normalizedSlopePct?.takeIf { it.isFinite() },
                 trend = when (result.trend) {
                     LinearRegressionChannelCalculator.Trend.UP -> "YÜKSELEN"
                     LinearRegressionChannelCalculator.Trend.DOWN -> "DÜŞEN"
@@ -161,16 +164,23 @@ object OpportunityEngine {
         val change = ((price / prev) - 1.0) * 100.0
         if (!change.isFinite()) return null
 
+        val dataConfidence = calculateDataConfidence(stock, c.size)
+        val realtimeEligible = stock.isRealtime && stock.currentSessionIncluded && (stock.delaySeconds ?: Int.MAX_VALUE) in 0..5
+        val analysisMode = if (realtimeEligible) "CANLI SİNYAL" else "ARAŞTIRMA / GECİKMELİ"
+
         val breakdown = buildList {
             addAll(chosenParts)
             lrc?.let {
-                add("LRC100: ${it.trend} • R ${"%.2f".format(it.pearsonR)} • ${it.channelPosition}")
+                val normalized = it.normalizedSlopePct?.let { v -> " • norm ${"%.4f".format(v)}%/bar" } ?: ""
+                add("LRC100: ${it.trend} • R ${"%.2f".format(it.pearsonR)}$normalized • ${it.channelPosition}")
                 if (price > it.upper2) add("LRC: Üst kanal dışında (+2σ üzeri) • tek başına SAT değildir")
                 if (price < it.lower2) add("LRC: Alt kanal dışında (-2σ altı) • tek başına AL değildir")
             }
             add("KAP: +$kapScore (${if (kapLabel == "Veri yok") "veri yok" else kapLabel})")
-            add("Risk: $risk/100 (fırsat puanından ayrı)")
-            add("Toplam: $score/100 • $direction")
+            add("Risk: $risk/100 (teknik uyum skorundan ayrı)")
+            add("Veri güveni: ${dataConfidence.first}/100 • ${dataConfidence.second}")
+            add("Mod: $analysisMode")
+            add("Teknik uyum skoru: $score/100 • $direction")
         }
 
         return Opportunity(
@@ -193,13 +203,45 @@ object OpportunityEngine {
             technical = t,
             lrc = lrc,
             scoreBreakdown = breakdown,
+            dataConfidenceScore = dataConfidence.first,
+            dataConfidenceLabel = dataConfidence.second,
+            analysisMode = analysisMode,
+            signalEligibleRealtime = realtimeEligible,
             isRealtime = stock.isRealtime,
             delaySeconds = stock.delaySeconds,
             currentSessionIncluded = stock.currentSessionIncluded
         )
     }
 
-    private fun channelPosition(price: Double, mid: Double, u1: Double, l1: Double, u2: Double, l2: Double): String = when {
+    private fun calculateDataConfidence(stock: Stock, candleCount: Int): Pair<Int, String> {
+        var score = 100
+        if (!stock.isRealtime) score -= 30
+        if (!stock.currentSessionIncluded) score -= 20
+        val declaredDelay = stock.delaySeconds
+        when {
+            declaredDelay == null -> score -= 10
+            declaredDelay > 900 -> score -= 20
+            declaredDelay > 60 -> score -= 10
+            declaredDelay > 5 -> score -= 5
+        }
+        val ageMs = if (stock.dataTimestamp > 0L) (System.currentTimeMillis() - stock.dataTimestamp).coerceAtLeast(0L) else Long.MAX_VALUE
+        when {
+            ageMs == Long.MAX_VALUE -> score -= 20
+            ageMs > 24L * 60L * 60L * 1000L -> score -= 20
+            ageMs > 60L * 60L * 1000L -> score -= 10
+            ageMs > 15L * 60L * 1000L -> score -= 5
+        }
+        if (candleCount < MIN_ANALYSIS_CANDLES + 30) score -= 5
+        val normalized = score.coerceIn(0, 100)
+        val label = when {
+            normalized >= 85 -> "Yüksek"
+            normalized >= 65 -> "Orta"
+            else -> "Sınırlı"
+        }
+        return normalized to label
+    }
+
+    internal fun channelPosition(price: Double, mid: Double, u1: Double, l1: Double, u2: Double, l2: Double): String = when {
         price < l2 -> "ALT -2σ ALTINDA"
         price < l1 -> "-2σ / -1σ"
         price < mid -> "-1σ / ORTA"
