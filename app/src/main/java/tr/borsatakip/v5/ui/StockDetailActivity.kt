@@ -3,6 +3,7 @@ package tr.borsatakip.v5.ui
 import android.os.Bundle
 import android.widget.Button
 import android.widget.TextView
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -12,6 +13,7 @@ import tr.borsatakip.v5.data.ChartDataSeries
 import tr.borsatakip.v5.data.ChartPeriod
 import tr.borsatakip.v5.data.SettingsStore
 import tr.borsatakip.v5.model.Candle
+import tr.borsatakip.v5.model.Opportunity
 import tr.borsatakip.v5.ui.chart.ChartMath
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -50,10 +52,7 @@ class StockDetailActivity : BaseActivity() {
             ChartPeriod.ALL_TIME to findViewById(R.id.periodAll)
         )
 
-        findViewById<TextView>(R.id.title).text = x.symbol
-        findViewById<TextView>(R.id.subtitle).text =
-            "%.2f • Günlük %+.2f • ${x.direction} • Nihai ${x.finalSignalScore}/100 • Risk ${x.riskScore}/100"
-                .format(x.price, x.dailyChangePct)
+        renderHeaderAndDecisionCards(x)
 
         periodButtons.forEach { (period, button) ->
             button.contentDescription = "${period.label} OHLCV görünümünü aç"
@@ -66,7 +65,134 @@ class StockDetailActivity : BaseActivity() {
         }
 
         renderLegacyTechnicalSummary()
+        renderVolumeAnalysis(x.candles)
+        renderDataQuality(x)
         loadPeriod(ChartPeriod.ONE_DAY)
+    }
+
+    private fun renderHeaderAndDecisionCards(x: Opportunity) {
+        val timeText = if (x.dataTimestamp > 0L) {
+            SimpleDateFormat("HH:mm:ss", Locale("tr", "TR")).format(Date(x.dataTimestamp))
+        } else "Bilinmiyor"
+        val company = x.companyName?.takeIf { it.isNotBlank() } ?: "Şirket adı mevcut değil"
+        findViewById<TextView>(R.id.title).text = x.symbol
+        findViewById<TextView>(R.id.subtitle).text = buildString {
+            append(company)
+            append("\nBIST • Son Güncelleme: $timeText")
+            append("\n${"%.2f".format(x.price)} • Günlük ${"%+.2f%%".format(x.dailyChangePct)}")
+        }
+
+        val direction = x.direction.uppercase(Locale.ROOT)
+        val directionColor = when (direction) {
+            "LONG" -> ContextCompat.getColor(this, R.color.green)
+            "SHORT" -> ContextCompat.getColor(this, R.color.red)
+            else -> ContextCompat.getColor(this, R.color.yellow)
+        }
+        findViewById<TextView>(R.id.signalLabel).apply {
+            text = "ANA SİNYAL • $direction"
+            setTextColor(directionColor)
+        }
+        findViewById<TextView>(R.id.signalScores).text = buildString {
+            append("Teknik Uyum Skoru  ${x.finalSignalScore}/100\n")
+            append("Teknik Skor        ${x.score}/100\n")
+            append("Risk               ${x.riskScore}/100\n")
+            append("Veri Güveni        ${x.dataConfidenceScore}/100 (${x.dataConfidenceLabel})")
+        }
+
+        findViewById<TextView>(R.id.generalOverview).text = buildString {
+            append("TREND      ${trendFromEma(x)}\n")
+            append("MOMENTUM   ${momentumLabel(x)}\n")
+            append("HACİM      ${volumeState(x)}\n")
+            append("RİSK       ${riskLabel(x.riskScore)}")
+        }
+
+        findViewById<TextView>(R.id.signalReasons).text = signalReasons(x)
+        findViewById<TextView>(R.id.supportResistance).text = buildString {
+            append("DESTEK         ${fmt(x.support)}\n")
+            append("ANA DESTEK     Veri yok\n")
+            append("MEVCUT FİYAT   ${fmt(x.price)}\n")
+            append("DİRENÇ         ${fmt(x.resistance)}\n")
+            append("ANA DİRENÇ     Veri yok")
+        }
+    }
+
+    private fun signalReasons(x: Opportunity): String {
+        val t = x.technical
+        val items = mutableListOf<String>()
+        if (t.ema20 != null && t.ema50 != null && t.ema20.isFinite() && t.ema50.isFinite()) {
+            items += if (t.ema20 > t.ema50) {
+                "• EMA20 > EMA50\n  Kısa vadeli trend pozitif"
+            } else if (t.ema20 < t.ema50) {
+                "• EMA20 < EMA50\n  Kısa vadeli trend negatif"
+            } else {
+                "• EMA20 = EMA50\n  Trend ayrışması yok"
+            }
+        }
+        t.rsi14?.takeIf { it.isFinite() }?.let { rsi ->
+            val text = when {
+                rsi >= 70.0 -> "Aşırı alım bölgesine yakın/üzerinde"
+                rsi >= 55.0 -> "Pozitif momentum"
+                rsi <= 30.0 -> "Aşırı satım bölgesine yakın/altında"
+                rsi <= 45.0 -> "Zayıf momentum"
+                else -> "Nötr momentum"
+            }
+            items += "• RSI14 ${"%.1f".format(rsi)}\n  $text"
+        }
+        if (t.macd?.isFinite() == true && t.macdSignal?.isFinite() == true) {
+            items += if (t.macd > t.macdSignal) {
+                "• MACD > Sinyal\n  Momentum pozitif"
+            } else {
+                "• MACD < Sinyal\n  Momentum negatif"
+            }
+        }
+        t.volumeRatio?.takeIf { it.isFinite() && it >= 0.0 }?.let { ratio ->
+            items += "• Hacim oranı ${"%.2f".format(ratio)}x\n  ${volumeState(x)}"
+        }
+        x.resistance?.takeIf { it.isFinite() && it > 0.0 }?.let { resistance ->
+            val dist = ((resistance / x.price) - 1.0) * 100.0
+            if (dist.isFinite() && dist in 0.0..3.0) items += "• Direnç bölgesine yakın\n  Kısa vadeli risk mevcut"
+        }
+        if (items.isEmpty()) return "Veri yetersiz"
+        return items.joinToString("\n\n")
+    }
+
+    private fun trendFromEma(x: Opportunity): String {
+        val t = x.technical
+        val e20 = t.ema20
+        val e50 = t.ema50
+        val e200 = t.ema200
+        if (e20 == null || e50 == null || e200 == null || !e20.isFinite() || !e50.isFinite() || !e200.isFinite()) return "Veri yetersiz"
+        return when {
+            x.price > e20 && e20 > e50 && e50 > e200 -> "Pozitif"
+            x.price < e20 && e20 < e50 && e50 < e200 -> "Negatif"
+            else -> "Nötr / Karma"
+        }
+    }
+
+    private fun momentumLabel(x: Opportunity): String {
+        val rsi = x.technical.rsi14 ?: return "Veri yetersiz"
+        if (!rsi.isFinite()) return "Veri yetersiz"
+        return when {
+            rsi >= 60.0 -> "Güçlü"
+            rsi >= 45.0 -> "Orta"
+            else -> "Zayıf"
+        }
+    }
+
+    private fun volumeState(x: Opportunity): String {
+        val ratio = x.technical.volumeRatio ?: return "Veri yetersiz"
+        if (!ratio.isFinite()) return "Veri yetersiz"
+        return when {
+            ratio >= 1.5 -> "Yüksek"
+            ratio >= 0.8 -> "Normal"
+            else -> "Düşük"
+        }
+    }
+
+    private fun riskLabel(risk: Int): String = when {
+        risk <= 30 -> "Düşük"
+        risk <= 60 -> "Orta"
+        else -> "Yüksek"
     }
 
     private fun loadPeriod(period: ChartPeriod) {
@@ -100,6 +226,7 @@ class StockDetailActivity : BaseActivity() {
                 chartState.text = result.exceptionOrNull()?.message ?: "Grafik verisi alınamadı."
                 chartMeta.text = "Görünüm: ${period.label} • Grafik verisi alınamadı. Sahte mum veya gösterge üretilmedi."
                 renderChartIndicatorSummary(null)
+                renderVolumeAnalysis(emptyList())
                 return@launch
             }
 
@@ -123,6 +250,7 @@ class StockDetailActivity : BaseActivity() {
                 }
             }
             renderChartIndicatorSummary(series)
+            renderVolumeAnalysis(series.candles)
         }
     }
 
@@ -147,36 +275,65 @@ class StockDetailActivity : BaseActivity() {
         }
 
         val candles = series.candles
-        val volumeAvailable = candles.any { it.volume > 0.0 }
         details.text = buildString {
-            append("SEÇİLİ GÖRÜNÜM TEKNİKLERİ (${series.period.label})\n")
-            append("EMA20   ${fmt(chart.currentEma20())}\n")
-            append("EMA50   ${fmt(chart.currentEma50())}\n")
-            append("EMA200  ${fmt(chart.currentEma200())}\n")
-            append("RSI14   ${fmt(chart.currentRsi14())}\n")
-            append("MACD    ${fmt(chart.currentMacd())}\n")
-            append("Sinyal  ${fmt(chart.currentMacdSignal())}\n")
-            append("Hacim   ${if (volumeAvailable) "OHLCV kaynağından" else "Hacim verisi mevcut değil"}\n")
+            append("RSI14     ${fmt(chart.currentRsi14())}\n")
+            append("MACD      ${fmt(chart.currentMacd())} / Sinyal ${fmt(chart.currentMacdSignal())}\n")
+            append("EMA20     ${fmt(chart.currentEma20())}\n")
+            append("EMA50     ${fmt(chart.currentEma50())}\n")
+            append("EMA200    ${fmt(chart.currentEma200())}\n")
+            append("Bollinger ${if (x.technical.bbUpper != null && x.technical.bbLower != null) "Üst ${fmt(x.technical.bbUpper)} • Alt ${fmt(x.technical.bbLower)}" else "Veri yok"}\n")
+            append("ATR14     ${fmt(x.technical.atr14)}\n")
+            append("VWAP      ${fmt(x.technical.vwap)}")
             val lrc = chart.currentLrcStatus()
             if (lrc != null) {
-                append("\nLRC${lrc.length}  ${trendLabel(lrc.trend)}\n")
-                append("Eğim    ${"%.6f".format(Locale.US, lrc.slope)}\n")
-                if (lrc.pearsonVisible) append("Pearson R  ${"%.3f".format(Locale.US, lrc.pearsonR)}\n")
-                append("σ       ${fmt(lrc.sigma)} • ±2σ kanal genişliği ${fmt(lrc.channelWidth2Sigma)}\n")
-                append("Orta çizgi uzaklığı ${fmt(lrc.distanceToMid)}\n")
-                append("Fiyat bölgesi ${lrc.zone}\n")
-                lrc.breakout?.let {
-                    append("UYARI: Fiyat $it • ${lrc.momentumConfirmation}\n")
-                    append("Not: LRC kanal dışı hareket tek başına AL/SAT sinyali değildir.\n")
-                }
+                append("\n\nLRC${lrc.length}  ${trendLabel(lrc.trend)}")
+                if (lrc.pearsonVisible) append(" • Pearson R ${"%.3f".format(Locale.US, lrc.pearsonR)}")
+                append("\n±2σ kanal genişliği ${fmt(lrc.channelWidth2Sigma)}")
+                lrc.breakout?.let { append("\nUYARI: Fiyat $it • ${lrc.momentumConfirmation}") }
             } else {
-                append("\nLRC: veri sayısı ayarlanan periyot için yetersiz veya LRC kapalı.\n")
+                append("\n\nLRC: Veri yetersiz veya kapalı")
             }
-            if (candles.size < 35) append("MACD için yeterli veri olmayabilir.\n")
-            if (candles.size < 200) append("EMA200 için yeterli veri yok.\n")
-            append("\nTARAMA SİNYAL ÖZETİ\n")
-            append("${x.direction} • Nihai ${x.finalSignalScore}/100 • Risk ${x.riskScore}/100\n\n")
-            append(legacyTechnicalText())
+            if (candles.size < 35) append("\nMACD için yeterli veri olmayabilir.")
+            if (candles.size < 200) append("\nEMA200 için yeterli veri yok.")
+        }
+    }
+
+    private fun renderVolumeAnalysis(candles: List<Candle>) {
+        val x = AppSession.selected ?: return
+        val positive = candles.filter { it.volume.isFinite() && it.volume > 0.0 }
+        val lastVolume = positive.lastOrNull()?.volume
+        val avgWindow = positive.takeLast(20)
+        val avgVolume = avgWindow.takeIf { it.isNotEmpty() }?.map { it.volume }?.average()
+        val changePct = if (lastVolume != null && avgVolume != null && avgVolume > 0.0) {
+            ((lastVolume / avgVolume) - 1.0) * 100.0
+        } else null
+        findViewById<TextView>(R.id.volumeAnalysis).text = buildString {
+            append("Son hacim       ${lastVolume?.let { "%.0f".format(it) } ?: "Veri yok"}\n")
+            append("20 mum ort.     ${avgVolume?.takeIf { it.isFinite() }?.let { "%.0f".format(it) } ?: "Veri yok"}\n")
+            append("Hacim değişimi  ${changePct?.takeIf { it.isFinite() }?.let { "%+.1f%%".format(it) } ?: "Veri yok"}\n")
+            append("Hacim oranı     ${x.technical.volumeRatio?.takeIf { it.isFinite() }?.let { "%.2fx".format(it) } ?: "Veri yok"}\n")
+            append("Hacim yönü      ${x.volumeDirectionLabel.ifBlank { "Yön verisi yok" }}")
+        }
+    }
+
+    private fun renderDataQuality(x: Opportunity) {
+        val ageMs = if (x.dataTimestamp > 0L) (System.currentTimeMillis() - x.dataTimestamp).coerceAtLeast(0L) else null
+        val ageText = ageMs?.let {
+            when {
+                it < 60_000L -> "${it / 1000L} sn"
+                it < 3_600_000L -> "${it / 60_000L} dk"
+                else -> "${it / 3_600_000L} sa"
+            }
+        } ?: "Bilinmiyor"
+        val delayText = x.delaySeconds?.let { "$it sn" } ?: "Bilinmiyor"
+        val dataMode = if (x.isRealtime && x.currentSessionIncluded) "CANLI/DOĞRULANMIŞ" else "YEDEK / GECİKMELİ"
+        findViewById<TextView>(R.id.dataQuality).text = buildString {
+            append("Mevcut Veri       Fiyat, teknik göstergeler${if (x.candles.isNotEmpty()) ", OHLCV" else ""}\n")
+            append("Veri Kaynağı      ${x.source}\n")
+            append("Veri Modu         $dataMode\n")
+            append("Son Güncelleme    $ageText önce\n")
+            append("Bildirilen Gecikme $delayText\n")
+            append("Veri Güven Skoru  ${x.dataConfidenceScore}/100 (${x.dataConfidenceLabel})")
         }
     }
 
@@ -206,7 +363,10 @@ class StockDetailActivity : BaseActivity() {
         super.onResume()
         if (::chart.isInitialized) {
             applyLrcSettings()
-            currentSeries?.let { renderChartIndicatorSummary(it) }
+            currentSeries?.let {
+                renderChartIndicatorSummary(it)
+                renderVolumeAnalysis(it.candles)
+            }
         }
     }
 
@@ -218,14 +378,10 @@ class StockDetailActivity : BaseActivity() {
         val x = AppSession.selected ?: return ""
         val t = x.technical
         return buildString {
-            append("TARAMA TEKNİK ANLIK GÖRÜNÜMÜ\n")
             append("Trend: EMA20 ${fmt(t.ema20)} • EMA50 ${fmt(t.ema50)} • EMA200 ${fmt(t.ema200)}\n")
             append("Momentum: RSI14 ${fmt(t.rsi14)} • MACD ${fmt(t.macd)} • Sinyal ${fmt(t.macdSignal)}\n")
             append("ATR14 ${fmt(t.atr14)} • VWAP ${fmt(t.vwap)} • VWMA ${fmt(t.vwma)}\n")
-            append("Destek ${fmt(t.support)} • Direnç ${fmt(t.resistance)}\n")
-            append("Veri Güveni ${x.dataConfidenceScore}/100\n")
-            append("Kaynak: ${x.source}\n")
-            append("Veri zamanı: ${SimpleDateFormat("dd.MM.yyyy HH:mm", Locale("tr", "TR")).format(Date(x.dataTimestamp))}")
+            append("Destek ${fmt(t.support)} • Direnç ${fmt(t.resistance)}")
         }
     }
 
