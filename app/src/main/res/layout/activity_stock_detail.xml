@@ -5,23 +5,130 @@
     android:orientation="vertical"
     android:background="@drawable/bg_screen_gradient">
 
-    <ScrollView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:fillViewport="true">
-        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="18dp">
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="true">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="18dp">
+
             <TextView android:id="@+id/title" style="@style/Title" />
             <TextView android:id="@+id/subtitle" style="@style/Sub" android:layout_marginTop="2dp" />
 
-            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="14dp" android:orientation="vertical" android:background="@drawable/bg_card_blue" android:padding="16dp" android:elevation="5dp">
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Fiyat ve sinyal özeti" android:textColor="@color/white" android:textStyle="bold" android:textSize="15sp" />
-                <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:text="Kaynak ve veri zamanı aşağıdaki ayrıntıda açıkça gösterilir." android:textColor="#D9EDFF" android:textSize="12sp" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:orientation="vertical"
+                android:background="@drawable/bg_card_blue"
+                android:padding="16dp"
+                android:elevation="5dp">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Fiyat ve sinyal özeti"
+                    android:textColor="@color/white"
+                    android:textStyle="bold"
+                    android:textSize="15sp" />
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:text="Grafik ve göstergeler aynı gerçek OHLCV dizisinden hesaplanır."
+                    android:textColor="#D9EDFF"
+                    android:textSize="12sp" />
             </LinearLayout>
 
-            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="Fiyat Grafiği" android:textColor="@color/blue" android:textStyle="bold" />
-            <tr.borsatakip.v5.ui.PriceChartView android:id="@+id/chart" android:layout_width="match_parent" android:layout_height="220dp" android:layout_marginTop="8dp" android:background="@drawable/bg_card" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="Gerçek OHLCV Grafik"
+                android:textColor="@color/blue"
+                android:textStyle="bold"
+                android:textSize="17sp" />
 
-            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="Sinyaller ve Teknik Analiz" android:textColor="@color/blue" android:textStyle="bold" />
-            <TextView android:id="@+id/details" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:background="@drawable/bg_card" android:padding="16dp" android:textColor="@color/text_primary" android:lineSpacingExtra="5dp" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:orientation="horizontal">
+                <Button android:id="@+id/period1d" android:layout_width="0dp" android:layout_height="46dp" android:layout_weight="1" android:text="1G" />
+                <Button android:id="@+id/period1w" android:layout_width="0dp" android:layout_height="46dp" android:layout_weight="1" android:text="1H" />
+                <Button android:id="@+id/period1m" android:layout_width="0dp" android:layout_height="46dp" android:layout_weight="1" android:text="1A" />
+                <Button android:id="@+id/period3m" android:layout_width="0dp" android:layout_height="46dp" android:layout_weight="1" android:text="3A" />
+                <Button android:id="@+id/period1y" android:layout_width="0dp" android:layout_height="46dp" android:layout_weight="1" android:text="1Y" />
+            </LinearLayout>
 
-            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:background="@drawable/bg_card" android:padding="12dp" android:textColor="@color/yellow" android:text="Önemli: Eksik destek, direnç, VWAP veya tarihsel veri uydurulmaz; veri yoksa açıkça belirtilir." android:textSize="12sp" />
+            <TextView
+                android:id="@+id/chartState"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Grafik verisi hazırlanıyor..."
+                android:textColor="@color/text_secondary"
+                android:textSize="12sp" />
+
+            <tr.borsatakip.v5.ui.TechnicalOhlcvChartView
+                android:id="@+id/ohlcvChart"
+                android:layout_width="match_parent"
+                android:layout_height="620dp"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/bg_card" />
+
+            <TextView
+                android:id="@+id/selectedCandle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/bg_card"
+                android:padding="12dp"
+                android:text="Bir muma dokunarak OHLCV ayrıntısını görüntüleyin. Yatay kaydırma ve yakınlaştırma desteklenir."
+                android:textColor="@color/text_secondary"
+                android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/chartMeta"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_card"
+                android:padding="12dp"
+                android:textColor="@color/text_secondary"
+                android:textSize="12sp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="Sinyaller ve Teknik Analiz"
+                android:textColor="@color/blue"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/details"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/bg_card"
+                android:padding="16dp"
+                android:textColor="@color/text_primary"
+                android:lineSpacingExtra="5dp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/bg_card"
+                android:padding="12dp"
+                android:textColor="@color/yellow"
+                android:text="Önemli: Eksik OHLCV, hacim veya teknik gösterge uydurulmaz; veri yoksa açıkça belirtilir."
+                android:textSize="12sp" />
         </LinearLayout>
     </ScrollView>
 
