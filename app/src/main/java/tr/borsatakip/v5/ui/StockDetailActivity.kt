@@ -39,11 +39,12 @@ class StockDetailActivity : BaseActivity() {
         selectedCandle = findViewById(R.id.selectedCandle)
         details = findViewById(R.id.details)
         periodButtons = mapOf(
-            ChartPeriod.DAY to findViewById(R.id.period1d),
-            ChartPeriod.WEEK to findViewById(R.id.period1w),
-            ChartPeriod.MONTH to findViewById(R.id.period1m),
-            ChartPeriod.THREE_MONTHS to findViewById(R.id.period3m),
-            ChartPeriod.YEAR to findViewById(R.id.period1y)
+            ChartPeriod.THREE_MINUTES to findViewById(R.id.period3min),
+            ChartPeriod.FIVE_MINUTES to findViewById(R.id.period5min),
+            ChartPeriod.FIFTEEN_MINUTES to findViewById(R.id.period15min),
+            ChartPeriod.ONE_HOUR to findViewById(R.id.period1hour),
+            ChartPeriod.ONE_DAY to findViewById(R.id.period1day),
+            ChartPeriod.ALL_TIME to findViewById(R.id.periodAll)
         )
 
         findViewById<TextView>(R.id.title).text = x.symbol
@@ -52,7 +53,7 @@ class StockDetailActivity : BaseActivity() {
                 .format(x.price, x.dailyChangePct)
 
         periodButtons.forEach { (period, button) ->
-            button.contentDescription = "${period.label} OHLCV dönemini aç"
+            button.contentDescription = "${period.label} OHLCV görünümünü aç"
             button.setOnClickListener { loadPeriod(period) }
         }
 
@@ -62,7 +63,7 @@ class StockDetailActivity : BaseActivity() {
         }
 
         renderLegacyTechnicalSummary()
-        loadPeriod(ChartPeriod.THREE_MONTHS)
+        loadPeriod(ChartPeriod.ONE_DAY)
     }
 
     private fun loadPeriod(period: ChartPeriod) {
@@ -74,7 +75,7 @@ class StockDetailActivity : BaseActivity() {
 
         chartJob = lifecycleScope.launch {
             val result = repository.load(x.symbol, period)
-            val series = result.getOrNull() ?: if (period == ChartPeriod.YEAR && x.candles.isNotEmpty()) {
+            val series = result.getOrNull() ?: if (period == ChartPeriod.ONE_DAY && x.candles.isNotEmpty()) {
                 val checked = ChartMath.validate(x.candles)
                 ChartDataSeries(
                     symbol = x.symbol,
@@ -93,7 +94,7 @@ class StockDetailActivity : BaseActivity() {
             if (series == null || series.candles.size < 2) {
                 chart.setCandles(emptyList())
                 chartState.text = result.exceptionOrNull()?.message ?: "Grafik verisi alınamadı."
-                chartMeta.text = "Dönem: ${period.label} • Grafik verisi alınamadı. Sahte mum veya gösterge üretilmedi."
+                chartMeta.text = "Görünüm: ${period.label} • Grafik verisi alınamadı. Sahte mum veya gösterge üretilmedi."
                 renderChartIndicatorSummary(null)
                 return@launch
             }
@@ -102,11 +103,12 @@ class StockDetailActivity : BaseActivity() {
             val status = dataStatus(series)
             chartState.text = buildString {
                 append("${series.candles.size} gerçek mum doğrulandı")
+                if (period.aggregateMinutes != null) append(" • ${period.aggregateMinutes} dakikalık mumlar gerçek 1 dakikalık OHLCV'den birleştirildi")
                 if (series.rejectedCount > 0) append(" • ${series.rejectedCount} geçersiz kayıt çizilmedi")
                 if (series.duplicateCount > 0) append(" • ${series.duplicateCount} tekrar kayıt birleştirildi")
             }
             chartMeta.text = buildString {
-                append("Dönem: ${period.label} • Kaynak: ${series.source} • Durum: $status\n")
+                append("Görünüm: ${period.label} • Kaynak: ${series.source} • Durum: $status\n")
                 append("Grafik verisi ve EMA/RSI/MACD/Hacim aynı OHLCV dizisinden hesaplanır.")
             }
             renderChartIndicatorSummary(series)
@@ -136,7 +138,7 @@ class StockDetailActivity : BaseActivity() {
         val candles = series.candles
         val volumeAvailable = candles.any { it.volume > 0.0 }
         details.text = buildString {
-            append("SEÇİLİ DÖNEM TEKNİKLERİ (${series.period.label})\n")
+            append("SEÇİLİ GÖRÜNÜM TEKNİKLERİ (${series.period.label})\n")
             append("EMA20   ${fmt(chart.currentEma20())}\n")
             append("EMA50   ${fmt(chart.currentEma50())}\n")
             append("EMA200  ${fmt(chart.currentEma200())}\n")
