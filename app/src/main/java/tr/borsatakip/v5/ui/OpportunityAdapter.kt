@@ -61,11 +61,11 @@ class OpportunityAdapter(
             else -> "Yüksek"
         }
         val finalLabel = when {
-            x.finalSignalScore >= 90 -> "Çok güçlü"
-            x.finalSignalScore >= 80 -> "Güçlü"
-            x.finalSignalScore >= 70 -> "İzle"
-            x.finalSignalScore >= 60 -> "Zayıf"
-            else -> "Fırsat yok"
+            x.finalSignalScore >= 90 -> "Çok güçlü teknik uyum"
+            x.finalSignalScore >= 80 -> "Güçlü teknik uyum"
+            x.finalSignalScore >= 70 -> "İzlenebilir teknik uyum"
+            x.finalSignalScore >= 60 -> "Zayıf teknik uyum"
+            else -> "Teknik aday değil"
         }
 
         val now = System.currentTimeMillis()
@@ -79,13 +79,13 @@ class OpportunityAdapter(
         val timeText = if (x.dataTimestamp > 0L) {
             SimpleDateFormat("dd.MM.yyyy HH:mm:ss", Locale.getDefault()).format(Date(x.dataTimestamp))
         } else "bilinmiyor"
-        val realtimeOk = x.isRealtime && x.currentSessionIncluded &&
+        val realtimeOk = x.signalEligibleRealtime && x.isRealtime && x.currentSessionIncluded &&
             x.delaySeconds != null && x.delaySeconds in 0..RealTimeIntegrityPolicy.MAX_DECLARED_DELAY_SECONDS &&
             ageMs <= RealTimeIntegrityPolicy.MAX_DATA_AGE_MS
         val realtimeLabel = when {
-            realtimeOk -> "CANLI"
-            x.source.contains("Yahoo", ignoreCase = true) -> "YEDEK / GECİKMELİ • CANLI DEĞİL"
-            else -> "DOĞRULANMAMIŞ / CANLI DEĞİL"
+            realtimeOk -> "CANLI SİNYAL UYGUN"
+            x.source.contains("Yahoo", ignoreCase = true) -> "ARAŞTIRMA • YEDEK/GECİKMELİ • CANLI SİNYAL DEĞİL"
+            else -> "ARAŞTIRMA • CANLI SİNYAL DEĞİL"
         }
 
         holder.symbol.text = x.symbol
@@ -94,8 +94,8 @@ class OpportunityAdapter(
         holder.strengthValue.text = "$strength"
         holder.company.text = x.companyName ?: ""
         holder.meta.text = buildString {
-            append("$finalLabel sinyal • Risk ${x.riskScore}/100 ($riskLabel)\n")
-            append("Veri Güveni ${x.dataConfidenceScore}/100 • Hacim ${x.volumeLabel}\n")
+            append("$finalLabel • Teknik uyum $strength/100\n")
+            append("Risk ${x.riskScore}/100 ($riskLabel) • Veri Güveni ${x.dataConfidenceScore}/100 (${x.dataConfidenceLabel})\n")
             append("Günlük ${"%+.2f%%".format(x.dailyChangePct)} • $realtimeLabel")
         }
         holder.risk.text = buildString {
@@ -107,8 +107,8 @@ class OpportunityAdapter(
 
         holder.itemView.contentDescription = buildString {
             append(x.symbol)
-            append(", ${x.direction}, nihai sinyal $strength üzerinden 100")
-            append(", risk ${x.riskScore}, veri güveni ${x.dataConfidenceScore}")
+            append(", ${x.direction}, teknik uyum $strength üzerinden 100")
+            append(", risk ${x.riskScore}, veri güveni ${x.dataConfidenceScore}, mod ${x.analysisMode}")
         }
         holder.itemView.setOnClickListener { click(x) }
     }
