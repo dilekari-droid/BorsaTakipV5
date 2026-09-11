@@ -84,9 +84,10 @@ jobs:
           grep -F 'Mode.ALL' "$FILE"
           grep -F 'Mode.LONG' "$FILE"
           grep -F 'Mode.SHORT' "$FILE"
-          grep -F 'Mode.SCORE85' "$FILE"
+          grep -F 'Mode.HIGH_POWER' "$FILE"
           grep -F 'Mode.SCORE' "$FILE"
           grep -F 'scanState.scannedSymbols.size' "$FILE"
+          grep -F 'scanState.failedSymbols.size' "$FILE"
           test -f app/src/main/java/tr/borsatakip/v5/analysis/LinearTrendAnalyzer.kt
           test -f app/src/main/java/tr/borsatakip/v5/analysis/ChartTimeframe.kt
           test -f app/src/main/java/tr/borsatakip/v5/data/ChartHistoryRepository.kt
