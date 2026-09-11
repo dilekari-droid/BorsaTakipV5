@@ -84,6 +84,43 @@ class SettingsStore(c: Context) {
         get() = p.getLong("yahoo_symbol_cache_updated_at", 0L)
         set(v) = p.edit().putLong("yahoo_symbol_cache_updated_at", v).apply()
 
+    // Linear Regression Channel (LRC) chart settings. Existing settings remain untouched.
+    var lrcEnabled: Boolean
+        get() = p.getBoolean("lrc_enabled", true)
+        set(v) = p.edit().putBoolean("lrc_enabled", v).apply()
+
+    var lrcLength: Int
+        get() = p.getInt("lrc_length", 100).coerceIn(20, 500)
+        set(v) = p.edit().putInt("lrc_length", v.coerceIn(20, 500)).apply()
+
+    var lrcSigma1Enabled: Boolean
+        get() = p.getBoolean("lrc_sigma_1", false)
+        set(v) = p.edit().putBoolean("lrc_sigma_1", v).apply()
+
+    var lrcSigma2Enabled: Boolean
+        get() = p.getBoolean("lrc_sigma_2", true)
+        set(v) = p.edit().putBoolean("lrc_sigma_2", v).apply()
+
+    var lrcSigma3Enabled: Boolean
+        get() = p.getBoolean("lrc_sigma_3", false)
+        set(v) = p.edit().putBoolean("lrc_sigma_3", v).apply()
+
+    var lrcTrendColorEnabled: Boolean
+        get() = p.getBoolean("lrc_trend_color", true)
+        set(v) = p.edit().putBoolean("lrc_trend_color", v).apply()
+
+    var lrcPearsonEnabled: Boolean
+        get() = p.getBoolean("lrc_pearson", true)
+        set(v) = p.edit().putBoolean("lrc_pearson", v).apply()
+
+    var lrcFillEnabled: Boolean
+        get() = p.getBoolean("lrc_fill", false)
+        set(v) = p.edit().putBoolean("lrc_fill", v).apply()
+
+    var lrcBreakoutWarningEnabled: Boolean
+        get() = p.getBoolean("lrc_breakout_warning", true)
+        set(v) = p.edit().putBoolean("lrc_breakout_warning", v).apply()
+
     fun clearYahooSymbolCompatibilityCache() {
         p.edit()
             .remove("yahoo_supported_symbols")
