@@ -95,8 +95,12 @@ jobs:
           require_marker 'BistScanner(ProviderRouter(this@OpportunityActivity))' app/src/main/java/tr/borsatakip/v5/ui/OpportunityActivity.kt
           require_marker 'RealTimeIntegrityPolicy.validate' app/src/main/java/tr/borsatakip/v5/scan/BistScanner.kt
           require_marker 'LinearRegressionChannelCalculator.calculate' app/src/main/java/tr/borsatakip/v5/analysis/OpportunityEngine.kt
-          require_marker 'Fırsat adayı' app/src/main/java/tr/borsatakip/v5/ui/BistScanActivity.kt
+          require_marker 'RESEARCH_CANDIDATE' app/src/main/java/tr/borsatakip/v5/scan/BistScanner.kt
+          require_marker 'Araştırma adayı' app/src/main/java/tr/borsatakip/v5/ui/BistScanActivity.kt
+          require_marker 'GERÇEK ZAMANLI AL/SAT SİNYALİ DEĞİLDİR' app/src/main/java/tr/borsatakip/v5/ui/BistScanActivity.kt
           require_marker 'ANALİZ İLERLEMESİ' app/src/main/java/tr/borsatakip/v5/ui/BistScanActivity.kt
+          require_marker 'KARIŞIK VERİ' app/src/main/java/tr/borsatakip/v5/ui/MainActivity.kt
+          require_marker 'dataConfidenceScore = dataConfidence.first' app/src/main/java/tr/borsatakip/v5/analysis/OpportunityEngine.kt
           require_marker 'R.color.green' app/src/main/java/tr/borsatakip/v5/ui/MainActivity.kt
           require_marker 'R.color.red' app/src/main/java/tr/borsatakip/v5/ui/FavoriteAdapter.kt
           require_marker 'CustomTabsIntent' app/src/main/java/tr/borsatakip/v5/ui/SettingsActivity.kt
@@ -115,6 +119,7 @@ jobs:
           require_marker 'strictRealtime' backend/app/main.py
           require_marker 'ANLIK ✓' app/src/main/java/tr/borsatakip/v5/ui/OpportunityAdapter.kt
           require_marker 'finalSignalScore.coerceIn(0, 100)' app/src/main/java/tr/borsatakip/v5/ui/OpportunityAdapter.kt
+          require_marker 'TEKNİK UYUM' app/src/main/java/tr/borsatakip/v5/ui/MainActivity.kt
           require_marker 'VERİ KAPSAMI' app/src/main/java/tr/borsatakip/v5/ui/OpportunityAdapter.kt
           require_marker 'WindowInsetsCompat.Type.systemBars()' app/src/main/java/tr/borsatakip/v5/ui/BaseActivity.kt
           require_marker 'bg_screen_gradient' app/src/main/res/layout/activity_main.xml
@@ -127,7 +132,7 @@ jobs:
           "$AAPT" dump xmltree "$APK" AndroidManifest.xml > /tmp/manifest.txt
           grep -Fq 'android:allowBackup(0x01010280)=(type 0x12)0x0' /tmp/manifest.txt
           test -f app/build/outputs/mapping/release/mapping.txt
-          echo "V${APP_VERSION} build, LRC scan integration, trend-color UI and APK version checks passed."
+          echo "V${APP_VERSION} delayed-research separation, dynamic data confidence, LRC integration and APK version checks passed."
 
       - name: Check release secrets
         if: github.event_name != 'pull_request'
