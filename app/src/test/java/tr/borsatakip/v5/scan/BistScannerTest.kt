@@ -7,6 +7,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import tr.borsatakip.v5.data.MarketDataProvider
+import tr.borsatakip.v5.data.ProviderScanReport
+import tr.borsatakip.v5.data.ProviderSymbolResult
+import tr.borsatakip.v5.data.ProviderSymbolStatus
 import tr.borsatakip.v5.model.Candle
 import tr.borsatakip.v5.model.Stock
 
@@ -39,7 +42,7 @@ class BistScannerTest {
     }
 
     @Test
-    fun allSymbolsFail_returnsCompletedWithSkipped() = runBlocking {
+    fun allSymbolsFail_returnsCompletedWithTerminalFailures() = runBlocking {
         val provider = object : MarketDataProvider {
             override val id = "all_fail"
             override val displayName = "all_fail"
@@ -53,12 +56,14 @@ class BistScannerTest {
         }
         val state = BistScanner(provider).scan { }
         assertEquals(ScanStatus.COMPLETED, state.status)
+        assertEquals(3, state.total)
+        assertEquals(3, state.terminalResults.size)
         assertEquals(3, state.skipped)
         assertEquals(0, state.successful)
     }
 
     @Test
-    fun deterministicProvider_completesWithoutNetwork() = runBlocking {
+    fun deterministicProvider_everySymbolGetsTerminalState() = runBlocking {
         val now = System.currentTimeMillis()
         val stocks = (1..4).map { idx ->
             Stock(
@@ -94,8 +99,32 @@ class BistScannerTest {
         val state = BistScanner(provider).scan { }
         assertEquals(ScanStatus.COMPLETED, state.status)
         assertEquals(4, state.total)
-        assertTrue(state.successful > 0)
-        assertTrue(state.results.isNotEmpty())
+        assertEquals(4, state.terminalResults.size)
+        assertTrue(state.terminalResults.all { it.status == SymbolTerminalStatus.SIGNAL || it.status == SymbolTerminalStatus.NO_SIGNAL })
+    }
+
+    @Test
+    fun detailedProvider_preservesTimeoutAndHttpError() = runBlocking {
+        val provider = object : MarketDataProvider {
+            override val id = "terminal"
+            override val displayName = "terminal"
+            override suspend fun scan(onProgress: (Int, Int) -> Unit): List<Stock> = emptyList()
+            override suspend fun scanDetailed(onProgress: (ProviderSymbolResult, Int, Int) -> Unit): ProviderScanReport {
+                val items = listOf(
+                    ProviderSymbolResult("AAA", ProviderSymbolStatus.TIMEOUT, attempt = 3, errorMessage = "timeout"),
+                    ProviderSymbolResult("BBB", ProviderSymbolStatus.HTTP_ERROR, attempt = 1, httpCode = 500, errorMessage = "HTTP 500")
+                )
+                items.forEachIndexed { index, item -> onProgress(item, index + 1, items.size) }
+                return ProviderScanReport(items.size, items)
+            }
+            override suspend fun fetchOne(symbol: String): Stock? = null
+        }
+        val state = BistScanner(provider).scan { }
+        assertEquals(ScanStatus.COMPLETED, state.status)
+        assertEquals(2, state.terminalResults.size)
+        assertEquals(1, state.timeout)
+        assertEquals(1, state.httpErrors)
+        assertEquals(2, state.skipped)
     }
 
     @Test
