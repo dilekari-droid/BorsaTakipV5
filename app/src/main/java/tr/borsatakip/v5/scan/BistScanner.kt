@@ -20,11 +20,15 @@ enum class ScanStatus { IDLE, RUNNING, COMPLETED, ERROR, CANCELLED }
 
 data class ScanState(
     val status: ScanStatus = ScanStatus.IDLE,
+    /** İşleme ilerlemesi: processed / total. Başarı yüzdesi değildir. */
     val progress: Int = 0,
     val processed: Int = 0,
     val total: Int = 0,
+    /** Geçerli bir Opportunity sonucu üreten sembol sayısı. */
     val successful: Int = 0,
+    /** Veri çekilemeyen veya analiz sonucu üretilemeyen sembol sayısı. */
     val skipped: Int = 0,
+    /** Sonuç üretse bile production/realtime bütünlük kapısından geçmeyen kayıt sayısı. */
     val integrityRejected: Int = 0,
     val results: List<Opportunity> = emptyList(),
     val errorMessage: String? = null,
@@ -57,8 +61,9 @@ class BistScanner(private val provider: MarketDataProvider) {
                         progress = safeProgress(processed, total),
                         processed = processed,
                         total = total,
-                        successful = fetched,
-                        skipped = (processed - fetched).coerceAtLeast(0),
+                        // Fetch aşamasında henüz analiz başarısı bilinmez; bunu başarı sayısı gibi göstermiyoruz.
+                        successful = 0,
+                        skipped = 0,
                         scanRun = run(ScanRunStatus.STARTED)
                     )
                 )
@@ -84,21 +89,35 @@ class BistScanner(private val provider: MarketDataProvider) {
                     snapshot = opportunity.snapshot?.copy(scanRunId = scanRunId)
                 )
             }
+
+            val successful = traced.size
             val structuralSkipped = (total - fetched).coerceAtLeast(0) + (fetched - analyzed.analyzedCount).coerceAtLeast(0)
-            val errors = structuralSkipped + analyzed.integrityRejected
-            val runStatus = if (errors == 0) ScanRunStatus.COMPLETE else ScanRunStatus.PARTIAL
+            val productionIntegrityWarnings = analyzed.integrityRejected
+            val errorCount = structuralSkipped + productionIntegrityWarnings
+
+            val runStatus = when {
+                successful == total && structuralSkipped == 0 && productionIntegrityWarnings == 0 -> ScanRunStatus.COMPLETE
+                successful > 0 -> ScanRunStatus.PARTIAL
+                else -> ScanRunStatus.FAILED
+            }
+
             val finalState = ScanState(
                 status = ScanStatus.COMPLETED,
-                progress = 100,
+                progress = 100, // yalnızca döngünün tamamlandığını gösterir
                 processed = total,
                 total = total,
-                successful = analyzed.integrityAccepted,
+                successful = successful,
                 skipped = structuralSkipped,
-                integrityRejected = analyzed.integrityRejected,
+                integrityRejected = productionIntegrityWarnings,
                 results = traced,
-                scanRun = run(runStatus, completed, traced.size, errors)
+                errorMessage = if (successful == 0) "Hiçbir sembol geçerli analiz sonucu üretmedi." else null,
+                scanRun = run(runStatus, completed, successful, errorCount)
             )
-            Log.i(TAG, "[BIST_SCAN] ${runStatus.name} id=$scanRunId total=$total results=${traced.size} integrityRejected=${analyzed.integrityRejected}")
+            Log.i(
+                TAG,
+                "[BIST_SCAN] ${runStatus.name} id=$scanRunId processed=$total/$total successful=$successful " +
+                    "skipped=$structuralSkipped integrityWarning=$productionIntegrityWarnings"
+            )
             onState(finalState)
             finalState
         } catch (ce: CancellationException) {
@@ -108,10 +127,10 @@ class BistScanner(private val provider: MarketDataProvider) {
                 progress = safeProgress(processed, total),
                 processed = processed,
                 total = total,
-                successful = fetched,
-                skipped = (processed - fetched).coerceAtLeast(0),
+                successful = 0,
+                skipped = 0,
                 errorMessage = "Tarama kullanıcı tarafından durduruldu.",
-                scanRun = run(ScanRunStatus.PARTIAL, completed, errors = (processed - fetched).coerceAtLeast(0))
+                scanRun = run(ScanRunStatus.PARTIAL, completed)
             )
             onState(cancelled)
             throw ce
@@ -127,8 +146,8 @@ class BistScanner(private val provider: MarketDataProvider) {
                 progress = safeProgress(processed, total),
                 processed = processed,
                 total = total,
-                successful = fetched,
-                skipped = (processed - fetched).coerceAtLeast(0),
+                successful = 0,
+                skipped = 0,
                 errorMessage = message,
                 scanRun = run(ScanRunStatus.FAILED, completed, errors = 1)
             )
@@ -141,14 +160,13 @@ class BistScanner(private val provider: MarketDataProvider) {
     private data class AnalysisResult(
         val results: List<Opportunity>,
         val analyzedCount: Int,
-        val integrityAccepted: Int,
         val integrityRejected: Int
     )
 
     /**
      * Teknik olarak analiz edilebilir gecikmeli/EOD veri kaydı tamamen yok edilmez; OpportunityEngine
-     * onu WATCH/REJECTED olarak etiketler. Böyle kayıtlar COMPLETE sayılmaz ve son başarılı taramayı
-     * değiştiremez. Malformed/bozuk/yetersiz veri ise OpportunityEngine tarafından sonuç üretmeden atlanır.
+     * onu WATCH/REJECTED olarak etiketleyebilir. Bu kayıtlar sonuç listesinde kalabilir fakat production
+     * bütünlük uyarısı nedeniyle ScanRun COMPLETE olamaz. Malformed/bozuk/yetersiz veri ise sonuç üretmeden atlanır.
      */
     private suspend fun analyzeSafely(stocks: List<Stock>): AnalysisResult = withContext(Dispatchers.Default) {
         supervisorScope {
@@ -173,7 +191,6 @@ class BistScanner(private val provider: MarketDataProvider) {
             AnalysisResult(
                 results = results,
                 analyzedCount = analyzed.count { it.opportunity != null },
-                integrityAccepted = analyzed.count { it.opportunity != null && it.accepted },
                 integrityRejected = analyzed.count { it.opportunity != null && !it.accepted }
             )
         }
