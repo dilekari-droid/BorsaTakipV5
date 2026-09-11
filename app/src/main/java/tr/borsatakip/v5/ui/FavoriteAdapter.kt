@@ -51,8 +51,8 @@ class FavoriteAdapter(
             "Son tarama sonucu yok • Favori kaydı korunuyor"
         } else {
             buildString {
-                append("Teknik ${opportunity.score}/100 • Risk ${opportunity.riskScore}/100 • Veri Güveni ${opportunity.dataConfidenceScore}/100\n")
-                append("Hacim ${opportunity.volumeLabel} • Günlük ${"%.2f".format(opportunity.dailyChangePct)}%\n")
+                append("Teknik uyum ${opportunity.finalSignalScore}/100 • Risk ${opportunity.riskScore}/100 • Veri Güveni ${opportunity.dataConfidenceScore}/100 (${opportunity.dataConfidenceLabel})\n")
+                append("Mod ${opportunity.analysisMode} • Hacim ${opportunity.volumeLabel} • Günlük ${"%.2f".format(opportunity.dailyChangePct)}%\n")
                 opportunity.lrc?.let { lrc ->
                     val arrow = when (lrc.trend) {
                         "YÜKSELEN" -> "↑"
