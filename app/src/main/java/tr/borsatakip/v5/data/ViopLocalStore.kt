@@ -26,7 +26,7 @@ class ViopLocalStore(context: Context) {
                             providerId = x.optString("providerId").ifBlank { "manual" },
                             providerLabel = x.optString("providerLabel").ifBlank { "Manuel" },
                             isManual = true,
-                            status = "Veri bekleniyor",
+                            status = x.optString("status").ifBlank { "PİYASA VERİSİ YOK • geliştirme kaydı" },
                             dataTimestamp = x.optLong("dataTimestamp", System.currentTimeMillis())
                         )
                     )
@@ -38,7 +38,7 @@ class ViopLocalStore(context: Context) {
     fun add(contract: ViopContract): Result<Unit> = runCatching {
         val current = load().toMutableList()
         require(current.none { it.symbol.equals(contract.symbol, true) }) { "Bu sözleşme zaten kayıtlı." }
-        current += contract.copy(isManual = true, status = "Veri bekleniyor")
+        current += contract.copy(isManual = true)
         save(current)
     }
 
@@ -57,6 +57,7 @@ class ViopLocalStore(context: Context) {
                     .put("contractType", c.contractType)
                     .put("providerId", c.providerId)
                     .put("providerLabel", c.providerLabel)
+                    .put("status", c.status)
                     .put("dataTimestamp", c.dataTimestamp)
             )
         }
