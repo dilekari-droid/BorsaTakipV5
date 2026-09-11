@@ -13,7 +13,8 @@ import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import tr.borsatakip.v5.BuildConfig
 import tr.borsatakip.v5.R
-import tr.borsatakip.v5.data.BackendPreflightClient
+import tr.borsatakip.v5.data.ProviderReadinessService
+import tr.borsatakip.v5.data.ProviderState
 import tr.borsatakip.v5.data.SettingsStore
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -26,6 +27,7 @@ class SettingsActivity : BaseActivity() {
         setupBottomNav()
 
         val s = SettingsStore(this)
+        val readiness = ProviderReadinessService(this)
         s.purgeLegacyTradingViewState()
 
         val base = findViewById<EditText>(R.id.baseUrl)
@@ -36,6 +38,7 @@ class SettingsActivity : BaseActivity() {
         val notifications = findViewById<Switch>(R.id.notifications)
         val dataStatus = findViewById<TextView>(R.id.dataStatus)
         val tradingViewStatus = findViewById<TextView>(R.id.tradingViewStatus)
+        val testConnection = findViewById<Button>(R.id.testConnection)
 
         base.setText(s.baseUrl)
         key.setText("")
@@ -55,55 +58,46 @@ class SettingsActivity : BaseActivity() {
             append("TradingView: yalnız güvenli tarayıcı/Custom Tab üzerinden görüntüleme\n")
             append("BIST/VİOP veri kaynağı: HAYIR\n")
             append("Uygulama içi TradingView kimlik doğrulaması: KULLANILMIYOR\n")
-            append("Tarayıcı cookie/oturum aktarımı: YAPILMIYOR\n")
-            append("TradingView hesabı yalnız açılan güvenli tarayıcı sekmesinde kullanıcı tarafından yönetilir.")
+            append("Tarayıcı cookie/oturum aktarımı: YAPILMIYOR")
         }
 
-        fun formatTime(epoch: Long): String = if (epoch > 0L) {
-            SimpleDateFormat("dd.MM.yyyy HH:mm:ss", Locale.getDefault()).format(Date(epoch))
-        } else "yok"
+        fun formatTime(epoch: Long): String = if (epoch > 0L) SimpleDateFormat("dd.MM.yyyy HH:mm:ss", Locale.getDefault()).format(Date(epoch)) else "yok"
 
         fun showStatus(extra: String? = null) {
+            val snapshot = readiness.localConfigState()
             val backend = if (s.baseUrl.isBlank()) "YAPILANDIRILMAMIŞ" else s.baseUrl
-            val yahoo = if (s.experimentalProvidersEnabled && s.yahooFallbackEnabled) {
-                "Yahoo Finance • deneysel/yedek/gecikmeli • AÇIK"
-            } else {
-                "KAPALI"
-            }
-            val health = when {
-                s.lastBackendHealthAt <= 0L -> "TEST EDİLMEDİ"
-                s.lastBackendHealthOk -> "HAZIR"
-                else -> "BAŞARISIZ"
-            }
-            val api = if (s.apiKey.isBlank()) "YAPILANDIRILMAMIŞ / backend anahtarsız olabilir" else "YAPILANDIRILDI"
             dataStatus.text = buildString {
                 append("VERİ SAĞLAYICI • PRODUCTION BACKEND\n")
+                append("Provider state: ${snapshot.state}\n")
                 append("Backend URL: $backend\n")
-                append("Bağlantı durumu: $health\n")
-                append("Son bağlantı testi: ${formatTime(s.lastBackendHealthAt)}\n")
-                append("API erişimi: $api\n")
+                append("API erişimi: ${if (s.apiKey.isBlank()) "YAPILANDIRILMAMIŞ" else "YAPILANDIRILDI"}\n")
+                append("Son test: ${formatTime(s.lastBackendHealthAt)}\n")
+                append("Hata kodu: ${snapshot.failureCode}\n")
+                append("Durum: ${snapshot.message}\n")
                 append("BIST sembol sayısı: ${s.cachedBistSymbolCount}\n")
-                append("Son sembol güncellemesi: ${formatTime(s.cachedBistSymbolsFetchedAt)}\n")
-                append("Sembol kaynağı: ${s.cachedBistSymbolsProviderId.ifBlank { "yok" }}\n")
-                append("Yahoo BIST yedeği: $yahoo\n")
-                append("Backend sözleşmesi: /v1/health → /v1/bist/symbols → /v1/bist/history/{symbol}\n")
+                append("Zorunlu zincir: HTTPS → Health → Authentication → BIST Symbols → BIST Quote → BIST History → VİOP Contracts → VİOP Quote → VİOP History\n")
                 append("Uygulama sürümü: ${BuildConfig.VERSION_NAME}")
                 if (!extra.isNullOrBlank()) append("\n\n$extra")
+            }
+            testConnection.text = when (snapshot.state) {
+                ProviderState.PROVIDER_READY -> "ÜRETİM BACKEND BAĞLANTISINI YENİDEN TEST ET"
+                ProviderState.PROVIDER_ERROR -> "BAĞLANTIYI TEKRAR DENE"
+                ProviderState.PROVIDER_TESTING -> "TEST EDİLİYOR..."
+                else -> "ÜRETİM BACKEND BAĞLANTISINI TEST ET"
             }
         }
 
         showStatus()
-
         findViewById<Button>(R.id.testTradingViewLogin).setOnClickListener { openTradingView() }
 
         findViewById<Button>(R.id.save).setOnClickListener {
             val url = base.text.toString().trim().removeSuffix("/")
-            if (url.isNotBlank() && !url.startsWith("https://")) {
-                Toast.makeText(this, "Üretim backend için HTTPS adresi zorunludur.", Toast.LENGTH_LONG).show()
+            val newKey = key.text.toString().trim()
+            if (url.isNotBlank() && !ProviderReadinessService.isValidHttps(url)) {
+                Toast.makeText(this, "Geçersiz Production Backend adresi. Yalnız geçerli HTTPS URL kabul edilir.", Toast.LENGTH_LONG).show()
                 return@setOnClickListener
             }
             s.baseUrl = url
-            val newKey = key.text.toString().trim()
             if (newKey.isNotBlank()) {
                 s.apiKey = newKey
                 key.setText("")
@@ -113,47 +107,37 @@ class SettingsActivity : BaseActivity() {
             s.experimentalProvidersEnabled = experimentalProviders.isChecked
             s.yahooFallbackEnabled = experimentalProviders.isChecked && yahooFallback.isChecked
             s.notifications = notifications.isChecked
-            Toast.makeText(
-                this,
-                if (url.isBlank() && !s.yahooFallbackEnabled) "Ayarlar kaydedildi. Production Backend yapılandırması eksik." else "Ayarlar kaydedildi",
-                Toast.LENGTH_LONG
-            ).show()
+            s.lastProviderState = if (s.baseUrl.isNotBlank() && s.apiKey.isNotBlank()) ProviderState.PROVIDER_CONFIGURED.name else ProviderState.PROVIDER_NOT_CONFIGURED.name
+            s.lastProviderFailureCode = ""
+            s.lastProviderMessage = ""
+            Toast.makeText(this, if (s.baseUrl.isBlank() || s.apiKey.isBlank()) "Production Backend yapılandırılmamış. HTTPS adresi ve API erişim anahtarı girin." else "Ayarlar kaydedildi • bağlantı testi gerekli", Toast.LENGTH_LONG).show()
             showStatus()
         }
 
-        findViewById<Button>(R.id.testConnection).setOnClickListener {
+        testConnection.setOnClickListener {
             val url = base.text.toString().trim().removeSuffix("/")
-            if (url.isBlank()) {
-                s.baseUrl = ""
-                showStatus("BAĞLANTI BAŞARISIZ\nÜretim veri sağlayıcısı için backend adresi tanımlanmamış.")
-                Toast.makeText(this, "Production Backend yapılandırması eksik.", Toast.LENGTH_LONG).show()
-                return@setOnClickListener
-            }
-            if (!url.startsWith("https://")) {
-                Toast.makeText(this, "Backend testi için HTTPS adresi kullanın.", Toast.LENGTH_LONG).show()
-                return@setOnClickListener
-            }
-            s.baseUrl = url
             val newKey = key.text.toString().trim()
+            s.baseUrl = url
             if (newKey.isNotBlank()) s.apiKey = newKey
-            showStatus("Bağlantı testi çalışıyor: Health → Authentication → Symbols → History")
+            val local = readiness.localConfigState()
+            if (local.state == ProviderState.PROVIDER_NOT_CONFIGURED || !ProviderReadinessService.isValidHttps(url)) {
+                showStatus("BAĞLANTI BAŞARISIZ\n${local.failureCode}\n${local.message}")
+                Toast.makeText(this, local.message, Toast.LENGTH_LONG).show()
+                return@setOnClickListener
+            }
+            testConnection.isEnabled = false
+            testConnection.text = "TEST EDİLİYOR..."
+            showStatus("Bağlantı testi: HTTPS → Health → Authentication → BIST → VİOP")
             lifecycleScope.launch {
-                val result = BackendPreflightClient(this@SettingsActivity).check()
-                if (result.ok) {
-                    showStatus(
-                        "BAĞLANTI BAŞARILI\n" +
-                            "Health ✓ • Authentication ✓ • Symbols ✓ • History ✓\n" +
-                            "BIST hisseleri: ${result.symbolCount}\n" +
-                            "Sağlayıcı: ${result.provider ?: "Production Backend"}\n" +
-                            "Süre: ${result.elapsedMs} ms"
-                    )
-                } else {
-                    showStatus(
-                        "BAĞLANTI BAŞARISIZ\n" +
-                            "Hata: ${result.failureKind}\n" +
-                            result.message
-                    )
-                }
+                val result = readiness.test()
+                showStatus(
+                    if (result.state == ProviderState.PROVIDER_READY) {
+                        "BAĞLANTI BAŞARILI\nHTTPS ✓ • Health ✓ • Authentication ✓ • BIST Symbols ✓ • BIST Quote ✓ • BIST History ✓ • VİOP Contracts ✓ (${result.viopContractCount}) • VİOP Quote ✓ • VİOP History ✓"
+                    } else {
+                        "BAĞLANTI BAŞARISIZ\nHata: ${result.failureCode}\n${result.message}"
+                    }
+                )
+                testConnection.isEnabled = true
             }
         }
     }
@@ -169,7 +153,5 @@ class SettingsActivity : BaseActivity() {
         }
     }
 
-    companion object {
-        private const val TRADINGVIEW_URL = "https://www.tradingview.com/"
-    }
+    companion object { private const val TRADINGVIEW_URL = "https://www.tradingview.com/" }
 }
