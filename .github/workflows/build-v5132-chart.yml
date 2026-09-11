@@ -1,0 +1,146 @@
+name: Build V5.1.32 Chart APK
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'build_payload/v5132_chart_patch.b64'
+      - '.github/workflows/build-v5132-chart.yml'
+  workflow_dispatch:
+
+jobs:
+  build-chart:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Checkout payload branch
+        uses: actions/checkout@v4
+        with:
+          ref: build-v5.1.28-apk
+          fetch-depth: 0
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Setup Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Reconstruct V5.1.32 source
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/v5132
+          mkdir -p /tmp/v5132
+          cat build_payload/v5128_part*.b64 | tr -d '\n' | base64 -d > /tmp/v5128.tar.xz
+          xz -t /tmp/v5128.tar.xz
+          tar -xJf /tmp/v5128.tar.xz -C /tmp/v5132
+          git fetch origin main --depth=1
+          git show origin/main:build_payload/v5129_ui.b64 | tr -d '\n' | base64 -d | xz -d > /tmp/v5129.patch
+          git show origin/main:build_payload/v5129_fix.b64 | tr -d '\n' | base64 -d > /tmp/v5129_fix.tar.xz
+          cd /tmp/v5132
+          patch -p1 --batch --forward < /tmp/v5129.patch || true
+          xz -t /tmp/v5129_fix.tar.xz
+          tar -xJf /tmp/v5129_fix.tar.xz -C /tmp/v5132
+          cd "$GITHUB_WORKSPACE"
+          for f in 00 01 02 03 04; do git show origin/main:build_payload/v5130_patch_part_${f}.b64; done | tr -d '\n' | base64 -d | xz -d > /tmp/v5130.patch
+          git show origin/main:build_payload/v5130_backend.b64 | tr -d '\n' | base64 -d > /tmp/v5130_backend.tar.xz
+          git show origin/main:build_payload/v5131_final_patch.b64 | tr -d '\n' | base64 -d | xz -d > /tmp/v5131.patch
+          git show origin/main:build_payload/v5132_chart_patch.b64 | tr -d '\n' | base64 -d | xz -d > /tmp/v5132.patch
+          cd /tmp/v5132
+          patch -p4 --batch --forward < /tmp/v5130.patch || true
+          xz -t /tmp/v5130_backend.tar.xz
+          tar -xJf /tmp/v5130_backend.tar.xz -C /tmp/v5132
+          patch -p4 --batch --forward < /tmp/v5131.patch
+          patch -p1 --batch --forward < /tmp/v5132.patch
+          rm -rf source_parts backend/.pytest_cache backend/app/__pycache__ backend/tests/__pycache__ .kotlin
+          grep -F 'versionName = "5.1.32"' app/build.gradle.kts
+          grep -F 'versionCode = 82' app/build.gradle.kts
+          test -f app/src/main/java/tr/borsatakip/v5/analysis/LinearTrendAnalyzer.kt
+          test -f app/src/main/java/tr/borsatakip/v5/analysis/ChartTimeframe.kt
+          test -f app/src/main/java/tr/borsatakip/v5/data/ChartHistoryRepository.kt
+          grep -F 'THREE_MIN("3 DK"' app/src/main/java/tr/borsatakip/v5/analysis/ChartTimeframe.kt
+          grep -F 'ScaleGestureDetector' app/src/main/java/tr/borsatakip/v5/ui/PriceChartView.kt
+
+      - name: Backend tests
+        working-directory: /tmp/v5132
+        run: |
+          set -euo pipefail
+          python -m venv /tmp/v5132-venv
+          /tmp/v5132-venv/bin/python -m pip install --upgrade pip
+          /tmp/v5132-venv/bin/pip install -r backend/requirements.txt pytest
+          /tmp/v5132-venv/bin/pytest -q backend/tests | tee "$GITHUB_WORKSPACE/backend-tests.txt"
+
+      - name: Android unit tests
+        working-directory: /tmp/v5132
+        run: |
+          set -euo pipefail
+          gradle :app:testDebugUnitTest | tee "$GITHUB_WORKSPACE/android-unit-tests.txt"
+
+      - name: Android lint
+        working-directory: /tmp/v5132
+        run: |
+          set -euo pipefail
+          gradle :app:lintDebug | tee "$GITHUB_WORKSPACE/android-lint.txt"
+
+      - name: Assemble and verify debug APK
+        working-directory: /tmp/v5132
+        run: |
+          set -euo pipefail
+          gradle :app:assembleDebug
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          unzip -t "$APK" > "$GITHUB_WORKSPACE/apk-unzip-test.txt"
+          AAPT=$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)
+          "$AAPT" dump badging "$APK" | tee "$GITHUB_WORKSPACE/apk-badging.txt"
+          grep -F "versionName='5.1.32'" "$GITHUB_WORKSPACE/apk-badging.txt"
+          grep -F "versionCode='82'" "$GITHUB_WORKSPACE/apk-badging.txt"
+          cp "$APK" "$GITHUB_WORKSPACE/BorsaTakipV5.1.32-chart-debug.apk"
+          sha256sum "$GITHUB_WORKSPACE/BorsaTakipV5.1.32-chart-debug.apk" > "$GITHUB_WORKSPACE/BorsaTakipV5.1.32-chart-debug.sha256"
+
+      - name: Package clean source
+        run: |
+          set -euo pipefail
+          cd /tmp/v5132
+          rm -rf app/build .gradle backend/.pytest_cache backend/app/__pycache__ backend/tests/__pycache__ source_parts .kotlin
+          zip -qr "$GITHUB_WORKSPACE/BorsaTakipV5.1.32-Chart-Kaynak-Kod.zip" . -x '*.pyc' '*/__pycache__/*' 'source_parts/*'
+          unzip -t "$GITHUB_WORKSPACE/BorsaTakipV5.1.32-Chart-Kaynak-Kod.zip" > "$GITHUB_WORKSPACE/source-zip-test.txt"
+          sha256sum "$GITHUB_WORKSPACE/BorsaTakipV5.1.32-Chart-Kaynak-Kod.zip" > "$GITHUB_WORKSPACE/BorsaTakipV5.1.32-Chart-Kaynak-Kod.sha256"
+
+      - name: Upload APK and source
+        uses: actions/upload-artifact@v4
+        with:
+          name: BorsaTakipV5.1.32-chart
+          path: |
+            BorsaTakipV5.1.32-chart-debug.apk
+            BorsaTakipV5.1.32-chart-debug.sha256
+            BorsaTakipV5.1.32-Chart-Kaynak-Kod.zip
+            BorsaTakipV5.1.32-Chart-Kaynak-Kod.sha256
+            backend-tests.txt
+            android-unit-tests.txt
+            android-lint.txt
+            apk-badging.txt
+            apk-unzip-test.txt
+            source-zip-test.txt
+          if-no-files-found: error
+
+      - name: Emulator API 35 smoke test
+        continue-on-error: true
+        uses: ReactiveCircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: true
+          emulator-boot-timeout: 900
+          script: |
+            cd /tmp/v5132
+            gradle :app:connectedDebugAndroidTest | tee "$GITHUB_WORKSPACE/android-instrumentation.txt"
