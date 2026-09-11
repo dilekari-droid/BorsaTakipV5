@@ -46,7 +46,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="10dp"
-                    android:text="0 / 0 • %0"
+                    android:text="İşlenen: 0 / 0"
                     android:textColor="@color/white"
                     android:textSize="24sp"
                     android:textStyle="bold" />
@@ -96,7 +96,9 @@
                 android:layout_marginTop="12dp"
                 android:background="@drawable/bg_card"
                 android:text="TEKNİK VERİ DETAYI"
-                android:textColor="@color/text_secondary" />
+                android:textColor="@color/white"
+                android:textStyle="bold"
+                android:contentDescription="Tarama hata ve terminal durum ayrıntılarını göster veya gizle" />
 
             <TextView
                 android:id="@+id/txtDebugState"
@@ -116,7 +118,7 @@
                 android:layout_marginTop="12dp"
                 android:background="@drawable/bg_card"
                 android:padding="12dp"
-                android:text="İlerleme yalnız gerçek işlem durumundan hesaplanır. Eski veya gecikmeli veri canlı veri gibi gösterilmez."
+                android:text="İlerleme yalnız tamamlanan sembol sayısını gösterir; başarı oranı değildir. Yedek/gecikmeli veri CANLI olarak etiketlenmez."
                 android:textColor="@color/text_muted"
                 android:textSize="12sp" />
         </LinearLayout>
