@@ -42,14 +42,14 @@ class BistScanActivity : BaseActivity() {
         fun refreshSourceLabel() {
             source.text = when {
                 settings.baseUrl.startsWith("https://") -> "● CANLI VERİ KAYNAĞI HAZIR"
-                delayedMode() -> "● YEDEK / GECİKMELİ VERİ MODU • CANLI DEĞİL"
+                delayedMode() -> "⚠ VERİ MODU • YEDEK / GECİKMELİ • CANLI VERİ DEĞİL"
                 else -> "● VERİ KAYNAĞI AYARLANMAMIŞ"
             }
         }
 
         technicalBtn.isEnabled = true
         technicalBtn.alpha = 1f
-        technicalBtn.contentDescription = "Tarama hata ve terminal durum ayrıntılarını göster veya gizle"
+        technicalBtn.contentDescription = "Tarama veri, analiz, hata ve LRC ayrıntılarını göster veya gizle"
         technicalBtn.setOnClickListener {
             val show = debug.visibility != View.VISIBLE
             debug.visibility = if (show) View.VISIBLE else View.GONE
@@ -62,8 +62,8 @@ class BistScanActivity : BaseActivity() {
         } else {
             "Hazır • Tarama başlatılabilir"
         }
-        txt.text = "İşlenen: 0 / 0"
-        debug.text = "Motor: HAZIR\nProvider: ${settings.lastProviderLabel}\nTarama: 0/0\nTerminal sonuç: 0"
+        txt.text = "ANALİZ İLERLEMESİ\n0 / 0 • %0 tamamlandı"
+        debug.text = "Motor: HAZIR\nProvider: ${settings.lastProviderLabel}\nVeri toplama ve teknik analiz ayrı izlenir."
 
         btn.setOnClickListener {
             if (scanJob?.isActive == true) {
@@ -73,7 +73,7 @@ class BistScanActivity : BaseActivity() {
 
             progress.progress = 0
             btn.text = "DURDUR"
-            status.text = "Veri kaynağına bağlanılıyor..."
+            status.text = "Veri toplama başlatılıyor..."
             AppSession.lastOpportunities = emptyList()
             refreshSourceLabel()
 
@@ -82,21 +82,23 @@ class BistScanActivity : BaseActivity() {
                     val scanner = BistScanner(ProviderRouter(this@BistScanActivity))
                     val finalState = scanner.scan { state ->
                         runOnUiThread {
-                            progress.progress = state.progress
-                            txt.text = if (state.status == ScanStatus.COMPLETED) {
-                                "İşlenen: ${state.processed} / ${state.total} • Tarama tamamlandı"
-                            } else {
-                                "İşlenen: ${state.processed} / ${state.total} • İlerleme %${state.progress}"
-                            }
+                            val analyzed = analyzedCount(state)
+                            val analysisProgress = analysisProgress(analyzed, state.total)
+                            progress.progress = analysisProgress
+                            txt.text = "ANALİZ İLERLEMESİ\n$analyzed / ${state.total} • %$analysisProgress tamamlandı"
                             status.text = renderUserState(state, delayedMode())
                             debug.text = renderTechnicalState(state, settings.lastProviderLabel)
+                            // Tarama sürerken bulunan gerçek fırsat adaylarını koru; kullanıcı diğer ekrana geçerse kaybolmasın.
+                            AppSession.lastOpportunities = state.results.sortedByDescending { it.finalSignalScore }
                         }
                     }
 
                     if (finalState.status == ScanStatus.COMPLETED) {
                         AppSession.lastOpportunities = finalState.results.sortedByDescending { it.finalSignalScore }
-                        progress.progress = 100
-                        txt.text = "İşlenen: ${finalState.processed} / ${finalState.total} • Tarama tamamlandı"
+                        val analyzed = analyzedCount(finalState)
+                        val analysisProgress = analysisProgress(analyzed, finalState.total)
+                        progress.progress = analysisProgress
+                        txt.text = "ANALİZ İLERLEMESİ\n$analyzed / ${finalState.total} • %$analysisProgress tamamlandı"
                         status.text = renderUserState(finalState, delayedMode())
                         debug.text = renderTechnicalState(finalState, settings.lastProviderLabel)
 
@@ -105,35 +107,46 @@ class BistScanActivity : BaseActivity() {
                         }
                     }
                 } catch (ce: CancellationException) {
-                    status.text = "Tarama durduruldu"
+                    status.text = "Tarama durduruldu • kısmi sonuçlar korunuyor"
                     throw ce
                 } catch (t: Throwable) {
                     status.text = "Tarama başlatılamadı.\nVeri kaynağını Ayarlar bölümünden kontrol edin."
                     debug.text = "Hata: ${t.message ?: "Beklenmeyen hata"}\nSahte/demo verisine geçilmedi."
                 } finally {
-                    btn.text = "BIST TARAMASINI BAŞLAT"
+                    btn.text = "YENİDEN TARA"
                     refreshSourceLabel()
                 }
             }
         }
     }
 
+    private fun analyzedCount(state: ScanState): Int =
+        (state.successful + state.analysisErrors + state.integrityRejected).coerceAtMost(state.total.coerceAtLeast(0))
+
+    private fun analysisProgress(analyzed: Int, total: Int): Int {
+        if (total <= 0) return 0
+        return ((analyzed.coerceAtLeast(0) * 100L) / total).toInt().coerceIn(0, 100)
+    }
+
     private fun renderUserState(state: ScanState, delayedMode: Boolean): String {
         val hardFailures = hardFailureCount(state)
+        val analyzed = analyzedCount(state)
         return when (state.status) {
             ScanStatus.IDLE -> "Hazır"
             ScanStatus.RUNNING -> buildString {
-                append("Tarama çalışıyor\n")
-                append("Veri alındı: ${state.dataReceived} • Hata: $hardFailures • Yetersiz: ${state.dataInsufficient} • Veri yok: ${state.dataUnavailable}\n")
-                append("Fırsat: ${state.signalCount} • Sinyal yok: ${state.noSignal}")
-                if (delayedMode) append("\nYedek/gecikmeli veri kullanılıyor; CANLI değildir.")
+                append("VERİ DURUMU\n")
+                append("Başarılı veri: ${state.dataReceived} • Yetersiz veri: ${state.dataInsufficient} • Veri yok: ${state.dataUnavailable} • Hata: $hardFailures\n\n")
+                append("TARAMA DURUMU\n● Tarama çalışıyor\n")
+                append("Analiz: $analyzed / ${state.total}\n")
+                append("Fırsat adayı: ${state.signalCount} • Net sinyal yok: ${state.noSignal}")
+                if (delayedMode) append("\nYedek/gecikmeli veri kullanılıyor; CANLI VERİ DEĞİL.")
             }
             ScanStatus.COMPLETED -> buildString {
-                append("Tarama: Tamamlandı\n")
-                append("İşlenen: ${state.processed}/${state.total} • Veri alındı: ${state.dataReceived}\n")
-                append("Başarılı analiz: ${state.successful} • Hata: $hardFailures\n")
-                append("Yetersiz geçmiş: ${state.dataInsufficient} • Veri yok: ${state.dataUnavailable}\n")
-                append("Fırsat: ${state.signalCount} • Sinyal yok: ${state.noSignal}")
+                append("VERİ DURUMU\n")
+                append("Başarılı veri: ${state.dataReceived} • Yetersiz veri: ${state.dataInsufficient} • Veri yok: ${state.dataUnavailable} • Hata: $hardFailures\n\n")
+                append("TARAMA DURUMU\n● Tarama tamamlandı\n")
+                append("Analiz: $analyzed / ${state.total}\n")
+                append("Fırsat adayı: ${state.signalCount} • Net sinyal yok: ${state.noSignal}")
                 if (state.terminalResults.size != state.total) {
                     append("\nUYARI: Terminal sonuç ${state.terminalResults.size}/${state.total}")
                 } else if (delayedMode) {
@@ -141,7 +154,7 @@ class BistScanActivity : BaseActivity() {
                 }
             }
             ScanStatus.ERROR -> "Tarama tamamlanamadı\n${state.errorMessage ?: "Veri alınamadı"}"
-            ScanStatus.CANCELLED -> "Tarama durduruldu"
+            ScanStatus.CANCELLED -> "Tarama durduruldu • kısmi sonuçlar korunuyor"
         }
     }
 
@@ -163,15 +176,24 @@ class BistScanActivity : BaseActivity() {
             }
             .ifBlank { "Sembol bazlı hata yok." }
 
+        val lrcDetails = state.results.take(12).joinToString("\n") { opportunity ->
+            val lrc = opportunity.lrc
+            if (lrc == null) {
+                "${opportunity.symbol}: LRC unavailable"
+            } else {
+                "${opportunity.symbol}: LRC${lrc.period} ${lrc.trend} • eğim ${"%.6f".format(lrc.slope)} • R ${"%.2f".format(lrc.pearsonR)} • ${lrc.channelPosition} • genişlik ${"%.4f".format(lrc.channelWidth)}"
+            }
+        }.ifBlank { "Henüz LRC analiz sonucu yok." }
+
         return buildString {
             append("Provider: $providerLabel\n")
-            append("Toplam: ${state.total} • İşlenen: ${state.processed} • Veri alındı: ${state.dataReceived}\n")
-            append("Sinyal: ${state.signalCount} • Sinyal yok: ${state.noSignal}\n")
+            append("VERİ TOPLAMA → Toplam ${state.total} • Veri alınan ${state.dataReceived} • Yetersiz ${state.dataInsufficient} • Veri yok ${state.dataUnavailable}\n")
+            append("TEKNİK ANALİZ → Analiz ${analyzedCount(state)} • Fırsat adayı ${state.signalCount} • Net sinyal yok ${state.noSignal}\n")
             append("Timeout: ${state.timeout} • Rate limit: ${state.rateLimited} • HTTP: ${state.httpErrors}\n")
             append("Ağ: ${state.networkErrors} • Parse: ${state.parseErrors}\n")
-            append("Yetersiz veri: ${state.dataInsufficient} • Yahoo veri yok: ${state.dataUnavailable}\n")
             append("Doğrulama reddi: ${state.integrityRejected} • Analiz/diğer: ${state.analysisErrors}\n")
             append("Terminal sonuç: ${state.terminalResults.size}/${state.total}\n\n")
+            append("LRC TEKNİK DETAY (ilk 12 fırsat):\n$lrcDetails\n\n")
             append("SEMBOL | DURUM | DENEME | HTTP | AÇIKLAMA (ilk 20):\n$failures")
         }
     }
