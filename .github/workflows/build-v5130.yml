@@ -50,7 +50,7 @@ jobs:
           xz -t /tmp/v5129_fix.tar.xz
           tar -xJf /tmp/v5129_fix.tar.xz -C /tmp/v5130
           cd "$GITHUB_WORKSPACE"
-          for f in $(seq -w 0 4); do git show origin/main:build_payload/v5130_patch_part_${f}.b64; done | tr -d '\n' | base64 -d | xz -d > /tmp/v5130.patch
+          for f in 00 01 02 03 04; do git show origin/main:build_payload/v5130_patch_part_${f}.b64; done | tr -d '\n' | base64 -d | xz -d > /tmp/v5130.patch
           cd /tmp/v5130
           patch -p4 --batch --forward < /tmp/v5130.patch
           rm -rf source_parts backend/.pytest_cache backend/app/__pycache__ backend/tests/__pycache__
