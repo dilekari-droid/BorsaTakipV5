@@ -2,11 +2,16 @@ package tr.borsatakip.v5.ui
 
 import android.content.Intent
 import android.os.Bundle
+import android.text.SpannableStringBuilder
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
 import android.widget.Button
 import android.widget.TextView
+import androidx.core.content.ContextCompat
 import tr.borsatakip.v5.BuildConfig
 import tr.borsatakip.v5.R
 import tr.borsatakip.v5.data.SettingsStore
+import tr.borsatakip.v5.model.Opportunity
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -74,17 +79,57 @@ class MainActivity : BaseActivity() {
         findViewById<TextView>(R.id.txtScanSummary).text = if (opportunities.isEmpty()) {
             "Henüz doğrulanmış tarama sonucu yok."
         } else {
-            "${opportunities.size} fırsat • LONG $longCount • SHORT $shortCount • 85+ $highCount"
+            "${opportunities.size} fırsat adayı • LONG $longCount • SHORT $shortCount • 85+ $highCount"
         }
 
         val top = opportunities.take(4)
         findViewById<TextView>(R.id.txtToday).text = if (top.isEmpty()) {
-            "Henüz fırsat yok. Tarama başlatıldığında en güçlü doğrulanmış sinyaller burada gösterilir."
+            "Henüz fırsat adayı yok. Tarama başlatıldığında doğrulanmış adaylar burada gösterilir."
         } else {
-            top.joinToString("\n\n") {
-                "${it.symbol}   ${it.direction}   ${it.finalSignalScore}/100\n" +
-                    "Günlük ${"%+.2f%%".format(it.dailyChangePct)} • Risk ${it.riskScore}/100 • Veri ${it.dataConfidenceScore}/100"
+            buildTodayText(top)
+        }
+    }
+
+    private fun buildTodayText(items: List<Opportunity>): CharSequence {
+        val out = SpannableStringBuilder()
+        items.forEachIndexed { index, opportunity ->
+            if (index > 0) out.append("\n\n")
+            val start = out.length
+            val direction = opportunity.direction.uppercase(Locale.ROOT).ifBlank { "TREND BİLİNMİYOR" }
+            out.append("${opportunity.symbol} $direction ${opportunity.finalSignalScore}/100")
+            out.setSpan(
+                ForegroundColorSpan(trendColor(opportunity.direction)),
+                start,
+                out.length,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+            )
+            out.append("\nRSI ${opportunity.technical.rsi14?.let { "%.1f".format(it) } ?: "—"} • MACD ${macdLabel(opportunity)}")
+            opportunity.lrc?.let { lrc ->
+                val arrow = when (lrc.trend) {
+                    "YÜKSELEN" -> "↑"
+                    "DÜŞEN" -> "↓"
+                    else -> "→"
+                }
+                out.append("\nLRC100 $arrow R ${"%.2f".format(lrc.pearsonR)} • ${lrc.channelPosition}")
             }
+        }
+        return out
+    }
+
+    private fun trendColor(direction: String?): Int = when (direction?.uppercase(Locale.ROOT)) {
+        "LONG" -> ContextCompat.getColor(this, R.color.green)
+        "SHORT" -> ContextCompat.getColor(this, R.color.red)
+        else -> ContextCompat.getColor(this, R.color.text_primary)
+    }
+
+    private fun macdLabel(opportunity: Opportunity): String {
+        val macd = opportunity.technical.macd
+        val signal = opportunity.technical.macdSignal
+        return when {
+            macd == null || signal == null || !macd.isFinite() || !signal.isFinite() -> "—"
+            macd > signal -> "Pozitif"
+            macd < signal -> "Negatif"
+            else -> "Nötr"
         }
     }
 }
