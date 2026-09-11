@@ -1,13 +1,12 @@
 package tr.borsatakip.v5.ui
 
 import android.content.Context
-import android.os.Environment
-import android.view.View
 import androidx.test.core.app.ActivityScenario
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.action.ViewActions.click
 import androidx.test.espresso.assertion.ViewAssertions.doesNotExist
 import androidx.test.espresso.assertion.ViewAssertions.matches
+import androidx.test.espresso.matcher.ViewMatchers.isChecked
 import androidx.test.espresso.matcher.ViewMatchers.isDisplayed
 import androidx.test.espresso.matcher.ViewMatchers.withId
 import androidx.test.espresso.matcher.ViewMatchers.withText
@@ -15,6 +14,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.UiDevice
 import org.hamcrest.Matchers.containsString
+import org.hamcrest.Matchers.not
 import org.junit.After
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -45,12 +45,35 @@ class ScreenRegressionTest {
     }
 
     @Test
-    fun viop_backendMissing_hasNoBrokenControls_andShowsConfigureAction() {
+    fun viop_backendMissing_experimentalModeRemainsUsableWithoutFakePrices() {
         ActivityScenario.launch(ViopActivity::class.java).use {
-            onView(withText("VERİ KAYNAĞINI YAPILANDIR")).check(matches(isDisplayed()))
+            onView(withText("DENEYSEL VİOP AKIŞINI ÇALIŞTIR")).check(matches(isDisplayed()))
+            onView(withText("DENEYSEL SÖZLEŞME METADATA’SI EKLE")).check(matches(isDisplayed()))
             onView(withText("▮▮")).check(doesNotExist())
-            onView(withText(containsString("VİOP veri kaynağı hazır değil"))).check(matches(isDisplayed()))
-            takeScreenshot("viop_backend_missing.png")
+            onView(withText(containsString("DENEYSEL GELİŞTİRME"))).check(matches(isDisplayed()))
+            takeScreenshot("viop_experimental_mode.png")
+        }
+    }
+
+    @Test
+    fun settings_lrcDefaultsAndToggles_areStable() {
+        ActivityScenario.launch(SettingsActivity::class.java).use {
+            onView(withId(R.id.lrcEnabled)).check(matches(isChecked()))
+            onView(withId(R.id.lrcSigma1)).check(matches(not(isChecked())))
+            onView(withId(R.id.lrcSigma2)).check(matches(isChecked()))
+            onView(withId(R.id.lrcSigma3)).check(matches(not(isChecked())))
+            onView(withId(R.id.lrcPearson)).check(matches(isChecked()))
+            onView(withId(R.id.lrcTrendColor)).check(matches(isChecked()))
+
+            onView(withId(R.id.lrcSigma1)).perform(click())
+            onView(withId(R.id.lrcSigma3)).perform(click())
+            onView(withId(R.id.lrcFill)).perform(click())
+            onView(withId(R.id.save)).perform(click())
+
+            onView(withId(R.id.lrcSigma1)).check(matches(isChecked()))
+            onView(withId(R.id.lrcSigma3)).check(matches(isChecked()))
+            onView(withId(R.id.lrcFill)).check(matches(isChecked()))
+            takeScreenshot("settings_lrc.png")
         }
     }
 
