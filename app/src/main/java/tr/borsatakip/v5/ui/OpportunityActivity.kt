@@ -94,8 +94,8 @@ class OpportunityActivity : BaseActivity() {
                         runOnUiThread {
                             summary.text = when (state.status) {
                                 ScanStatus.IDLE -> "Hazır"
-                                ScanStatus.RUNNING -> "BIST FIRSAT TARAMASI • ${state.processed}/${state.total} • %${state.progress} • Atlanan ${state.skipped}"
-                                ScanStatus.COMPLETED -> "BIST taraması bitti • ${state.results.size} kayıt • ${state.scanRun?.status ?: "?"}"
+                                ScanStatus.RUNNING -> "BIST FIRSAT TARAMASI • İşlenen ${state.processed}/${state.total} • %${state.progress} • Analiz sonucu ${state.successful}"
+                                ScanStatus.COMPLETED -> "Tarama döngüsü bitti • Başarılı analiz ${state.successful}/${state.total} • ${state.scanRun?.status ?: "?"}"
                                 ScanStatus.ERROR -> "BIST fırsat taraması başarısız • ${state.errorMessage ?: "Veri alınamadı"}"
                                 ScanStatus.CANCELLED -> "Fırsat taraması durduruldu"
                             }
@@ -111,11 +111,12 @@ class OpportunityActivity : BaseActivity() {
                             signalHistoryStore.recordCompleteScan(run, results)
                             applyFilter("SON BAŞARILI TARAMA • ${formatRunTime(run)} • ${results.size} kayıt • Kaynak: ${settings.lastProviderLabel}")
                         }
-                        finalState.status == ScanStatus.COMPLETED && run?.status == ScanRunStatus.PARTIAL -> {
+                        finalState.status == ScanStatus.COMPLETED && run?.status == ScanRunStatus.PARTIAL && finalState.successful > 0 -> {
                             val partial = OpportunityFilterPolicy.apply(finalState.results, OpportunityFilter.ALL)
-                            bindFiltered(partial, "KISMİ TARAMA • ${formatRunTime(run)} • ${partial.size} kayıt • Son başarılı tarama değiştirilmedi")
+                            AppSession.lastOpportunities = partial
+                            bindFiltered(partial, "KISMİ TARAMA • Başarılı ${finalState.successful}/${finalState.total} • Hatalı/atlanan ${finalState.skipped} • Son COMPLETE tarama kaydı değiştirilmedi")
                         }
-                        finalState.status == ScanStatus.COMPLETED -> bindFiltered(emptyList(), "Tarama tamamlandı ancak yayınlanabilir sonuç oluşmadı")
+                        finalState.status == ScanStatus.COMPLETED -> bindFiltered(emptyList(), "Tarama tamamlandı ancak başarılı analiz sonucu oluşmadı")
                     }
                 } catch (_: CancellationException) {
                     summary.text = "Fırsat taraması durduruldu • son başarılı tarama korunuyor"
@@ -141,7 +142,8 @@ class OpportunityActivity : BaseActivity() {
             OpportunityFilter.SHORT -> "SHORT"
             OpportunityFilter.HIGH_POWER -> "85+"
         }
-        val base = prefix ?: lastSuccessfulRun?.let { "SON BAŞARILI TARAMA • ${formatRunTime(it)}" } ?: "FIRSAT KONTROLÜ"
+        val routedWarning = intent.getStringExtra(EXTRA_SCAN_WARNING)
+        val base = prefix ?: routedWarning ?: lastSuccessfulRun?.let { "SON BAŞARILI TARAMA • ${formatRunTime(it)}" } ?: "FIRSAT KONTROLÜ"
         bindFiltered(filtered, "$base • Filtre: $label • ${filtered.size}/${all.size} sonuç • Nihai Sinyal ↓")
     }
 
@@ -186,4 +188,8 @@ class OpportunityActivity : BaseActivity() {
 
     override fun onResume() { super.onResume(); if (::favoriteRepository.isInitialized && ::list.isInitialized) lifecycleScope.launch { showExisting() } }
     override fun onDestroy() { scanJob?.cancel(); scanJob=null; super.onDestroy() }
+
+    companion object {
+        const val EXTRA_SCAN_WARNING = "scan_warning"
+    }
 }
