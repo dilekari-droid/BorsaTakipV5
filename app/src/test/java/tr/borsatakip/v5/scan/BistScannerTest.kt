@@ -128,6 +128,47 @@ class BistScannerTest {
     }
 
     @Test
+    fun delayedHistoricalProvider_isAnalyzedButNeverMarkedRealtime() = runBlocking {
+        val now = System.currentTimeMillis()
+        val stock = Stock(
+            symbol = "YHOO",
+            companyName = "Delayed Test",
+            candles = List(240) { i ->
+                val close = 30.0 + i * 0.05
+                Candle(
+                    timestamp = now - (240L - i) * 86_400_000L,
+                    open = close,
+                    high = close + 0.4,
+                    low = close - 0.4,
+                    close = close,
+                    volume = 1_000_000.0 + i
+                )
+            },
+            source = "Yahoo Finance • YEDEK / GECİKMELİ",
+            dataTimestamp = now - 60_000L,
+            isRealtime = false,
+            delaySeconds = null,
+            currentSessionIncluded = false
+        )
+        val provider = object : MarketDataProvider {
+            override val id = "delayed"
+            override val displayName = "delayed"
+            override suspend fun scan(onProgress: (Int, Int) -> Unit): List<Stock> {
+                onProgress(1, 1)
+                return listOf(stock)
+            }
+            override suspend fun fetchOne(symbol: String): Stock? = stock
+        }
+
+        val state = BistScanner(provider).scan { }
+        assertEquals(ScanStatus.COMPLETED, state.status)
+        assertEquals(1, state.terminalResults.size)
+        assertTrue(state.terminalResults.single().status == SymbolTerminalStatus.SIGNAL ||
+            state.terminalResults.single().status == SymbolTerminalStatus.NO_SIGNAL)
+        state.results.forEach { assertTrue(!it.isRealtime) }
+    }
+
+    @Test
     fun cancellation_isPropagated() {
         val provider = object : MarketDataProvider {
             override val id = "slow"
