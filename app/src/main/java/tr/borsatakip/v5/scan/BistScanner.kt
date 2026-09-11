@@ -21,6 +21,7 @@ enum class ScanStatus { IDLE, RUNNING, COMPLETED, ERROR, CANCELLED }
 
 enum class SymbolTerminalStatus {
     SIGNAL,
+    RESEARCH_CANDIDATE,
     NO_SIGNAL,
     TIMEOUT,
     RATE_LIMIT,
@@ -62,6 +63,7 @@ data class ScanState(
     val analysisErrors: Int = 0,
     val noSignal: Int = 0,
     val signalCount: Int = 0,
+    val researchCandidateCount: Int = 0,
     val terminalResults: List<SymbolTerminalResult> = emptyList(),
     val results: List<Opportunity> = emptyList(),
     val errorMessage: String? = null
@@ -134,7 +136,7 @@ class BistScanner(private val provider: MarketDataProvider) {
                 terminals = allTerminals,
                 results = opportunities
             )
-            Log.i(TAG, "[BIST_SCAN] COMPLETE total=$total terminal=${allTerminals.size} data=$successfulDataCount signal=${finalState.signalCount} noSignal=${finalState.noSignal} timeout=${finalState.timeout} rateLimit=${finalState.rateLimited} http=${finalState.httpErrors} network=${finalState.networkErrors} parse=${finalState.parseErrors} insufficient=${finalState.dataInsufficient} unavailable=${finalState.dataUnavailable} integrity=${finalState.integrityRejected} analysis=${finalState.analysisErrors}")
+            Log.i(TAG, "[BIST_SCAN] COMPLETE total=$total terminal=${allTerminals.size} data=$successfulDataCount liveSignal=${finalState.signalCount} research=${finalState.researchCandidateCount} noSignal=${finalState.noSignal}")
             onState(finalState)
             finalState
         } catch (ce: CancellationException) {
@@ -184,15 +186,26 @@ class BistScanner(private val provider: MarketDataProvider) {
             when {
                 opportunity == null -> SymbolTerminalResult(
                     stock.symbol,
-                    if (stock.candles.size < MIN_CANDLES) SymbolTerminalStatus.DATA_INSUFFICIENT else SymbolTerminalStatus.ANALYSIS_ERROR,
-                    errorMessage = if (stock.candles.size < MIN_CANDLES) "Teknik analiz için mum sayısı yetersiz" else "Teknik analiz geçerli sonuç üretmedi"
+                    if (stock.candles.size < OpportunityEngine.MIN_ANALYSIS_CANDLES) SymbolTerminalStatus.DATA_INSUFFICIENT else SymbolTerminalStatus.ANALYSIS_ERROR,
+                    errorMessage = if (stock.candles.size < OpportunityEngine.MIN_ANALYSIS_CANDLES) "Teknik analiz için mum sayısı yetersiz" else "Teknik analiz geçerli sonuç üretmedi"
                 )
                 opportunity.finalSignalScore < SIGNAL_THRESHOLD -> SymbolTerminalResult(
                     stock.symbol,
                     SymbolTerminalStatus.NO_SIGNAL,
-                    errorMessage = "Nihai sinyal eşiği altında: ${opportunity.finalSignalScore}/100"
+                    errorMessage = "Teknik uyum eşiği altında: ${opportunity.finalSignalScore}/100"
                 )
-                else -> SymbolTerminalResult(stock.symbol, SymbolTerminalStatus.SIGNAL, opportunity = opportunity)
+                opportunity.signalEligibleRealtime -> SymbolTerminalResult(
+                    stock.symbol,
+                    SymbolTerminalStatus.SIGNAL,
+                    opportunity = opportunity,
+                    errorMessage = "Gerçek zamanlı bütünlük koşulları sağlandı"
+                )
+                else -> SymbolTerminalResult(
+                    stock.symbol,
+                    SymbolTerminalStatus.RESEARCH_CANDIDATE,
+                    opportunity = opportunity,
+                    errorMessage = "Gecikmeli/doğrulanmış teknik araştırma adayı; gerçek zamanlı AL/SAT sinyali değildir"
+                )
             }
         } catch (ce: CancellationException) {
             throw ce
@@ -202,7 +215,7 @@ class BistScanner(private val provider: MarketDataProvider) {
     }
 
     private fun validateDelayedHistorical(stock: Stock): String? {
-        if (stock.candles.size < MIN_CANDLES) return "Teknik analiz için en az $MIN_CANDLES OHLCV mumu gerekli."
+        if (stock.candles.size < OpportunityEngine.MIN_ANALYSIS_CANDLES) return "Teknik analiz için en az ${OpportunityEngine.MIN_ANALYSIS_CANDLES} OHLCV mumu gerekli."
         if (stock.dataTimestamp <= 0L) return "Gecikmeli verinin zaman bilgisi yok."
         val age = System.currentTimeMillis() - stock.dataTimestamp
         if (age < -15_000L) return "Veri zamanı cihaz saatinden ileride."
@@ -236,8 +249,9 @@ class BistScanner(private val provider: MarketDataProvider) {
         fun count(s: SymbolTerminalStatus) = terminals.count { it.status == s }
         val terminalCount = terminals.size
         val signal = count(SymbolTerminalStatus.SIGNAL)
+        val research = count(SymbolTerminalStatus.RESEARCH_CANDIDATE)
         val noSignal = count(SymbolTerminalStatus.NO_SIGNAL)
-        val successful = signal + noSignal
+        val successful = signal + research + noSignal
         return ScanState(
             status = status,
             progress = safeProgress(processed, total),
@@ -257,6 +271,7 @@ class BistScanner(private val provider: MarketDataProvider) {
             analysisErrors = count(SymbolTerminalStatus.ANALYSIS_ERROR) + count(SymbolTerminalStatus.UNKNOWN_ERROR),
             noSignal = noSignal,
             signalCount = signal,
+            researchCandidateCount = research,
             terminalResults = terminals,
             results = results,
             errorMessage = errorMessage
@@ -293,7 +308,6 @@ class BistScanner(private val provider: MarketDataProvider) {
 
     companion object {
         const val TAG = "BIST_SCAN"
-        private const val MIN_CANDLES = 220
         private const val SIGNAL_THRESHOLD = 60
         private const val MAX_DELAYED_DATA_AGE_MS = 10L * 24L * 60L * 60L * 1000L
 
