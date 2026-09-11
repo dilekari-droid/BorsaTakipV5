@@ -12,10 +12,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Resolve app version
+        run: |
+          set -euo pipefail
+          VERSION_NAME=$(grep -E 'versionName = "[0-9]+\.[0-9]+\.[0-9]+"' app/build.gradle.kts | sed -E 's/.*"([0-9]+\.[0-9]+\.[0-9]+)".*/\1/' | head -1)
+          test -n "$VERSION_NAME"
+          echo "APP_VERSION=$VERSION_NAME" >> "$GITHUB_ENV"
+
       - name: Package clean release source
         run: |
           set -euo pipefail
-          zip -r BorsaTakipV5.1.27-ui-final-source.zip . \
+          zip -r "BorsaTakipV${APP_VERSION}-kaynak-kod.zip" . \
             -x '.git/*' \
                'app/build/*' \
                '.gradle/*' \
@@ -32,6 +39,6 @@ jobs:
       - name: Upload clean source artifact
         uses: actions/upload-artifact@v4
         with:
-          name: BorsaTakipV5.1.27-ui-final-source
-          path: BorsaTakipV5.1.27-ui-final-source.zip
+          name: BorsaTakipV${{ env.APP_VERSION }}-kaynak-kod
+          path: BorsaTakipV${{ env.APP_VERSION }}-kaynak-kod.zip
           if-no-files-found: error
