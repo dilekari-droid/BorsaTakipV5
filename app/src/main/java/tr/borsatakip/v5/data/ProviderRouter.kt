@@ -26,11 +26,13 @@ class ProviderRouter(context: Context) : MarketDataProvider {
             return fallbackScan(onProgress)
         }
 
+        var primaryFailure: Throwable? = null
         val primaryResult = try {
             primary.scan(onProgress)
         } catch (ce: CancellationException) {
             throw ce
-        } catch (_: Throwable) {
+        } catch (t: Throwable) {
+            primaryFailure = t
             emptyList()
         }
         if (primaryResult.isNotEmpty()) {
@@ -39,9 +41,25 @@ class ProviderRouter(context: Context) : MarketDataProvider {
         }
 
         if (!allowExperimentalFallback()) {
-            throw IllegalStateException("Üretim backend'i veri döndürmedi; deneysel fallback kapalı.")
+            val detail = primaryFailure?.message?.takeIf { it.isNotBlank() }
+                ?: "Üretim backend'i veri döndürmedi."
+            throw IllegalStateException("$detail Deneysel fallback kapalı.", primaryFailure)
         }
-        return fallbackScan(onProgress)
+
+        return try {
+            fallbackScan(onProgress)
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (fallbackFailure: Throwable) {
+            val primaryDetail = primaryFailure?.message?.takeIf { it.isNotBlank() }
+            val fallbackDetail = fallbackFailure.message?.takeIf { it.isNotBlank() }
+                ?: "Deneysel fallback başarısız."
+            val combined = buildString {
+                if (primaryDetail != null) append("Production provider: $primaryDetail ")
+                append("Deneysel provider: $fallbackDetail")
+            }
+            throw IllegalStateException(combined, fallbackFailure)
+        }
     }
 
     override suspend fun fetchOne(symbol: String): Stock? {
@@ -66,13 +84,9 @@ class ProviderRouter(context: Context) : MarketDataProvider {
     }
 
     private suspend fun fallbackScan(onProgress: (done: Int, total: Int) -> Unit): List<Stock> {
-        val fallbackResult = try {
-            fallback.scan(onProgress)
-        } catch (ce: CancellationException) {
-            throw ce
-        }
+        val fallbackResult = fallback.scan(onProgress)
         if (fallbackResult.isEmpty()) {
-            throw IllegalStateException("Deneysel Yahoo yedeğinden veri alınamadı.")
+            throw IllegalStateException("Deneysel Yahoo yedeğinden kullanılabilir OHLCV verisi alınamadı.")
         }
         mark(fallback.id, "${fallback.displayName} • DENEYSEL/YEDEK")
         return fallbackResult

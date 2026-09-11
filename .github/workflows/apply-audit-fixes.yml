@@ -1,0 +1,130 @@
+name: Apply Technical Audit Fixes
+
+on:
+  push:
+    branches: [ v5.1.27-completion ]
+    paths:
+      - '.github/workflows/apply-audit-fixes.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply-build-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout audited branch
+        uses: actions/checkout@v4
+        with:
+          ref: v5.1.27-completion
+          fetch-depth: 0
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Reconstruct and validate F01-F28 patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat ci/report-fixes/p00_0.txt ci/report-fixes/p00_1.txt ci/report-fixes/p00_2.txt ci/report-fixes/p00_3.txt \
+              ci/report-fixes/p01_0.txt ci/report-fixes/p01_1.txt ci/report-fixes/p01_2.txt ci/report-fixes/p01_3.txt \
+              ci/report-fixes/part02.txt ci/report-fixes/part03.txt ci/report-fixes/part04.txt ci/report-fixes/part05.txt ci/report-fixes/part06.txt \
+              | base64 -d | gzip -d > /tmp/audit-fixes.patch
+          test -s /tmp/audit-fixes.patch
+          git apply --check /tmp/audit-fixes.patch
+          git apply /tmp/audit-fixes.patch
+          git diff --check
+          git diff --stat
+
+      - name: Generate verified Gradle wrapper
+        run: gradle wrapper --gradle-version 8.9 --distribution-type bin
+
+      - name: Android unit tests
+        run: ./gradlew :app:testDebugUnitTest --stacktrace
+
+      - name: Android lint
+        run: ./gradlew :app:lintDebug --stacktrace
+
+      - name: Debug APK build
+        run: ./gradlew :app:assembleDebug --stacktrace
+
+      - name: Verify debug APK signature and metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)
+          AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt -type f | sort -V | tail -1)
+          "$APKSIGNER" verify --verbose "$APK"
+          "$AAPT" dump badging "$APK" | tee /tmp/aapt-badging.txt
+          grep -q "package: name='tr.borsatakip.v5'" /tmp/aapt-badging.txt
+          grep -q "versionName='5.1.27'" /tmp/aapt-badging.txt
+
+      - name: Release R8 smoke build
+        run: ./gradlew :app:assembleRelease --stacktrace
+
+      - name: Backend tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -r backend/requirements-dev.txt
+          python -m pip check
+          python -m compileall -q backend/app
+          pytest -q backend/tests
+
+      - name: Backend Docker smoke build
+        run: docker build -t borsatakip-backend-audit ./backend
+
+      - name: Commit verified audited source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf ci/report-fixes
+          rm -f BORSA-TAKIP-V5.0.0-KAYNAK-KOD.zip
+          rm -f .github/workflows/apply-audit-fixes.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --stat
+          git commit -m 'Apply F01-F28 technical audit fixes'
+          git push origin HEAD:v5.1.27-completion
+          git rev-parse HEAD | tee /tmp/final-commit.txt
+
+      - name: Package verified deliverables
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp app/build/outputs/apk/debug/app-debug.apk BorsaTakipV5.1.27-Audit-Duzeltilmis-debug.apk
+          git archive --format=zip --output=BorsaTakipV5.1.27-Audit-Duzeltilmis-Kaynak-Kod.zip HEAD
+          sha256sum BorsaTakipV5.1.27-Audit-Duzeltilmis-debug.apk BorsaTakipV5.1.27-Audit-Duzeltilmis-Kaynak-Kod.zip | tee SHA256SUMS.txt
+          cp /tmp/final-commit.txt FINAL_COMMIT.txt
+          cp /tmp/aapt-badging.txt APK_METADATA.txt
+
+      - name: Upload verified deliverables
+        uses: actions/upload-artifact@v4
+        with:
+          name: BorsaTakipV5.1.27-Audit-Duzeltilmis-deliverables
+          path: |
+            BorsaTakipV5.1.27-Audit-Duzeltilmis-debug.apk
+            BorsaTakipV5.1.27-Audit-Duzeltilmis-Kaynak-Kod.zip
+            SHA256SUMS.txt
+            FINAL_COMMIT.txt
+            APK_METADATA.txt
+          if-no-files-found: error
+          retention-days: 90

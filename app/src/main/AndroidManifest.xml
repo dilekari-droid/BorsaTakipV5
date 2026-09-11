@@ -12,6 +12,7 @@
         <activity android:name=".ui.SettingsActivity" />
         <activity android:name=".ui.FavoritesActivity" />
         <activity android:name=".ui.ViopActivity" />
+        <activity android:name=".ui.SignalHistoryActivity" />
         <activity android:name=".ui.StockDetailActivity" />
         <activity android:name=".ui.OpportunityActivity" />
         <activity android:name=".ui.BistScanActivity" />

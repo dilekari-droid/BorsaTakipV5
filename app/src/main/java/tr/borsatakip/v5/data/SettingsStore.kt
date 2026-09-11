@@ -21,16 +21,10 @@ class SettingsStore(c: Context) {
         get() = getEncrypted("api_key_encrypted")
         set(v) = putEncrypted("api_key_encrypted", v)
 
-    /**
-     * Üretim veri modu varsayılandır. Bu anahtar yalnız Yahoo'nun gecikmeli BIST yedeği
-     * gibi açıkça deneysel olarak etiketlenmiş fallback kaynaklarını etkinleştirir.
-     * TradingView BIST/VİOP veri sağlayıcısı değildir.
-     */
     var experimentalProvidersEnabled: Boolean
         get() = p.getBoolean("experimental_providers_enabled", false)
         set(v) = p.edit().putBoolean("experimental_providers_enabled", v).apply()
 
-    /** V5.1.24 ve öncesinden kalmış TradingView kimlik/oturum kayıtlarını siler. */
     fun purgeLegacyTradingViewState() {
         p.edit()
             .remove("tv_username")
@@ -66,9 +60,41 @@ class SettingsStore(c: Context) {
         get() = p.getLong("last_provider_timestamp", 0L)
         set(v) = p.edit().putLong("last_provider_timestamp", v).apply()
 
+    var lastProviderState: String
+        get() = p.getString("last_provider_state", "PROVIDER_NOT_CONFIGURED") ?: "PROVIDER_NOT_CONFIGURED"
+        set(v) = p.edit().putString("last_provider_state", v).apply()
+
+    var lastProviderFailureCode: String
+        get() = p.getString("last_provider_failure_code", "") ?: ""
+        set(v) = p.edit().putString("last_provider_failure_code", v).apply()
+
+    var lastProviderMessage: String
+        get() = p.getString("last_provider_message", "") ?: ""
+        set(v) = p.edit().putString("last_provider_message", v).apply()
+
     var cachedBistSymbols: Set<String>
         get() = p.getStringSet("cached_bist_symbols", emptySet())?.toSet().orEmpty()
         set(v) = p.edit().putStringSet("cached_bist_symbols", v).apply()
+
+    var cachedBistSymbolCount: Int
+        get() = p.getInt("cached_bist_symbol_count", cachedBistSymbols.size)
+        set(v) = p.edit().putInt("cached_bist_symbol_count", v.coerceAtLeast(0)).apply()
+
+    var cachedBistSymbolsFetchedAt: Long
+        get() = p.getLong("cached_bist_symbols_fetched_at", 0L)
+        set(v) = p.edit().putLong("cached_bist_symbols_fetched_at", v.coerceAtLeast(0L)).apply()
+
+    var cachedBistSymbolsProviderId: String
+        get() = p.getString("cached_bist_symbols_provider_id", "") ?: ""
+        set(v) = p.edit().putString("cached_bist_symbols_provider_id", v).apply()
+
+    var lastBackendHealthAt: Long
+        get() = p.getLong("last_backend_health_at", 0L)
+        set(v) = p.edit().putLong("last_backend_health_at", v.coerceAtLeast(0L)).apply()
+
+    var lastBackendHealthOk: Boolean
+        get() = p.getBoolean("last_backend_health_ok", false)
+        set(v) = p.edit().putBoolean("last_backend_health_ok", v).apply()
 
     private fun getEncrypted(key: String): String {
         val encrypted = p.getString(key, null)
