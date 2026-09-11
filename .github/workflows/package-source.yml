@@ -12,19 +12,26 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Package source
+      - name: Package clean release source
         run: |
           set -euo pipefail
-          zip -r BorsaTakipV5.1.27-scan-fix-source.zip . \
+          zip -r BorsaTakipV5.1.27-ui-final-source.zip . \
             -x '.git/*' \
                'app/build/*' \
                '.gradle/*' \
                '**/.gradle/*' \
-               '**/build/*'
+               '**/build/*' \
+               '*.b64' \
+               'v*.b64' \
+               '*patch*' \
+               '*payload*' \
+               'BORSA-TAKIP-V5.0.0-KAYNAK-KOD.zip' \
+               '*.apk' \
+               '*.zip'
 
-      - name: Upload source artifact
+      - name: Upload clean source artifact
         uses: actions/upload-artifact@v4
         with:
-          name: BorsaTakipV5.1.27-scan-fix-source
-          path: BorsaTakipV5.1.27-scan-fix-source.zip
+          name: BorsaTakipV5.1.27-ui-final-source
+          path: BorsaTakipV5.1.27-ui-final-source.zip
           if-no-files-found: error
