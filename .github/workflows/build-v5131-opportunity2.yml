@@ -79,6 +79,7 @@ jobs:
           git --git-dir="$GITHUB_WORKSPACE/.git" show origin/main:overlays/v5131_viop/ViopOpportunityAdapter.kt > app/src/main/java/tr/borsatakip/v5/ui/ViopOpportunityAdapter.kt
           git --git-dir="$GITHUB_WORKSPACE/.git" show origin/main:overlays/v5131_viop/ViopActivity.kt > app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt
           git --git-dir="$GITHUB_WORKSPACE/.git" show origin/main:overlays/v5131_viop/item_viop.xml > app/src/main/res/layout/item_viop.xml
+          git --git-dir="$GITHUB_WORKSPACE/.git" show origin/main:overlays/v5131_viop/item_viop_opportunity.xml > app/src/main/res/layout/item_viop_opportunity.xml
           git --git-dir="$GITHUB_WORKSPACE/.git" show origin/main:overlays/v5131_viop/activity_viop.xml > app/src/main/res/layout/activity_viop.xml
           git --git-dir="$GITHUB_WORKSPACE/.git" show origin/main:overlays/v5131_viop/patch_backend_viop_health.py > /tmp/patch_backend_viop_health.py
           python /tmp/patch_backend_viop_health.py backend/app/main.py
