@@ -36,10 +36,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          wc -c build_payload/v5135_chatgpt_source_part_*.b64
+          sha256sum build_payload/v5135_chatgpt_source_part_*.b64
           rm -rf build_v5135 /tmp/v5135_source.tar.xz /tmp/v5135_source.b64
           mkdir -p build_v5135
           cat build_payload/v5135_chatgpt_source_part_*.b64 > /tmp/v5135_source.b64
+          wc -c /tmp/v5135_source.b64
+          sha256sum /tmp/v5135_source.b64
           test "$(wc -c < /tmp/v5135_source.b64)" -eq 134444
+          echo "dc7f579dd5119bb925be2bdf382ec689da2c4cea7ea1a316335acdda029a5c94  /tmp/v5135_source.b64" | sha256sum -c -
           base64 --decode /tmp/v5135_source.b64 > /tmp/v5135_source.tar.xz
           echo "845bb7c3dba09142119ad507fb05cd9386e2a0ffb266f197fd8544f5cee087b6  /tmp/v5135_source.tar.xz" | sha256sum -c -
           tar -xJf /tmp/v5135_source.tar.xz -C build_v5135
