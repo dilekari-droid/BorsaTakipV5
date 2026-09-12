@@ -36,13 +36,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          wc -c build_payload/v5135_chatgpt_source_part_*.b64
-          sha256sum build_payload/v5135_chatgpt_source_part_*.b64
           rm -rf build_v5135 /tmp/v5135_source.tar.xz /tmp/v5135_source.b64
           mkdir -p build_v5135
-          cat build_payload/v5135_chatgpt_source_part_*.b64 > /tmp/v5135_source.b64
-          wc -c /tmp/v5135_source.b64
-          sha256sum /tmp/v5135_source.b64
+          cat \
+            build_payload/v5135_chatgpt_source_part_00.b64 \
+            build_payload/v5135_chatgpt_source_part_01a.b64 \
+            build_payload/v5135_chatgpt_source_part_01b.b64 \
+            build_payload/v5135_chatgpt_source_part_01c.b64 \
+            build_payload/v5135_chatgpt_source_part_02.b64 \
+            build_payload/v5135_chatgpt_source_part_03.b64 \
+            build_payload/v5135_chatgpt_source_part_04.b64 \
+            build_payload/v5135_chatgpt_source_part_05.b64 \
+            build_payload/v5135_chatgpt_source_part_06.b64 \
+            build_payload/v5135_chatgpt_source_part_07.b64 \
+            > /tmp/v5135_source.b64
           test "$(wc -c < /tmp/v5135_source.b64)" -eq 134444
           echo "dc7f579dd5119bb925be2bdf382ec689da2c4cea7ea1a316335acdda029a5c94  /tmp/v5135_source.b64" | sha256sum -c -
           base64 --decode /tmp/v5135_source.b64 > /tmp/v5135_source.tar.xz
