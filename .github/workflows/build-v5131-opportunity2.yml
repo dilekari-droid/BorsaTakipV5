@@ -1,16 +1,17 @@
-name: Build V5.1.31 Opportunity Scan 2.0
+name: Build V5.1.31 Deep Technical Signal
 
 on:
   push:
     branches: [ main ]
     paths:
       - 'build_payloads/v5131_opportunity2_overlay.tar.xz.b64'
+      - 'build_payloads/v5131_techdeep_overlay.tar.xz.b64'
       - 'overlays/v5131_opportunity2/**'
       - '.github/workflows/build-v5131-opportunity2.yml'
   workflow_dispatch:
 
 jobs:
-  build-opportunity2:
+  build-techdeep:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -39,17 +40,17 @@ jobs:
       - name: Reconstruct latest V5.1.31 baseline
         run: |
           set -euo pipefail
-          rm -rf /tmp/v5131opp2
-          mkdir -p /tmp/v5131opp2
+          rm -rf /tmp/v5131deep
+          mkdir -p /tmp/v5131deep
           cat build_payload/v5128_part*.b64 | tr -d '\n' | base64 -d > /tmp/v5128.tar.xz
           xz -t /tmp/v5128.tar.xz
-          tar -xJf /tmp/v5128.tar.xz -C /tmp/v5131opp2
+          tar -xJf /tmp/v5128.tar.xz -C /tmp/v5131deep
           git fetch origin main --depth=1
           git show origin/main:build_payload/v5129_ui.b64 | tr -d '\n' | base64 -d | xz -d > /tmp/v5129.patch
           git show origin/main:build_payload/v5129_fix.b64 | tr -d '\n' | base64 -d > /tmp/v5129_fix.tar.xz
-          cd /tmp/v5131opp2
+          cd /tmp/v5131deep
           patch -p1 --batch --forward < /tmp/v5129.patch || true
-          tar -xJf /tmp/v5129_fix.tar.xz -C /tmp/v5131opp2
+          tar -xJf /tmp/v5129_fix.tar.xz -C /tmp/v5131deep
           cd "$GITHUB_WORKSPACE"
           for f in 00 01 02 03 04; do git show origin/main:build_payload/v5130_patch_part_${f}.b64; done | tr -d '\n' | base64 -d | xz -d > /tmp/v5130.patch
           git show origin/main:build_payload/v5130_backend.b64 | tr -d '\n' | base64 -d > /tmp/v5130_backend.tar.xz
@@ -59,22 +60,22 @@ jobs:
           git show origin/main:build_payloads/v5131_chart_visual_fix.tar.xz.b64 | tr -d '\n' | base64 -d > /tmp/v5131_chart_visual_fix.tar.xz
           git show origin/main:build_payloads/v5131_news_channel.patch.xz.b64 | tr -d '\n' | base64 -d | xz -d > /tmp/v5131_news_channel.patch
           git show origin/main:build_payloads/v5131_multitf_signal.tar.xz.b64 | tr -d '\n' | base64 -d > /tmp/v5131_multitf_signal.tar.xz
-          cd /tmp/v5131opp2
+          cd /tmp/v5131deep
           patch -p4 --batch --forward < /tmp/v5130.patch || true
-          tar -xJf /tmp/v5130_backend.tar.xz -C /tmp/v5131opp2
+          tar -xJf /tmp/v5130_backend.tar.xz -C /tmp/v5131deep
           patch -p4 --batch --forward < /tmp/v5131.patch
           patch -p1 --batch --forward < /tmp/v5132.patch || true
-          tar -xJf /tmp/v5131_scan_results_fix.tar.xz -C /tmp/v5131opp2
-          tar -xJf /tmp/v5131_chart_visual_fix.tar.xz -C /tmp/v5131opp2
+          tar -xJf /tmp/v5131_scan_results_fix.tar.xz -C /tmp/v5131deep
+          tar -xJf /tmp/v5131_chart_visual_fix.tar.xz -C /tmp/v5131deep
           patch -p4 --batch --forward < /tmp/v5131_news_channel.patch
-          tar -xJf /tmp/v5131_multitf_signal.tar.xz -C /tmp/v5131opp2
+          tar -xJf /tmp/v5131_multitf_signal.tar.xz -C /tmp/v5131deep
           rm -rf source_parts backend/.pytest_cache backend/app/__pycache__ backend/tests/__pycache__ .kotlin
 
       - name: Apply VIOP dashboard overlay
         run: |
           set -euo pipefail
           git fetch origin main --depth=1
-          cd /tmp/v5131opp2
+          cd /tmp/v5131deep
           git --git-dir="$GITHUB_WORKSPACE/.git" show origin/main:overlays/v5131_viop/ViopSparklineView.kt > app/src/main/java/tr/borsatakip/v5/ui/ViopSparklineView.kt
           git --git-dir="$GITHUB_WORKSPACE/.git" show origin/main:overlays/v5131_viop/ViopOpportunityAdapter.kt > app/src/main/java/tr/borsatakip/v5/ui/ViopOpportunityAdapter.kt
           git --git-dir="$GITHUB_WORKSPACE/.git" show origin/main:overlays/v5131_viop/ViopActivity.kt > app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt
@@ -90,43 +91,49 @@ jobs:
           git fetch origin main --depth=1
           git show origin/main:build_payloads/v5131_opportunity2_overlay.tar.xz.b64 | tr -d '\n' | base64 -d > /tmp/v5131_opportunity2_overlay.tar.xz
           xz -t /tmp/v5131_opportunity2_overlay.tar.xz
-          tar -xJf /tmp/v5131_opportunity2_overlay.tar.xz -C /tmp/v5131opp2
+          tar -xJf /tmp/v5131_opportunity2_overlay.tar.xz -C /tmp/v5131deep
 
-      - name: Verify Opportunity 2.0 wiring
-        working-directory: /tmp/v5131opp2
+      - name: Apply deep technical signal overlay
+        run: |
+          set -euo pipefail
+          git fetch origin main --depth=1
+          git show origin/main:build_payloads/v5131_techdeep_overlay.tar.xz.b64 | tr -d '\n' | base64 -d > /tmp/v5131_techdeep_overlay.tar.xz
+          xz -t /tmp/v5131_techdeep_overlay.tar.xz
+          tar -xJf /tmp/v5131_techdeep_overlay.tar.xz -C /tmp/v5131deep
+
+      - name: Verify deep technical signal wiring
+        working-directory: /tmp/v5131deep
         run: |
           set -euo pipefail
           grep -F 'versionName = "5.1.31"' app/build.gradle.kts
           grep -F 'versionCode = 81' app/build.gradle.kts
-          grep -F 'Fırsat Tarama 2.0' app/src/main/java/tr/borsatakip/v5/analysis/OpportunityEngine.kt
-          grep -F 'A SINIFI' app/src/main/res/layout/activity_opportunity.xml
-          grep -F 'KIRILIM' app/src/main/res/layout/activity_opportunity.xml
-          grep -F 'NEDEN FIRSAT?' app/src/main/java/tr/borsatakip/v5/ui/OpportunityAdapter.kt
-          grep -F 'Risk/Ödül' app/src/main/java/tr/borsatakip/v5/analysis/OpportunityEngine.kt
-          grep -F 'GEÇ KALINMIŞ' app/src/main/java/tr/borsatakip/v5/analysis/OpportunityEngine.kt
+          grep -F 'Kanıt kalitesi' app/src/main/java/tr/borsatakip/v5/analysis/MultiTimeframeSignalAnalyzer.kt
+          grep -F 'NE ZAMAN BU GÖRÜŞ BOZULUR?' app/src/main/res/layout/activity_technical_analysis.xml
+          grep -F 'techAdviceConfidence' app/src/main/java/tr/borsatakip/v5/ui/TechnicalAnalysisActivity.kt
+          grep -F 'RİSKLER VE DİKKAT' app/src/main/res/layout/activity_technical_analysis.xml
 
       - name: Backend tests
-        working-directory: /tmp/v5131opp2
+        working-directory: /tmp/v5131deep
         run: |
           set -euo pipefail
-          python -m venv /tmp/v5131opp2-venv
-          /tmp/v5131opp2-venv/bin/pip install -r backend/requirements.txt pytest
-          /tmp/v5131opp2-venv/bin/pytest -q backend/tests | tee "$GITHUB_WORKSPACE/backend-tests.txt"
+          python -m venv /tmp/v5131deep-venv
+          /tmp/v5131deep-venv/bin/pip install -r backend/requirements.txt pytest
+          /tmp/v5131deep-venv/bin/pytest -q backend/tests | tee "$GITHUB_WORKSPACE/backend-tests.txt"
 
       - name: Android unit tests
-        working-directory: /tmp/v5131opp2
+        working-directory: /tmp/v5131deep
         run: |
           set -euo pipefail
           gradle :app:testDebugUnitTest | tee "$GITHUB_WORKSPACE/android-unit-tests.txt"
 
       - name: Android lint
-        working-directory: /tmp/v5131opp2
+        working-directory: /tmp/v5131deep
         run: |
           set -euo pipefail
           gradle :app:lintDebug | tee "$GITHUB_WORKSPACE/android-lint.txt"
 
       - name: Assemble and verify V5.1.31 APK
-        working-directory: /tmp/v5131opp2
+        working-directory: /tmp/v5131deep
         run: |
           set -euo pipefail
           gradle :app:assembleDebug
@@ -142,7 +149,7 @@ jobs:
       - name: Package matching source
         run: |
           set -euo pipefail
-          cd /tmp/v5131opp2
+          cd /tmp/v5131deep
           rm -rf app/build .gradle backend/.pytest_cache backend/app/__pycache__ backend/tests/__pycache__ source_parts .kotlin
           zip -qr "$GITHUB_WORKSPACE/V5.1.31-Kaynak-Kod.zip" . -x '*.pyc' '*/__pycache__/*' 'source_parts/*'
           unzip -t "$GITHUB_WORKSPACE/V5.1.31-Kaynak-Kod.zip" > "$GITHUB_WORKSPACE/source-zip-test.txt"
@@ -151,7 +158,7 @@ jobs:
       - name: Upload APK and source
         uses: actions/upload-artifact@v4
         with:
-          name: V5.1.31-opportunity-scan-2.0
+          name: V5.1.31-deep-technical-signal
           path: |
             V5.1.31.apk
             V5.1.31.apk.sha256
