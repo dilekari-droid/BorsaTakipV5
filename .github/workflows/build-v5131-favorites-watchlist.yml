@@ -60,7 +60,7 @@ jobs:
           grep -F 'versionCode = 81' app/build.gradle.kts
           grep -F 'android:id="@+id/tabFavorites"' app/src/main/res/layout/activity_favorites.xml
           grep -F 'android:id="@+id/tabBistList"' app/src/main/res/layout/activity_favorites.xml
-          grep -F 'android:id="@+id/searchBist"' app/src/main/res/layout/activity_favorites.xml
+          grep -F 'android:id="@+id/bistSearch"' app/src/main/res/layout/activity_favorites.xml
           grep -F 'MAX_SYMBOLS = 20' app/src/main/java/tr/borsatakip/v5/data/favorites/BistWatchlistStore.kt
           grep -F 'BistWatchlistAdapter' app/src/main/java/tr/borsatakip/v5/ui/FavoritesActivity.kt
           grep -F 'openStockDetail' app/src/main/java/tr/borsatakip/v5/ui/FavoritesActivity.kt
