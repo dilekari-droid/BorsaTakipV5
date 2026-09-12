@@ -4,7 +4,7 @@ on:
   push:
     branches: [ main ]
     paths:
-      - 'build_payload/v5133_viop_bist_ui_overlay.b64'
+      - 'overlays/v5133/**'
       - '.github/workflows/build-v5133-viop-bist-ui.yml'
   workflow_dispatch:
 
@@ -48,13 +48,17 @@ jobs:
       - name: Apply VIOP autocomplete and BIST price UI
         run: |
           set -euo pipefail
-          base64 -d build_payload/v5133_viop_bist_ui_overlay.b64 > /tmp/v5133-overlay.tar.xz
-          xz -t /tmp/v5133-overlay.tar.xz
-          tar -xJf /tmp/v5133-overlay.tar.xz -C /tmp/v5133
+          cp -a overlays/v5133/. /tmp/v5133/
           python - <<'PY'
           from pathlib import Path
           p=Path('/tmp/v5133/app/build.gradle.kts')
           s=p.read_text().replace('versionCode = 82','versionCode = 83').replace('versionName = "5.1.32"','versionName = "5.1.33"')
+          p.write_text(s)
+
+          p=Path('/tmp/v5133/app/src/main/java/tr/borsatakip/v5/ui/FavoritesActivity.kt')
+          s=p.read_text()
+          s=s.replace('Son / Alış / Satış / Günlük % gerçek sağlayıcıdan yenileniyor...', 'Gerçek piyasa verisi alınıyor… Son / Alış / Satış / Günlük % güncelleniyor.')
+          s=s.replace("$ok/${rows.size} hisse güncellendi • Son fiyat ve Günlük % gerçek veriden hesaplanır • Alış/Satış sağlayıcıda yoksa '—' gösterilir.", "$ok/${rows.size} hisse güncellendi • Son/Günlük % gerçek veriden • Alış/Satış gerçek bid/ask varsa gösterilir.")
           p.write_text(s)
           PY
 
@@ -67,7 +71,6 @@ jobs:
           grep -F 'İlk harften itibaren sözleşme kodu' app/src/main/res/layout/activity_viop_contracts.xml
           grep -F 'Otomatik öneriler' app/src/main/res/layout/activity_viop_contracts.xml
           grep -F 'updateSuggestions()' app/src/main/java/tr/borsatakip/v5/ui/ViopContractsActivity.kt
-          grep -F 'Fiyatlar nasıl gelir?' app/src/main/res/layout/activity_favorites.xml
           grep -F 'SON FİYAT' app/src/main/res/layout/item_bist_watchlist.xml
           grep -F 'holder.bid.text' app/src/main/java/tr/borsatakip/v5/ui/BistWatchlistAdapter.kt
           grep -F 'Gerçek piyasa verisi alınıyor' app/src/main/java/tr/borsatakip/v5/ui/FavoritesActivity.kt
