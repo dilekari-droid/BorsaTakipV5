@@ -1,5 +1,6 @@
 name: Build V5.1.31 MultiTF Trend Summary
 
+# CI trigger refresh: dynamic trend summary build
 on:
   push:
     branches: [ main ]
