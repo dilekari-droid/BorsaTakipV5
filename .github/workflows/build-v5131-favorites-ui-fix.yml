@@ -51,6 +51,14 @@ jobs:
           base64 -d build_payload/v5131_favorites_ui_fix_overlay.b64 > /tmp/ui-fix-overlay.tar.xz
           xz -t /tmp/ui-fix-overlay.tar.xz
           tar -xJf /tmp/ui-fix-overlay.tar.xz -C /tmp/v5131uifix
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('/tmp/v5131uifix/app/src/main/java/tr/borsatakip/v5/ui/FavoritesActivity.kt')
+          s = p.read_text()
+          if 'import android.widget.Button\n' not in s:
+              s = s.replace('import android.view.View\n', 'import android.view.View\nimport android.widget.Button\n')
+              p.write_text(s)
+          PY
 
       - name: Verify requested wiring and responsive labels
         working-directory: /tmp/v5131uifix
@@ -66,6 +74,7 @@ jobs:
           grep -F 'findViewById<TextView>(R.id.btnRealOpportunityScan)' app/src/main/java/tr/borsatakip/v5/ui/OpportunityActivity.kt
           grep -F 'Benchmark verisi yok' app/src/main/java/tr/borsatakip/v5/ui/OpportunityActivity.kt
           grep -F 'FIRSATLARI YENİLE' app/src/main/res/layout/activity_opportunity.xml
+          grep -F 'import android.widget.Button' app/src/main/java/tr/borsatakip/v5/ui/FavoritesActivity.kt
 
       - name: Backend tests
         working-directory: /tmp/v5131uifix
