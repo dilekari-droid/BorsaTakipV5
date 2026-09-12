@@ -1,0 +1,124 @@
+name: Build V5.1.34 From Uploaded Source
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/build-v5134-source.yml'
+      - 'build_payload/v5134_from_v5132_part_*.b64'
+
+jobs:
+  build-v5134:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    permissions:
+      actions: read
+      contents: write
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+
+      - name: Record workflow run id
+        env:
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$RUN_ID" > build_payload/v5134_run_id.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add build_payload/v5134_run_id.txt
+          if ! git diff --cached --quiet; then
+            git commit -m "Record V5.1.34 build run $RUN_ID"
+            git push
+          fi
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Reconstruct exact V5.1.34 source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/v5134 /tmp/v5134-baseline /tmp/v5134-overlay.tar.xz
+          mkdir -p /tmp/v5134 /tmp/v5134-baseline
+          gh run download 34709131586 --repo "$GITHUB_REPOSITORY" --name V5.1.32-report-fix --dir /tmp/v5134-baseline
+          unzip -q /tmp/v5134-baseline/V5.1.32-Kaynak-Kod.zip -d /tmp/v5134
+          cat build_payload/v5134_from_v5132_part_{00..07}.b64 | base64 -d > /tmp/v5134-overlay.tar.xz
+          echo '29de68e8e6ce049226cae5f8ba410ed065eb59a3998e9b8fe42ed1d50eff7ebc  /tmp/v5134-overlay.tar.xz' | sha256sum -c -
+          xz -t /tmp/v5134-overlay.tar.xz
+          tar -xJf /tmp/v5134-overlay.tar.xz -C /tmp/v5134
+
+      - name: Verify V5.1.34 source identity
+        working-directory: /tmp/v5134
+        run: |
+          set -euo pipefail
+          grep -F 'versionName = "5.1.34"' app/build.gradle.kts
+          grep -F 'versionCode = 84' app/build.gradle.kts
+          test -f app/src/main/java/tr/borsatakip/v5/ui/ViopSuggestionAdapter.kt
+          test -f app/src/main/res/layout/item_viop_suggestion.xml
+          grep -F 'ViopSuggestionAdapter' app/src/main/java/tr/borsatakip/v5/ui/ViopContractsActivity.kt
+
+      - name: Assemble V5.1.34 debug APK
+        working-directory: /tmp/v5134
+        run: |
+          set -euo pipefail
+          gradle --no-daemon :app:assembleDebug | tee "$GITHUB_WORKSPACE/build-output.txt"
+
+      - name: Verify APK metadata, structure and signature
+        working-directory: /tmp/v5134
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" > "$GITHUB_WORKSPACE/apk-unzip-test.txt"
+          AAPT=$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)
+          "$AAPT" dump badging "$APK" | tee "$GITHUB_WORKSPACE/apk-badging.txt"
+          grep -F "package: name='tr.borsatakip.v5'" "$GITHUB_WORKSPACE/apk-badging.txt"
+          grep -F "versionName='5.1.34'" "$GITHUB_WORKSPACE/apk-badging.txt"
+          grep -F "versionCode='84'" "$GITHUB_WORKSPACE/apk-badging.txt"
+          BUILD_TOOLS=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
+          "$BUILD_TOOLS/zipalign" -c -v 4 "$APK" > "$GITHUB_WORKSPACE/apk-zipalign.txt"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" | tee "$GITHUB_WORKSPACE/apk-signature.txt"
+          cp "$APK" "$GITHUB_WORKSPACE/BorsaTakip-V5.1.34-debug.apk"
+          sha256sum "$GITHUB_WORKSPACE/BorsaTakip-V5.1.34-debug.apk" | tee "$GITHUB_WORKSPACE/BorsaTakip-V5.1.34-debug.apk.sha256"
+
+      - name: Android unit tests
+        continue-on-error: true
+        working-directory: /tmp/v5134
+        run: |
+          set -o pipefail
+          gradle --no-daemon :app:testDebugUnitTest | tee "$GITHUB_WORKSPACE/android-unit-tests.txt"
+
+      - name: Android lint
+        continue-on-error: true
+        working-directory: /tmp/v5134
+        run: |
+          set -o pipefail
+          gradle --no-daemon :app:lintDebug | tee "$GITHUB_WORKSPACE/android-lint.txt"
+
+      - name: Upload V5.1.34 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: BorsaTakip-V5.1.34-debug-apk
+          path: |
+            BorsaTakip-V5.1.34-debug.apk
+            BorsaTakip-V5.1.34-debug.apk.sha256
+            build-output.txt
+            apk-badging.txt
+            apk-unzip-test.txt
+            apk-zipalign.txt
+            apk-signature.txt
+            android-unit-tests.txt
+            android-lint.txt
+          if-no-files-found: error
