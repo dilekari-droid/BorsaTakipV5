@@ -1,10 +1,10 @@
-name: Build V5.1.33 VIOP BIST UI
+name: Build V5.1.33 VIOP + BIST UI
 
 on:
   push:
     branches: [ main ]
     paths:
-      - 'build_payload/v5133_viop_bist_ui_overlay2.b64'
+      - 'build_payload/v5133_viop_bist_ui_overlay.b64'
       - '.github/workflows/build-v5133-viop-bist-ui.yml'
   workflow_dispatch:
 
@@ -45,12 +45,12 @@ jobs:
           gh run download 34709131586 --repo "$GITHUB_REPOSITORY" --name V5.1.32-report-fix --dir /tmp/baseline
           unzip -q /tmp/baseline/V5.1.32-Kaynak-Kod.zip -d /tmp/v5133
 
-      - name: Apply VIOP autocomplete and BIST price UI
+      - name: Apply VIOP autocomplete and BIST price UI overlay
         run: |
           set -euo pipefail
-          base64 -d build_payload/v5133_viop_bist_ui_overlay2.b64 > /tmp/overlay.tar.xz
-          xz -t /tmp/overlay.tar.xz
-          tar -xJf /tmp/overlay.tar.xz -C /tmp/v5133
+          base64 -d build_payload/v5133_viop_bist_ui_overlay.b64 > /tmp/v5133-overlay.tar.xz
+          xz -t /tmp/v5133-overlay.tar.xz
+          tar -xJf /tmp/v5133-overlay.tar.xz -C /tmp/v5133
           python - <<'PY'
           from pathlib import Path
           p=Path('/tmp/v5133/app/build.gradle.kts')
@@ -58,18 +58,20 @@ jobs:
           p.write_text(s)
           PY
 
-      - name: Verify requested changes
+      - name: Verify requested wiring
         working-directory: /tmp/v5133
         run: |
           set -euo pipefail
           grep -F 'versionName = "5.1.33"' app/build.gradle.kts
           grep -F 'versionCode = 83' app/build.gradle.kts
-          grep -F 'android:id="@+id/viopSuggestionPanel"' app/src/main/res/layout/activity_viop_contracts.xml
+          grep -F 'viopSuggestionPanel' app/src/main/res/layout/activity_viop_contracts.xml
+          grep -F 'İlk harften itibaren sözleşme kodu' app/src/main/res/layout/activity_viop_contracts.xml
+          grep -F 'updateSuggestions()' app/src/main/java/tr/borsatakip/v5/ui/ViopContractsActivity.kt
           grep -F 'class ViopSuggestionAdapter' app/src/main/java/tr/borsatakip/v5/ui/ViopSuggestionAdapter.kt
-          grep -F 'Otomatik öneriler' app/src/main/java/tr/borsatakip/v5/ui/ViopContractsActivity.kt
-          grep -F 'android:id="@+id/watchlistRefresh"' app/src/main/res/layout/activity_favorites.xml
-          grep -F 'Fiyatları yenile' app/src/main/res/layout/activity_favorites.xml
-          grep -F 'Son yenileme' app/src/main/java/tr/borsatakip/v5/ui/FavoritesActivity.kt
+          grep -F 'android:id="@+id/watchRefresh"' app/src/main/res/layout/activity_favorites.xml
+          grep -F 'android:id="@+id/watchMeta"' app/src/main/res/layout/item_bist_watchlist.xml
+          grep -F 'Alış/Satış sağlayıcıda yok' app/src/main/java/tr/borsatakip/v5/ui/BistWatchlistAdapter.kt
+          grep -F 'R.id.watchRefresh' app/src/main/java/tr/borsatakip/v5/ui/FavoritesActivity.kt
 
       - name: Backend tests
         working-directory: /tmp/v5133
