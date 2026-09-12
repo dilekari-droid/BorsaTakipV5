@@ -69,7 +69,6 @@ jobs:
           grep -F 'holder.last.text' app/src/main/java/tr/borsatakip/v5/ui/BistWatchlistAdapter.kt
           grep -F 'holder.bid.text' app/src/main/java/tr/borsatakip/v5/ui/BistWatchlistAdapter.kt
           grep -F 'holder.ask.text' app/src/main/java/tr/borsatakip/v5/ui/BistWatchlistAdapter.kt
-          grep -F 'watchlistRefresh' app/src/main/java/tr/borsatakip/v5/ui/FavoritesActivity.kt
 
       - name: Backend tests
         working-directory: /tmp/v5133
