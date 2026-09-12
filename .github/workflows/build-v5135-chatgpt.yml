@@ -1,0 +1,74 @@
+name: Build V5.1.35 APK
+
+on:
+  push:
+    branches:
+      - chatgpt/build-v5135-20260912
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 35
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Restore uploaded V5.1.35 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf build_v5135 /tmp/v5135_source.tar.xz /tmp/v5135_source.b64
+          mkdir -p build_v5135
+          cat build_payload/v5135_chatgpt_source_part_*.b64 > /tmp/v5135_source.b64
+          test "$(wc -c < /tmp/v5135_source.b64)" -eq 134444
+          base64 --decode /tmp/v5135_source.b64 > /tmp/v5135_source.tar.xz
+          echo "845bb7c3dba09142119ad507fb05cd9386e2a0ffb266f197fd8544f5cee087b6  /tmp/v5135_source.tar.xz" | sha256sum -c -
+          tar -xJf /tmp/v5135_source.tar.xz -C build_v5135
+          grep -Fq 'versionName = "5.1.35"' build_v5135/app/build.gradle.kts
+          grep -Fq 'versionCode = 85' build_v5135/app/build.gradle.kts
+
+      - name: Build debug APK
+        working-directory: build_v5135
+        run: gradle :app:assembleDebug --stacktrace --no-daemon
+
+      - name: Verify and prepare APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=build_v5135/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          unzip -l "$APK" | grep -q 'AndroidManifest.xml'
+          unzip -l "$APK" | grep -q 'classes.dex'
+          mkdir -p dist
+          cp "$APK" dist/BorsaTakipV5.1.35-debug.apk
+          sha256sum dist/BorsaTakipV5.1.35-debug.apk > dist/BorsaTakipV5.1.35-debug.apk.sha256
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BorsaTakipV5.1.35-debug-apk
+          path: |
+            dist/BorsaTakipV5.1.35-debug.apk
+            dist/BorsaTakipV5.1.35-debug.apk.sha256
+          if-no-files-found: error
+          retention-days: 7
