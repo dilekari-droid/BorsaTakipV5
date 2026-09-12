@@ -1,0 +1,157 @@
+name: Build V5.1.31 VIOP Dashboard
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'overlays/v5131_viop/**'
+      - '.github/workflows/build-v5131-viop-dashboard.yml'
+  workflow_dispatch:
+
+jobs:
+  build-viop-dashboard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout payload branch
+        uses: actions/checkout@v4
+        with:
+          ref: build-v5.1.28-apk
+          fetch-depth: 0
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Setup Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Reconstruct latest verified V5.1.31 baseline
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/v5131viop
+          mkdir -p /tmp/v5131viop
+          cat build_payload/v5128_part*.b64 | tr -d '\n' | base64 -d > /tmp/v5128.tar.xz
+          xz -t /tmp/v5128.tar.xz
+          tar -xJf /tmp/v5128.tar.xz -C /tmp/v5131viop
+          git fetch origin main --depth=1
+          git show origin/main:build_payload/v5129_ui.b64 | tr -d '\n' | base64 -d | xz -d > /tmp/v5129.patch
+          git show origin/main:build_payload/v5129_fix.b64 | tr -d '\n' | base64 -d > /tmp/v5129_fix.tar.xz
+          cd /tmp/v5131viop
+          patch -p1 --batch --forward < /tmp/v5129.patch || true
+          tar -xJf /tmp/v5129_fix.tar.xz -C /tmp/v5131viop
+          cd "$GITHUB_WORKSPACE"
+          for f in 00 01 02 03 04; do git show origin/main:build_payload/v5130_patch_part_${f}.b64; done | tr -d '\n' | base64 -d | xz -d > /tmp/v5130.patch
+          git show origin/main:build_payload/v5130_backend.b64 | tr -d '\n' | base64 -d > /tmp/v5130_backend.tar.xz
+          git show origin/main:build_payload/v5131_final_patch.b64 | tr -d '\n' | base64 -d | xz -d > /tmp/v5131.patch
+          git show origin/main:build_payload/v5132_chart_patch.b64 | tr -d '\n' | base64 -d | xz -d > /tmp/v5132.patch
+          git show origin/main:build_payloads/v5131_scan_results_fix.tar.xz.b64 | tr -d '\n' | base64 -d > /tmp/v5131_scan_results_fix.tar.xz
+          git show origin/main:build_payloads/v5131_chart_visual_fix.tar.xz.b64 | tr -d '\n' | base64 -d > /tmp/v5131_chart_visual_fix.tar.xz
+          git show origin/main:build_payloads/v5131_news_channel.patch.xz.b64 | tr -d '\n' | base64 -d | xz -d > /tmp/v5131_news_channel.patch
+          git show origin/main:build_payloads/v5131_multitf_signal.tar.xz.b64 | tr -d '\n' | base64 -d > /tmp/v5131_multitf_signal.tar.xz
+          cd /tmp/v5131viop
+          patch -p4 --batch --forward < /tmp/v5130.patch || true
+          tar -xJf /tmp/v5130_backend.tar.xz -C /tmp/v5131viop
+          patch -p4 --batch --forward < /tmp/v5131.patch
+          patch -p1 --batch --forward < /tmp/v5132.patch || true
+          tar -xJf /tmp/v5131_scan_results_fix.tar.xz -C /tmp/v5131viop
+          tar -xJf /tmp/v5131_chart_visual_fix.tar.xz -C /tmp/v5131viop
+          patch -p4 --batch --forward < /tmp/v5131_news_channel.patch
+          tar -xJf /tmp/v5131_multitf_signal.tar.xz -C /tmp/v5131viop
+          rm -rf source_parts backend/.pytest_cache backend/app/__pycache__ backend/tests/__pycache__ .kotlin
+
+      - name: Apply professional VIOP dashboard overlay
+        run: |
+          set -euo pipefail
+          git fetch origin main --depth=1
+          cd /tmp/v5131viop
+          git --git-dir="$GITHUB_WORKSPACE/.git" show origin/main:overlays/v5131_viop/ViopSparklineView.kt > app/src/main/java/tr/borsatakip/v5/ui/ViopSparklineView.kt
+          git --git-dir="$GITHUB_WORKSPACE/.git" show origin/main:overlays/v5131_viop/ViopOpportunityAdapter.kt > app/src/main/java/tr/borsatakip/v5/ui/ViopOpportunityAdapter.kt
+          git --git-dir="$GITHUB_WORKSPACE/.git" show origin/main:overlays/v5131_viop/ViopActivity.kt > app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt
+          git --git-dir="$GITHUB_WORKSPACE/.git" show origin/main:overlays/v5131_viop/item_viop.xml > app/src/main/res/layout/item_viop.xml
+          git --git-dir="$GITHUB_WORKSPACE/.git" show origin/main:overlays/v5131_viop/activity_viop.xml > app/src/main/res/layout/activity_viop.xml
+          git --git-dir="$GITHUB_WORKSPACE/.git" show origin/main:overlays/v5131_viop/patch_backend_viop_health.py > /tmp/patch_backend_viop_health.py
+          python /tmp/patch_backend_viop_health.py backend/app/main.py
+
+      - name: Verify VIOP dashboard wiring
+        working-directory: /tmp/v5131viop
+        run: |
+          set -euo pipefail
+          grep -F 'versionName = "5.1.31"' app/build.gradle.kts
+          grep -F 'versionCode = 81' app/build.gradle.kts
+          grep -F 'CANLI VERİ' app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt
+          grep -F 'GÜÇLÜ SİNYALLER' app/src/main/res/layout/activity_viop.xml
+          grep -F 'KONTRATLAR' app/src/main/res/layout/activity_viop.xml
+          grep -F 'SİNYALLER' app/src/main/res/layout/activity_viop.xml
+          grep -F 'VADELER' app/src/main/res/layout/activity_viop.xml
+          grep -F 'Gerçek veri bağlantısı yoksa sinyal üretilmez' app/src/main/res/layout/activity_viop.xml
+          grep -F '/v1/viop/health' backend/app/main.py
+
+      - name: Backend tests
+        working-directory: /tmp/v5131viop
+        run: |
+          set -euo pipefail
+          python -m venv /tmp/v5131viop-venv
+          /tmp/v5131viop-venv/bin/pip install -r backend/requirements.txt pytest
+          /tmp/v5131viop-venv/bin/pytest -q backend/tests | tee "$GITHUB_WORKSPACE/backend-tests.txt"
+
+      - name: Android unit tests
+        working-directory: /tmp/v5131viop
+        run: |
+          set -euo pipefail
+          gradle :app:testDebugUnitTest | tee "$GITHUB_WORKSPACE/android-unit-tests.txt"
+
+      - name: Android lint
+        working-directory: /tmp/v5131viop
+        run: |
+          set -euo pipefail
+          gradle :app:lintDebug | tee "$GITHUB_WORKSPACE/android-lint.txt"
+
+      - name: Assemble and verify V5.1.31 APK
+        working-directory: /tmp/v5131viop
+        run: |
+          set -euo pipefail
+          gradle :app:assembleDebug
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          unzip -t "$APK" > "$GITHUB_WORKSPACE/apk-unzip-test.txt"
+          AAPT=$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)
+          "$AAPT" dump badging "$APK" | tee "$GITHUB_WORKSPACE/apk-badging.txt"
+          grep -F "versionName='5.1.31'" "$GITHUB_WORKSPACE/apk-badging.txt"
+          grep -F "versionCode='81'" "$GITHUB_WORKSPACE/apk-badging.txt"
+          cp "$APK" "$GITHUB_WORKSPACE/V5.1.31.apk"
+          sha256sum "$GITHUB_WORKSPACE/V5.1.31.apk" > "$GITHUB_WORKSPACE/V5.1.31.apk.sha256"
+
+      - name: Package matching source
+        run: |
+          set -euo pipefail
+          cd /tmp/v5131viop
+          rm -rf app/build .gradle backend/.pytest_cache backend/app/__pycache__ backend/tests/__pycache__ source_parts .kotlin
+          zip -qr "$GITHUB_WORKSPACE/V5.1.31-Kaynak-Kod.zip" . -x '*.pyc' '*/__pycache__/*' 'source_parts/*'
+          unzip -t "$GITHUB_WORKSPACE/V5.1.31-Kaynak-Kod.zip" > "$GITHUB_WORKSPACE/source-zip-test.txt"
+          sha256sum "$GITHUB_WORKSPACE/V5.1.31-Kaynak-Kod.zip" > "$GITHUB_WORKSPACE/V5.1.31-Kaynak-Kod.zip.sha256"
+
+      - name: Upload APK and source
+        uses: actions/upload-artifact@v4
+        with:
+          name: V5.1.31-viop-dashboard
+          path: |
+            V5.1.31.apk
+            V5.1.31.apk.sha256
+            V5.1.31-Kaynak-Kod.zip
+            V5.1.31-Kaynak-Kod.zip.sha256
+            backend-tests.txt
+            android-unit-tests.txt
+            android-lint.txt
+            apk-badging.txt
+            apk-unzip-test.txt
+            source-zip-test.txt
+          if-no-files-found: error
