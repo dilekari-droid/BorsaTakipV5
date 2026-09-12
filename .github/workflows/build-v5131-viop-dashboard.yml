@@ -78,6 +78,7 @@ jobs:
           git --git-dir="$GITHUB_WORKSPACE/.git" show origin/main:overlays/v5131_viop/ViopOpportunityAdapter.kt > app/src/main/java/tr/borsatakip/v5/ui/ViopOpportunityAdapter.kt
           git --git-dir="$GITHUB_WORKSPACE/.git" show origin/main:overlays/v5131_viop/ViopActivity.kt > app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt
           git --git-dir="$GITHUB_WORKSPACE/.git" show origin/main:overlays/v5131_viop/item_viop.xml > app/src/main/res/layout/item_viop.xml
+          git --git-dir="$GITHUB_WORKSPACE/.git" show origin/main:overlays/v5131_viop/item_viop_opportunity.xml > app/src/main/res/layout/item_viop_opportunity.xml
           git --git-dir="$GITHUB_WORKSPACE/.git" show origin/main:overlays/v5131_viop/activity_viop.xml > app/src/main/res/layout/activity_viop.xml
           git --git-dir="$GITHUB_WORKSPACE/.git" show origin/main:overlays/v5131_viop/patch_backend_viop_health.py > /tmp/patch_backend_viop_health.py
           python /tmp/patch_backend_viop_health.py backend/app/main.py
@@ -89,6 +90,9 @@ jobs:
           grep -F 'versionName = "5.1.31"' app/build.gradle.kts
           grep -F 'versionCode = 81' app/build.gradle.kts
           grep -F 'CANLI VERİ' app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt
+          grep -F 'item_viop_opportunity' app/src/main/java/tr/borsatakip/v5/ui/ViopOpportunityAdapter.kt
+          grep -F 'atr14' app/src/main/java/tr/borsatakip/v5/ui/ViopOpportunityAdapter.kt
+          grep -F 'android:id="@+id/text"' app/src/main/res/layout/item_viop.xml
           grep -F 'GÜÇLÜ SİNYALLER' app/src/main/res/layout/activity_viop.xml
           grep -F 'KONTRATLAR' app/src/main/res/layout/activity_viop.xml
           grep -F 'SİNYALLER' app/src/main/res/layout/activity_viop.xml
