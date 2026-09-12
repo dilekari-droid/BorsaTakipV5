@@ -26,7 +26,7 @@ class ViopOpportunityAdapter(
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
-        H(LayoutInflater.from(parent.context).inflate(R.layout.item_viop, parent, false))
+        H(LayoutInflater.from(parent.context).inflate(R.layout.item_viop_opportunity, parent, false))
 
     override fun getItemCount() = items.size
 
@@ -49,7 +49,7 @@ class ViopOpportunityAdapter(
         holder.scores.text = "Skor                 ${x.finalScore}/100\nGüven              $confidence/100\nRisk                 ${x.riskScore}/100"
 
         val entry = q.price
-        val atr = x.technical.atr?.takeIf { it.isFinite() && it > 0.0 }
+        val atr = x.technical.atr14?.takeIf { it.isFinite() && it > 0.0 }
         val stop = atr?.let { if (isLong) entry - 1.25 * it else entry + 1.25 * it }
         val target1 = atr?.let { if (isLong) entry + 1.5 * it else entry - 1.5 * it }
         val target2 = atr?.let { if (isLong) entry + 2.5 * it else entry - 2.5 * it }
