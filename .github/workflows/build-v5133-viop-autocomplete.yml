@@ -1,0 +1,132 @@
+name: Build V5.1.33 VIOP Autocomplete
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'overlays/v5133_viop/**'
+      - '.github/workflows/build-v5133-viop-autocomplete.yml'
+  workflow_dispatch:
+
+jobs:
+  build-v5133-viop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Setup Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Download verified V5.1.32 baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/v5133 /tmp/baseline
+          mkdir -p /tmp/v5133 /tmp/baseline
+          gh run download 34709131586 --repo "$GITHUB_REPOSITORY" --name V5.1.32-report-fix --dir /tmp/baseline
+          unzip -q /tmp/baseline/V5.1.32-Kaynak-Kod.zip -d /tmp/v5133
+
+      - name: Apply VIOP autocomplete overlay and bump version
+        run: |
+          set -euo pipefail
+          cp -R overlays/v5133_viop/. /tmp/v5133/
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('/tmp/v5133/app/build.gradle.kts')
+          s=p.read_text().replace('versionCode = 82','versionCode = 83').replace('versionName = "5.1.32"','versionName = "5.1.33"')
+          p.write_text(s)
+          PY
+
+      - name: Verify VIOP autocomplete and BIST price wiring
+        working-directory: /tmp/v5133
+        run: |
+          set -euo pipefail
+          grep -F 'versionName = "5.1.33"' app/build.gradle.kts
+          grep -F 'versionCode = 83' app/build.gradle.kts
+          grep -F 'android:id="@+id/viopSuggestions"' app/src/main/res/layout/activity_viop_contracts.xml
+          grep -F 'Bir harf yazınca en uygun sözleşmeler otomatik listelenir.' app/src/main/res/layout/activity_viop_contracts.xml
+          grep -F 'take(12)' app/src/main/java/tr/borsatakip/v5/ui/ViopContractsActivity.kt
+          grep -F 'ViopSuggestionAdapter' app/src/main/java/tr/borsatakip/v5/ui/ViopContractsActivity.kt
+          grep -F 'holder.last.text' app/src/main/java/tr/borsatakip/v5/ui/BistWatchlistAdapter.kt
+          grep -F 'holder.bid.text' app/src/main/java/tr/borsatakip/v5/ui/BistWatchlistAdapter.kt
+          grep -F 'holder.ask.text' app/src/main/java/tr/borsatakip/v5/ui/BistWatchlistAdapter.kt
+          grep -F 'watchlistRefresh' app/src/main/java/tr/borsatakip/v5/ui/FavoritesActivity.kt
+
+      - name: Backend tests
+        working-directory: /tmp/v5133
+        run: |
+          set -euo pipefail
+          python -m venv /tmp/v5133-venv
+          /tmp/v5133-venv/bin/pip install -r backend/requirements.txt pytest
+          /tmp/v5133-venv/bin/pytest -q backend/tests | tee "$GITHUB_WORKSPACE/backend-tests.txt"
+
+      - name: Android unit tests
+        working-directory: /tmp/v5133
+        run: |
+          set -euo pipefail
+          gradle :app:testDebugUnitTest | tee "$GITHUB_WORKSPACE/android-unit-tests.txt"
+
+      - name: Android lint
+        working-directory: /tmp/v5133
+        run: |
+          set -euo pipefail
+          gradle :app:lintDebug | tee "$GITHUB_WORKSPACE/android-lint.txt"
+
+      - name: Assemble and verify V5.1.33 APK
+        working-directory: /tmp/v5133
+        run: |
+          set -euo pipefail
+          gradle :app:assembleDebug
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          unzip -t "$APK" > "$GITHUB_WORKSPACE/apk-unzip-test.txt"
+          AAPT=$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)
+          "$AAPT" dump badging "$APK" | tee "$GITHUB_WORKSPACE/apk-badging.txt"
+          grep -F "versionName='5.1.33'" "$GITHUB_WORKSPACE/apk-badging.txt"
+          grep -F "versionCode='83'" "$GITHUB_WORKSPACE/apk-badging.txt"
+          cp "$APK" "$GITHUB_WORKSPACE/V5.1.33.apk"
+          sha256sum "$GITHUB_WORKSPACE/V5.1.33.apk" > "$GITHUB_WORKSPACE/V5.1.33.apk.sha256"
+
+      - name: Package matching source
+        run: |
+          set -euo pipefail
+          cd /tmp/v5133
+          rm -rf app/build .gradle backend/.pytest_cache backend/app/__pycache__ backend/tests/__pycache__ .kotlin source_parts
+          zip -qr "$GITHUB_WORKSPACE/V5.1.33-Kaynak-Kod.zip" . -x '*.pyc' '*/__pycache__/*' 'source_parts/*'
+          unzip -t "$GITHUB_WORKSPACE/V5.1.33-Kaynak-Kod.zip" > "$GITHUB_WORKSPACE/source-zip-test.txt"
+          sha256sum "$GITHUB_WORKSPACE/V5.1.33-Kaynak-Kod.zip" > "$GITHUB_WORKSPACE/V5.1.33-Kaynak-Kod.zip.sha256"
+
+      - name: Upload APK and matching source
+        uses: actions/upload-artifact@v4
+        with:
+          name: V5.1.33-viop-autocomplete
+          path: |
+            V5.1.33.apk
+            V5.1.33.apk.sha256
+            V5.1.33-Kaynak-Kod.zip
+            V5.1.33-Kaynak-Kod.zip.sha256
+            backend-tests.txt
+            android-unit-tests.txt
+            android-lint.txt
+            apk-badging.txt
+            apk-unzip-test.txt
+            source-zip-test.txt
+          if-no-files-found: error
