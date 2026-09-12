@@ -1,0 +1,199 @@
+name: Build V5.1.32 Report Fix
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/build-v5132-report-fix.yml'
+  workflow_dispatch:
+
+jobs:
+  build-report-fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Setup Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Download verified V5.1.31 UI baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/v5132 /tmp/baseline
+          mkdir -p /tmp/v5132 /tmp/baseline
+          gh run download 34708437913 --repo "$GITHUB_REPOSITORY" --name V5.1.31-favorites-ui-fix --dir /tmp/baseline
+          unzip -q /tmp/baseline/V5.1.31-Kaynak-Kod.zip -d /tmp/v5132
+
+      - name: Apply report fixes
+        working-directory: /tmp/v5132
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          root=Path('/tmp/v5132')
+
+          p=root/'app/build.gradle.kts'
+          s=p.read_text().replace('versionCode = 81','versionCode = 82').replace('versionName = "5.1.31"','versionName = "5.1.32"')
+          p.write_text(s)
+
+          p=root/'backend/app/main.py'
+          s=p.read_text()
+          s=s.replace('@app.get("/v1/preflight", response_model=PreflightResponse)\nasync def preflight(authorization: str | None = Header(default=None)) -> PreflightResponse:\n    config_ok = UPSTREAM.configuration_ready(); auth_ok = _auth_configured() and bool(authorization and authorization.startswith("Bearer ") and authorization[7:] in API_KEYS)\n', '@app.get("/v1/preflight", response_model=PreflightResponse)\nasync def preflight(authorization: str | None = Header(default=None)) -> PreflightResponse:\n    _require_client_auth(authorization)\n    config_ok = UPSTREAM.configuration_ready(); auth_ok = True\n')
+          anchor='''@app.get("/v1/bist/history/{symbol}", response_model=HistoryResponse)\nasync def bist_history(symbol: str, range: str = Query(default="1y"), interval: str = Query(default="1d"), authorization: str | None = Header(default=None)) -> HistoryResponse:\n    _require_client_auth(authorization)\n    if range not in {"1y", "max"} or interval != "1d":\n        raise HTTPException(status_code=400,detail={"code":"UNSUPPORTED_RANGE","message":"range must be 1y or max and interval must be 1d"})\n    return await _history_impl(symbol, range)\n\n\n'''
+          batch='''@app.get("/v1/bist/snapshot-batch")\nasync def bist_snapshot_batch(symbols: str = Query(...), authorization: str | None = Header(default=None)) -> dict[str, Any]:\n    _require_client_auth(authorization)\n    requested=[]; seen=set()\n    for raw in symbols.split(","):\n        sym=_normalize_symbol(raw)\n        if sym not in seen:\n            seen.add(sym); requested.append(sym)\n    if not requested:\n        raise HTTPException(status_code=400, detail={"code":"EMPTY_SYMBOLS","message":"At least one BIST symbol is required"})\n    if len(requested) > 25:\n        raise HTTPException(status_code=400, detail={"code":"TOO_MANY_SYMBOLS","message":"Batch supports at most 25 symbols"})\n    async def one(sym: str) -> dict[str, Any]:\n        try:\n            q,h=await asyncio.gather(_quote_impl(sym), _history_impl(sym))\n            return {"symbol":sym,"quote":q.model_dump(),"history":h.model_dump()}\n        except HTTPException as exc:\n            detail=exc.detail if isinstance(exc.detail,dict) else {"code":"SYMBOL_ERROR","message":str(exc.detail)}\n            return {"symbol":sym,"error":detail}\n    items=await asyncio.gather(*(one(sym) for sym in requested))\n    return {"items":items,"count":len(items),"source":UPSTREAM.name,"dataTimestamp":int(time.time()*1000)}\n\n\n'''
+          if '/v1/bist/snapshot-batch' not in s:
+              s=s.replace(anchor,anchor+batch)
+          p.write_text(s)
+
+          p=root/'app/src/main/java/tr/borsatakip/v5/data/ProviderReadinessService.kt'
+          s=p.read_text().replace('    SERVER_ERROR,\n','    RATE_LIMIT,\n    SERVER_ERROR,\n')
+          s=s.replace('            BackendPreflightClient.FailureKind.HTTP_ERROR,\n            BackendPreflightClient.FailureKind.SERVER_ERROR -> ProviderFailureCode.SERVER_ERROR','            BackendPreflightClient.FailureKind.RATE_LIMIT -> ProviderFailureCode.RATE_LIMIT\n            BackendPreflightClient.FailureKind.HTTP_ERROR,\n            BackendPreflightClient.FailureKind.SERVER_ERROR -> ProviderFailureCode.SERVER_ERROR')
+          p.write_text(s)
+
+          p=root/'app/src/main/java/tr/borsatakip/v5/data/BackendPreflightClient.kt'
+          s=p.read_text().replace('AUTH_ERROR, HTTP_ERROR, SERVER_ERROR, NETWORK_TIMEOUT','AUTH_ERROR, HTTP_ERROR, RATE_LIMIT, SERVER_ERROR, NETWORK_TIMEOUT')
+          s=s.replace('    suspend fun check(): Result = withContext(Dispatchers.IO) {','    suspend fun check(): Result = checkAll()\n\n    suspend fun checkBist(): Result = checkCore(includeViop = false)\n\n    suspend fun checkAll(): Result = checkCore(includeViop = true)\n\n    private suspend fun checkCore(includeViop: Boolean): Result = withContext(Dispatchers.IO) {')
+          needle='        // VİOP readiness: mevcut gerçek endpointler üzerinden ayrı doğrulama.\n'
+          insert='''        if (!includeViop) {\n            settings.cachedBistSymbolCount = symbolCount\n            settings.lastBackendHealthAt = System.currentTimeMillis()\n            settings.lastBackendHealthOk = true\n            return@withContext Result(true, FailureKind.NONE,\n                "BIST READY • Health ✓ • Authentication ✓ • Symbols ✓ • Quote ✓ • History ✓",\n                true, true, true, true, true, false, false, false,\n                symbolCount, 0, sample, null, provider, System.currentTimeMillis() - started)\n        }\n\n'''
+          if insert not in s: s=s.replace(needle,insert+needle)
+          s=s.replace('            if (code == 401 || code == 403) return HttpResult(false, code, kind = FailureKind.AUTH_ERROR, detail = "Kimlik doğrulama başarısız (HTTP $code).")','            if (code == 401 || code == 403) return HttpResult(false, code, kind = FailureKind.AUTH_ERROR, detail = "Kimlik doğrulama başarısız (HTTP $code).")\n            if (code == 429) return HttpResult(false, code, kind = FailureKind.RATE_LIMIT, detail = "İstek sınırı aşıldı (HTTP 429). Lütfen kısa süre sonra yeniden deneyin.")')
+          p.write_text(s)
+
+          p=root/'app/src/main/java/tr/borsatakip/v5/ui/BistScanActivity.kt'
+          p.write_text(p.read_text().replace('BackendPreflightClient(this@BistScanActivity).check()','BackendPreflightClient(this@BistScanActivity).checkBist()'))
+
+          p=root/'app/src/main/java/tr/borsatakip/v5/data/NewsRepository.kt'
+          s=p.read_text()
+          if 'import tr.borsatakip.v5.BuildConfig' not in s: s=s.replace('import tr.borsatakip.v5.model.NewsItem','import tr.borsatakip.v5.BuildConfig\nimport tr.borsatakip.v5.model.NewsItem')
+          s=s.replace('header("User-Agent", "BorsaTakip/5.1.31 Android")','header("User-Agent", "BorsaTakip/${BuildConfig.VERSION_NAME} Android")')
+          p.write_text(s)
+
+          p=root/'app/src/main/java/tr/borsatakip/v5/data/SettingsStore.kt'
+          s=p.read_text().replace('    var refreshMinutes: Int\n        get() = p.getInt("refresh_minutes", 60)\n        set(v) = p.edit().putInt("refresh_minutes", v).apply()','    var refreshMinutes: Int\n        get() = p.getInt("refresh_minutes", 60).coerceAtLeast(15)\n        set(v) = p.edit().putInt("refresh_minutes", v.coerceAtLeast(15)).apply()\n\n    var forwardOutcomeEnabled: Boolean\n        get() = p.getBoolean("forward_outcome_enabled", true)\n        set(v) = p.edit().putBoolean("forward_outcome_enabled", v).apply()')
+          p.write_text(s)
+
+          p=root/'app/src/main/res/layout/activity_settings.xml'
+          s=p.read_text().replace('android:hint="Yenileme (dakika)"','android:hint="Yenileme (dakika, minimum 15)"')
+          marker='''            <Switch\n                android:id="@+id/notifications"'''
+          add='''            <TextView\n                style="@style/Sub"\n                android:layout_marginTop="4dp"\n                android:text="Arka plan yenileme aralığı en az 15 dakikadır." />\n\n            <Switch\n                android:id="@+id/forwardOutcome"\n                android:layout_width="match_parent"\n                android:layout_height="52dp"\n                android:text="Forward performans ölçümünü arka planda çalıştır"\n                android:textColor="@color/text_primary" />\n\n'''
+          if '@+id/forwardOutcome' not in s: s=s.replace(marker,add+marker)
+          p.write_text(s)
+
+          p=root/'app/src/main/java/tr/borsatakip/v5/worker/WorkScheduler.kt'
+          s=p.read_text()
+          if 'tr.borsatakip.v5.data.SettingsStore' not in s: s=s.replace('import androidx.work.WorkManager','import androidx.work.WorkManager\nimport tr.borsatakip.v5.data.SettingsStore')
+          s=s.replace('        // Forward ölçüm bildirim tercihinden bağımsızdır.\n        val forwardReq = PeriodicWorkRequestBuilder<ForwardOutcomeWorker>(15, TimeUnit.MINUTES)\n            .setConstraints(constraints).build()\n        wm.enqueueUniquePeriodicWork(FORWARD_WORK, ExistingPeriodicWorkPolicy.UPDATE, forwardReq)','        val forwardEnabled = SettingsStore(context).forwardOutcomeEnabled\n        if (forwardEnabled) {\n            val forwardReq = PeriodicWorkRequestBuilder<ForwardOutcomeWorker>(15, TimeUnit.MINUTES)\n                .setConstraints(constraints).build()\n            wm.enqueueUniquePeriodicWork(FORWARD_WORK, ExistingPeriodicWorkPolicy.UPDATE, forwardReq)\n        } else {\n            wm.cancelUniqueWork(FORWARD_WORK)\n        }')
+          p.write_text(s)
+
+          p=root/'app/src/main/java/tr/borsatakip/v5/ui/SettingsActivity.kt'
+          s=p.read_text().replace('val refresh = findViewById<EditText>(R.id.refreshMinutes)','val refresh = findViewById<EditText>(R.id.refreshMinutes)\n        val forwardOutcome = findViewById<android.widget.Switch>(R.id.forwardOutcome)')
+          s=s.replace('refresh.setText(s.refreshMinutes.toString())','refresh.setText(s.refreshMinutes.toString())\n        forwardOutcome.isChecked = s.forwardOutcomeEnabled')
+          s=s.replace('s.refreshMinutes = (refresh.text.toString().toIntOrNull() ?: 15).coerceAtLeast(1)','s.refreshMinutes = (refresh.text.toString().toIntOrNull() ?: 15).coerceAtLeast(15)\n            s.forwardOutcomeEnabled = forwardOutcome.isChecked')
+          p.write_text(s)
+
+          p=root/'app/src/main/java/tr/borsatakip/v5/data/MobileMarketDataProvider.kt'
+          s=p.read_text()
+          start=s.index('    override suspend fun scan('); end=s.index('\n    override suspend fun fetchOne',start)
+          new_scan='''    override suspend fun scan(onProgress: (done: Int, total: Int) -> Unit): List<Stock> = withContext(Dispatchers.IO) {\n        ensureConfigured()\n        val symbols = loadSymbols()\n        if (symbols.isEmpty()) throw ProviderException(ProviderFailureCode.EMPTY_DATA, "BIST sembol listesi alınamadı.")\n        Log.i(TAG, "[BIST_SCAN] TOTAL=${symbols.size} batchSize=$BATCH_SIZE")\n        val out = mutableListOf<Stock>()\n        var done = 0\n        for (batch in symbols.chunked(BATCH_SIZE)) {\n            val encoded = URLEncoder.encode(batch.joinToString(","), "UTF-8")\n            val root = getJson("/v1/bist/snapshot-batch?symbols=$encoded")\n            val items = root.optJSONArray("items") ?: throw ProviderException(ProviderFailureCode.EMPTY_DATA, "Batch tarama yanıtında items alanı yok.")\n            for (i in 0 until items.length()) {\n                val row = items.optJSONObject(i) ?: continue\n                val requested = row.optString("symbol").trim().uppercase()\n                if (row.has("error")) {\n                    Log.w(TAG, "[BIST_SCAN] SYMBOL_SKIPPED $requested ${row.optJSONObject("error")?.optString("code")}")\n                    continue\n                }\n                val q = row.optJSONObject("quote") ?: continue\n                val h = row.optJSONObject("history") ?: continue\n                try { out += parseStockPair(requested, q, h) } catch (pe: ProviderException) {\n                    if (pe.code in SYSTEMIC_FAILURES) throw pe\n                    Log.w(TAG, "[BIST_SCAN] SYMBOL_SKIPPED $requested ${pe.code}: ${pe.message}")\n                }\n            }\n            done=(done+batch.size).coerceAtMost(symbols.size); onProgress(done,symbols.size)\n        }\n        out\n    }\n'''
+          s=s[:start]+new_scan+s[end:]
+          fstart=s.index('    private suspend fun fetchStock(symbol: String): Stock {'); fend=s.index('\n    private fun parseCandlesStrict',fstart)
+          new_func='''    private suspend fun fetchStock(symbol: String): Stock {\n        val requested = normalizeSymbol(symbol)\n        val encoded = URLEncoder.encode(requested, "UTF-8")\n        val quoteJson = getJson("/v1/bist/quote/$encoded")\n        val historyJson = getJson("/v1/bist/history/$encoded?range=1y&interval=1d")\n        return parseStockPair(requested, quoteJson, historyJson)\n    }\n\n    private fun parseStockPair(requestedRaw: String, quoteJson: JSONObject, historyJson: JSONObject): Stock {\n        val requested = normalizeSymbol(requestedRaw)\n        val quoteSymbol = quoteJson.optString("symbol").trim().uppercase()\n        val historySymbol = historyJson.optString("symbol").trim().uppercase()\n        requireMatchingSymbol(requested, quoteSymbol, "quote"); requireMatchingSymbol(requested, historySymbol, "history")\n        if (quoteSymbol != historySymbol) throw ProviderException(ProviderFailureCode.BIST_HISTORY_ERROR, "Quote/history sembol kimliği uyuşmuyor: $quoteSymbol/$historySymbol")\n        if (quoteJson.optString("market", "BIST").uppercase() != "BIST" || historyJson.optString("market", "BIST").uppercase() != "BIST") throw ProviderException(ProviderFailureCode.BIST_HISTORY_ERROR, "Piyasa kimliği BIST ile eşleşmiyor.")\n        val quotePrice=quoteJson.optDouble("price",Double.NaN); val exchangeTimestamp=quoteJson.optLong("exchangeTimestamp",0L)\n        val delaySeconds=if(quoteJson.has("delaySeconds")&&!quoteJson.isNull("delaySeconds")) quoteJson.optInt("delaySeconds") else null\n        val realtime=quoteJson.optBoolean("realtime",false); val currentSession=historyJson.optBoolean("currentSessionIncluded",quoteJson.optBoolean("currentSessionIncluded",false))\n        if(!quotePrice.isFinite()||quotePrice<=0.0||exchangeTimestamp<=0L) throw ProviderException(ProviderFailureCode.BIST_QUOTE_ERROR,"$requested quote verisi geçersiz.")\n        val candles=parseCandlesStrict(historyJson.optJSONArray("candles")?:JSONArray(),minimum=RealTimeIntegrityPolicy.MIN_HISTORY_BARS)\n        val lastBarTime=historyJson.optLong("lastBarTime",candles.last().timestamp)\n        if(lastBarTime!=candles.last().timestamp) throw ProviderException(ProviderFailureCode.BIST_HISTORY_ERROR,"History lastBarTime son mumla eşleşmiyor.")\n        val interval=historyJson.optString("interval","1d"); val timezone=historyJson.optString("exchangeTimezone").ifBlank{null}?:throw ProviderException(ProviderFailureCode.BIST_HISTORY_ERROR,"History exchangeTimezone alanı eksik.")\n        val previousClose=quoteJson.optDouble("previousClose",Double.NaN).takeIf{it.isFinite()&&it>0.0}?:historyJson.optDouble("previousClose",Double.NaN).takeIf{it.isFinite()&&it>0.0}\n        val stock=Stock(symbol=requested,companyName=historyJson.optString("name").takeIf{it.isNotBlank()},candles=candles,source=quoteJson.optString("source").ifBlank{displayName},dataTimestamp=exchangeTimestamp,isRealtime=realtime,delaySeconds=delaySeconds,currentSessionIncluded=currentSession,receivedAt=System.currentTimeMillis(),receivedElapsedRealtime=SystemClock.elapsedRealtime(),quotePrice=quotePrice,currency=quoteJson.optString("currency").takeIf{it.isNotBlank()},market="BIST",historySymbol=historySymbol,interval=interval,exchangeTimezone=timezone,sessionId=historyJson.optString("sessionId").takeIf{it.isNotBlank()},lastBarTime=lastBarTime,lastBarClosed=if(historyJson.has("lastBarClosed"))historyJson.optBoolean("lastBarClosed")else null,previousClose=previousClose,bid=quoteJson.optDouble("bid",Double.NaN).takeIf{it.isFinite()&&it>0.0},ask=quoteJson.optDouble("ask",Double.NaN).takeIf{it.isFinite()&&it>0.0})\n        val verdict=RealTimeIntegrityPolicy.validate(stock); if(!verdict.accepted) throw ProviderException(ProviderFailureCode.BIST_HISTORY_ERROR,verdict.reason)\n        return stock\n    }\n'''
+          s=s[:fstart]+new_func+s[fend:]
+          s=s.replace('code == 429 -> ProviderException(ProviderFailureCode.SERVER_ERROR, "Production backend istek sınırı aşıldı (HTTP 429).")','code == 429 -> ProviderException(ProviderFailureCode.RATE_LIMIT, "Production backend istek sınırı aşıldı (HTTP 429). Kısa süre sonra yeniden deneyin.")')
+          s=s.replace('ProviderFailureCode.NETWORK_TIMEOUT, ProviderFailureCode.SERVER_ERROR,','ProviderFailureCode.NETWORK_TIMEOUT, ProviderFailureCode.RATE_LIMIT, ProviderFailureCode.SERVER_ERROR,')
+          s=s.replace('        private const val TAG = "BIST_SCAN"','        private const val TAG = "BIST_SCAN"\n        private const val BATCH_SIZE = 20')
+          p.write_text(s)
+          PY
+
+      - name: Verify report fixes
+        working-directory: /tmp/v5132
+        run: |
+          set -euo pipefail
+          grep -F 'versionName = "5.1.32"' app/build.gradle.kts
+          grep -F 'versionCode = 82' app/build.gradle.kts
+          grep -F '/v1/bist/snapshot-batch' backend/app/main.py
+          grep -F 'checkBist()' app/src/main/java/tr/borsatakip/v5/ui/BistScanActivity.kt
+          grep -F 'ProviderFailureCode.RATE_LIMIT' app/src/main/java/tr/borsatakip/v5/data/MobileMarketDataProvider.kt
+          grep -F 'BuildConfig.VERSION_NAME' app/src/main/java/tr/borsatakip/v5/data/NewsRepository.kt
+          grep -F 'coerceAtLeast(15)' app/src/main/java/tr/borsatakip/v5/data/SettingsStore.kt
+          grep -F '@+id/forwardOutcome' app/src/main/res/layout/activity_settings.xml
+
+      - name: Backend tests
+        working-directory: /tmp/v5132
+        run: |
+          set -euo pipefail
+          python -m venv /tmp/v5132-venv
+          /tmp/v5132-venv/bin/pip install -r backend/requirements.txt pytest
+          /tmp/v5132-venv/bin/pytest -q backend/tests | tee "$GITHUB_WORKSPACE/backend-tests.txt"
+
+      - name: Android unit tests
+        working-directory: /tmp/v5132
+        run: |
+          set -euo pipefail
+          gradle :app:testDebugUnitTest | tee "$GITHUB_WORKSPACE/android-unit-tests.txt"
+
+      - name: Android lint
+        working-directory: /tmp/v5132
+        run: |
+          set -euo pipefail
+          gradle :app:lintDebug | tee "$GITHUB_WORKSPACE/android-lint.txt"
+
+      - name: Assemble and verify V5.1.32 APK
+        working-directory: /tmp/v5132
+        run: |
+          set -euo pipefail
+          gradle :app:assembleDebug
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          unzip -t "$APK" > "$GITHUB_WORKSPACE/apk-unzip-test.txt"
+          AAPT=$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)
+          "$AAPT" dump badging "$APK" | tee "$GITHUB_WORKSPACE/apk-badging.txt"
+          grep -F "versionName='5.1.32'" "$GITHUB_WORKSPACE/apk-badging.txt"
+          grep -F "versionCode='82'" "$GITHUB_WORKSPACE/apk-badging.txt"
+          cp "$APK" "$GITHUB_WORKSPACE/V5.1.32.apk"
+          sha256sum "$GITHUB_WORKSPACE/V5.1.32.apk" > "$GITHUB_WORKSPACE/V5.1.32.apk.sha256"
+
+      - name: Package matching source
+        run: |
+          set -euo pipefail
+          cd /tmp/v5132
+          rm -rf app/build .gradle backend/.pytest_cache backend/app/__pycache__ backend/tests/__pycache__ .kotlin source_parts
+          zip -qr "$GITHUB_WORKSPACE/V5.1.32-Kaynak-Kod.zip" . -x '*.pyc' '*/__pycache__/*' 'source_parts/*'
+          unzip -t "$GITHUB_WORKSPACE/V5.1.32-Kaynak-Kod.zip" > "$GITHUB_WORKSPACE/source-zip-test.txt"
+          sha256sum "$GITHUB_WORKSPACE/V5.1.32-Kaynak-Kod.zip" > "$GITHUB_WORKSPACE/V5.1.32-Kaynak-Kod.zip.sha256"
+
+      - name: Upload APK and matching source
+        uses: actions/upload-artifact@v4
+        with:
+          name: V5.1.32-report-fix
+          path: |
+            V5.1.32.apk
+            V5.1.32.apk.sha256
+            V5.1.32-Kaynak-Kod.zip
+            V5.1.32-Kaynak-Kod.zip.sha256
+            backend-tests.txt
+            android-unit-tests.txt
+            android-lint.txt
+            apk-badging.txt
+            apk-unzip-test.txt
+            source-zip-test.txt
+          if-no-files-found: error
