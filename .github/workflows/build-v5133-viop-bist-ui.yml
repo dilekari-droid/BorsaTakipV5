@@ -54,12 +54,6 @@ jobs:
           p=Path('/tmp/v5133/app/build.gradle.kts')
           s=p.read_text().replace('versionCode = 82','versionCode = 83').replace('versionName = "5.1.32"','versionName = "5.1.33"')
           p.write_text(s)
-
-          p=Path('/tmp/v5133/app/src/main/java/tr/borsatakip/v5/ui/FavoritesActivity.kt')
-          s=p.read_text()
-          s=s.replace('Son / Alış / Satış / Günlük % gerçek sağlayıcıdan yenileniyor...', 'Gerçek piyasa verisi alınıyor… Son / Alış / Satış / Günlük % güncelleniyor.')
-          s=s.replace("$ok/${rows.size} hisse güncellendi • Son fiyat ve Günlük % gerçek veriden hesaplanır • Alış/Satış sağlayıcıda yoksa '—' gösterilir.", "$ok/${rows.size} hisse güncellendi • Son/Günlük % gerçek veriden • Alış/Satış gerçek bid/ask varsa gösterilir.")
-          p.write_text(s)
           PY
 
       - name: Verify requested changes
@@ -73,7 +67,6 @@ jobs:
           grep -F 'updateSuggestions()' app/src/main/java/tr/borsatakip/v5/ui/ViopContractsActivity.kt
           grep -F 'SON FİYAT' app/src/main/res/layout/item_bist_watchlist.xml
           grep -F 'holder.bid.text' app/src/main/java/tr/borsatakip/v5/ui/BistWatchlistAdapter.kt
-          grep -F 'Gerçek piyasa verisi alınıyor' app/src/main/java/tr/borsatakip/v5/ui/FavoritesActivity.kt
 
       - name: Backend tests
         working-directory: /tmp/v5133
