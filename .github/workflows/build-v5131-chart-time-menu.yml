@@ -1,0 +1,124 @@
+name: Build V5.1.31 Chart Time Menu
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'build_payloads/v5131_chart_time_menu.patch'
+      - '.github/workflows/build-v5131-chart-time-menu.yml'
+  workflow_dispatch:
+
+jobs:
+  build-chart-time-menu:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Setup Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Download verified V5.1.31 baseline artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/v5131chartmenu /tmp/baseline
+          mkdir -p /tmp/v5131chartmenu /tmp/baseline
+          gh run download 34693683008 --repo "$GITHUB_REPOSITORY" --name V5.1.31-deep-technical-signal --dir /tmp/baseline
+          unzip -q /tmp/baseline/V5.1.31-Kaynak-Kod.zip -d /tmp/v5131chartmenu
+
+      - name: Apply chart time menu patch
+        run: |
+          set -euo pipefail
+          cd /tmp/v5131chartmenu
+          patch -p1 --batch < "$GITHUB_WORKSPACE/build_payloads/v5131_chart_time_menu.patch"
+
+      - name: Verify chart time menu wiring
+        working-directory: /tmp/v5131chartmenu
+        run: |
+          set -euo pipefail
+          grep -F 'versionName = "5.1.31"' app/build.gradle.kts
+          grep -F 'versionCode = 81' app/build.gradle.kts
+          grep -F 'FIFTEEN_MIN("15 DK"' app/src/main/java/tr/borsatakip/v5/analysis/ChartTimeframe.kt
+          grep -F 'btnTimeframeMenu' app/src/main/res/layout/activity_stock_detail.xml
+          grep -F '◷ Zaman ▼' app/src/main/java/tr/borsatakip/v5/ui/StockDetailActivity.kt
+          grep -F 'ChartTimeframe.FIFTEEN_MIN' app/src/main/java/tr/borsatakip/v5/ui/StockDetailActivity.kt
+          grep -F 'TÜM ZAMANLAR' app/src/main/java/tr/borsatakip/v5/analysis/ChartTimeframe.kt
+
+      - name: Backend tests
+        working-directory: /tmp/v5131chartmenu
+        run: |
+          set -euo pipefail
+          python -m venv /tmp/v5131chartmenu-venv
+          /tmp/v5131chartmenu-venv/bin/pip install -r backend/requirements.txt pytest
+          /tmp/v5131chartmenu-venv/bin/pytest -q backend/tests | tee "$GITHUB_WORKSPACE/backend-tests.txt"
+
+      - name: Android unit tests
+        working-directory: /tmp/v5131chartmenu
+        run: |
+          set -euo pipefail
+          gradle :app:testDebugUnitTest | tee "$GITHUB_WORKSPACE/android-unit-tests.txt"
+
+      - name: Android lint
+        working-directory: /tmp/v5131chartmenu
+        run: |
+          set -euo pipefail
+          gradle :app:lintDebug | tee "$GITHUB_WORKSPACE/android-lint.txt"
+
+      - name: Assemble and verify V5.1.31 APK
+        working-directory: /tmp/v5131chartmenu
+        run: |
+          set -euo pipefail
+          gradle :app:assembleDebug
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          unzip -t "$APK" > "$GITHUB_WORKSPACE/apk-unzip-test.txt"
+          AAPT=$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)
+          "$AAPT" dump badging "$APK" | tee "$GITHUB_WORKSPACE/apk-badging.txt"
+          grep -F "versionName='5.1.31'" "$GITHUB_WORKSPACE/apk-badging.txt"
+          grep -F "versionCode='81'" "$GITHUB_WORKSPACE/apk-badging.txt"
+          cp "$APK" "$GITHUB_WORKSPACE/V5.1.31.apk"
+          sha256sum "$GITHUB_WORKSPACE/V5.1.31.apk" > "$GITHUB_WORKSPACE/V5.1.31.apk.sha256"
+
+      - name: Package matching source
+        run: |
+          set -euo pipefail
+          cd /tmp/v5131chartmenu
+          rm -rf app/build .gradle backend/.pytest_cache backend/app/__pycache__ backend/tests/__pycache__ .kotlin
+          zip -qr "$GITHUB_WORKSPACE/V5.1.31-Kaynak-Kod.zip" . -x '*.pyc' '*/__pycache__/*'
+          unzip -t "$GITHUB_WORKSPACE/V5.1.31-Kaynak-Kod.zip" > "$GITHUB_WORKSPACE/source-zip-test.txt"
+          sha256sum "$GITHUB_WORKSPACE/V5.1.31-Kaynak-Kod.zip" > "$GITHUB_WORKSPACE/V5.1.31-Kaynak-Kod.zip.sha256"
+
+      - name: Upload APK and source
+        uses: actions/upload-artifact@v4
+        with:
+          name: V5.1.31-chart-time-menu
+          path: |
+            V5.1.31.apk
+            V5.1.31.apk.sha256
+            V5.1.31-Kaynak-Kod.zip
+            V5.1.31-Kaynak-Kod.zip.sha256
+            backend-tests.txt
+            android-unit-tests.txt
+            android-lint.txt
+            apk-badging.txt
+            apk-unzip-test.txt
+            source-zip-test.txt
+          if-no-files-found: error
