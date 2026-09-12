@@ -4,7 +4,7 @@ on:
   push:
     branches: [ main ]
     paths:
-      - 'overlays/v5133_viop/**'
+      - 'build_payload/v5133_viop_autocomplete_overlay.b64'
       - '.github/workflows/build-v5133-viop-autocomplete.yml'
   workflow_dispatch:
 
@@ -48,7 +48,9 @@ jobs:
       - name: Apply VIOP autocomplete overlay and bump version
         run: |
           set -euo pipefail
-          cp -R overlays/v5133_viop/. /tmp/v5133/
+          base64 -d build_payload/v5133_viop_autocomplete_overlay.b64 > /tmp/v5133-viop-overlay.tar.xz
+          xz -t /tmp/v5133-viop-overlay.tar.xz
+          tar -xJf /tmp/v5133-viop-overlay.tar.xz -C /tmp/v5133
           python - <<'PY'
           from pathlib import Path
           p=Path('/tmp/v5133/app/build.gradle.kts')
@@ -69,6 +71,7 @@ jobs:
           grep -F 'holder.last.text' app/src/main/java/tr/borsatakip/v5/ui/BistWatchlistAdapter.kt
           grep -F 'holder.bid.text' app/src/main/java/tr/borsatakip/v5/ui/BistWatchlistAdapter.kt
           grep -F 'holder.ask.text' app/src/main/java/tr/borsatakip/v5/ui/BistWatchlistAdapter.kt
+          grep -F 'holder.change.text' app/src/main/java/tr/borsatakip/v5/ui/BistWatchlistAdapter.kt
 
       - name: Backend tests
         working-directory: /tmp/v5133
