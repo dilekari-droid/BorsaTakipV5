@@ -21,6 +21,24 @@ data class TechnicalSnapshot(
     val recommendation:Double? = null
 )
 
+data class LrcTechnicalSnapshot(
+    val period:Int = 100,
+    val slope:Double,
+    val normalizedSlopePct:Double?,
+    val trend:String,
+    val pearsonR:Double,
+    val upper1:Double,
+    val lower1:Double,
+    val upper2:Double,
+    val lower2:Double,
+    val upper3:Double,
+    val lower3:Double,
+    val channelPosition:String,
+    val channelWidth:Double,
+    val channelWidthPct:Double?,
+    val distanceToMidline:Double
+)
+
 data class Opportunity(
     val symbol:String,
     val companyName:String?,
@@ -39,9 +57,12 @@ data class Opportunity(
     val dataTimestamp:Long,
     val candles:List<Candle>,
     val technical:TechnicalSnapshot,
+    val lrc:LrcTechnicalSnapshot? = null,
     val scoreBreakdown:List<String> = emptyList(),
-    val dataConfidenceScore:Int = 100,
-    val dataConfidenceLabel:String = "Yüksek",
+    val dataConfidenceScore:Int = 0,
+    val dataConfidenceLabel:String = "Bilinmiyor",
+    val analysisMode:String = "ARAŞTIRMA",
+    val signalEligibleRealtime:Boolean = false,
     val finalSignalScore:Int = score,
     val volumeDirectionLabel:String = "Yön verisi yok",
     val isRealtime:Boolean = false,
