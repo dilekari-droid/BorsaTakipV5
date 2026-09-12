@@ -1,0 +1,181 @@
+--- v5131_base/app/src/main/java/tr/borsatakip/v5/analysis/ChartTimeframe.kt	2026-09-12 12:27:08.000000000 +0000
++++ v5131_latest/app/src/main/java/tr/borsatakip/v5/analysis/ChartTimeframe.kt	2026-09-12 13:54:27.308438822 +0000
+@@ -13,6 +13,7 @@
+     ONE_MIN("1 DK", 1, 2L * 24 * 60 * 60 * 1000),
+     THREE_MIN("3 DK", 1, 6L * 24 * 60 * 60 * 1000, aggregateMinutes = 3),
+     FIVE_MIN("5 DK", 5, 12L * 24 * 60 * 60 * 1000),
++    FIFTEEN_MIN("15 DK", 5, 30L * 24 * 60 * 60 * 1000, aggregateMinutes = 15),
+     ONE_HOUR("1 SAAT", 60, 120L * 24 * 60 * 60 * 1000),
+     ONE_DAY("1 GÜN", null, null, daily = true),
+     ALL_TIME("TÜM ZAMANLAR", null, null, daily = true, maximumRange = true)
+--- v5131_base/app/src/main/java/tr/borsatakip/v5/ui/StockDetailActivity.kt	2026-09-12 12:27:08.000000000 +0000
++++ v5131_latest/app/src/main/java/tr/borsatakip/v5/ui/StockDetailActivity.kt	2026-09-12 13:54:27.308697192 +0000
+@@ -5,6 +5,7 @@
+ import android.os.SystemClock
+ import android.widget.Button
+ import android.widget.TextView
++import androidx.appcompat.widget.PopupMenu
+ import androidx.lifecycle.lifecycleScope
+ import kotlinx.coroutines.Dispatchers
+ import kotlinx.coroutines.Job
+@@ -59,12 +60,7 @@
+ 
+         chart.signalPrice = x.price
+         chart.signalTime = x.signalGeneratedAt.takeIf { it > 0L } ?: x.exchangeTimestamp.takeIf { it > 0L }
+-        bindTimeframe(R.id.btnTf1m, ChartTimeframe.ONE_MIN)
+-        bindTimeframe(R.id.btnTf3m, ChartTimeframe.THREE_MIN)
+-        bindTimeframe(R.id.btnTf5m, ChartTimeframe.FIVE_MIN)
+-        bindTimeframe(R.id.btnTf1h, ChartTimeframe.ONE_HOUR)
+-        bindTimeframe(R.id.btnTf1d, ChartTimeframe.ONE_DAY)
+-        bindTimeframe(R.id.btnTfAll, ChartTimeframe.ALL_TIME)
++        bindTimeframeMenu()
+         bindChartToggles()
+         findViewById<Button>(R.id.chartZoomIn).setOnClickListener { chart.zoomIn() }
+         findViewById<Button>(R.id.chartZoomOut).setOnClickListener { chart.zoomOut() }
+@@ -76,8 +72,31 @@
+         findViewById<Button>(R.id.btnSignalScreen).setOnClickListener { startActivity(Intent(this, SignalHistoryActivity::class.java)) }
+     }
+ 
+-    private fun bindTimeframe(id: Int, timeframe: ChartTimeframe) {
+-        findViewById<Button>(id).setOnClickListener { loadTimeframe(timeframe) }
++    private fun bindTimeframeMenu() {
++        val button = findViewById<Button>(R.id.btnTimeframeMenu)
++        button.text = "◷ Zaman ▼"
++        button.setOnClickListener { anchor ->
++            val popup = PopupMenu(this, anchor)
++            val options = listOf(
++                ChartTimeframe.ONE_MIN,
++                ChartTimeframe.THREE_MIN,
++                ChartTimeframe.FIVE_MIN,
++                ChartTimeframe.FIFTEEN_MIN,
++                ChartTimeframe.ONE_HOUR,
++                ChartTimeframe.ONE_DAY,
++                ChartTimeframe.ALL_TIME
++            )
++            options.forEachIndexed { index, timeframe ->
++                popup.menu.add(0, index + 1, index, "◷  ${timeframe.label}")
++            }
++            popup.setOnMenuItemClickListener { item ->
++                val timeframe = options.getOrNull(item.itemId - 1) ?: return@setOnMenuItemClickListener false
++                button.text = "◷ ${timeframe.label} ▼"
++                loadTimeframe(timeframe)
++                true
++            }
++            popup.show()
++        }
+     }
+ 
+     private fun bindChartToggles() {
+--- v5131_base/app/src/main/res/layout/activity_stock_detail.xml	2026-09-12 12:27:08.000000000 +0000
++++ v5131_latest/app/src/main/res/layout/activity_stock_detail.xml	2026-09-12 13:54:27.308897435 +0000
+@@ -25,43 +25,74 @@
+             <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="Teknik Göstergeler" android:textColor="@color/blue" android:textStyle="bold" />
+             <TextView android:id="@+id/technicalDetails" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:background="@drawable/bg_card" android:padding="14dp" android:textColor="@color/text_primary" android:lineSpacingExtra="4dp" />
+ 
+-            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="Gerçek OHLCV Grafik" android:textColor="@color/blue" android:textStyle="bold" />
+-            <HorizontalScrollView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:scrollbars="none">
+-                <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal">
+-                    <Button android:id="@+id/btnTf1m" android:layout_width="72dp" android:layout_height="42dp" android:text="1 DK" />
+-                    <Button android:id="@+id/btnTf3m" android:layout_width="72dp" android:layout_height="42dp" android:text="3 DK" />
+-                    <Button android:id="@+id/btnTf5m" android:layout_width="72dp" android:layout_height="42dp" android:text="5 DK" />
+-                    <Button android:id="@+id/btnTf1h" android:layout_width="82dp" android:layout_height="42dp" android:text="1 SAAT" />
+-                    <Button android:id="@+id/btnTf1d" android:layout_width="76dp" android:layout_height="42dp" android:text="1 GÜN" />
+-                    <Button android:id="@+id/btnTfAll" android:layout_width="130dp" android:layout_height="42dp" android:text="TÜM ZAMANLAR" />
+-                </LinearLayout>
+-            </HorizontalScrollView>
++            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="Gerçek OHLCV Grafik" android:textColor="@color/blue" android:textStyle="bold" android:textSize="18sp" />
+ 
+             <HorizontalScrollView
+                 android:layout_width="match_parent"
+                 android:layout_height="wrap_content"
+-                android:layout_marginTop="6dp"
++                android:layout_marginTop="8dp"
++                android:clipToPadding="false"
++                android:fillViewport="false"
+                 android:scrollbars="none">
+                 <LinearLayout
+                     android:layout_width="wrap_content"
+                     android:layout_height="wrap_content"
+-                    android:orientation="horizontal">
+-                    <Button android:id="@+id/toggleEma20" style="@style/ScanFilterButton" android:text="EMA20 ✓" />
+-                    <Button android:id="@+id/toggleEma50" style="@style/ScanFilterButton" android:text="EMA50 ✓" android:layout_marginStart="4dp" />
+-                    <Button android:id="@+id/toggleEma200" style="@style/ScanFilterButton" android:text="EMA200 ✓" android:layout_marginStart="4dp" />
+-                    <Button android:id="@+id/toggleBollinger" style="@style/ScanFilterButton" android:text="BOLLINGER ✓" android:layout_marginStart="4dp" />
+-                    <Button android:id="@+id/toggleTrend" style="@style/ScanFilterButton" android:text="TREND ✓" android:layout_marginStart="4dp" />
+-                    <Button android:id="@+id/toggleChannel" style="@style/ScanFilterButton" android:text="KANAL ✓" android:layout_marginStart="4dp" />
++                    android:orientation="horizontal"
++                    android:gravity="center_vertical">
++                    <Button
++                        android:id="@+id/chartZoomIn"
++                        android:layout_width="52dp"
++                        android:layout_height="48dp"
++                        android:minWidth="0dp"
++                        android:minHeight="48dp"
++                        android:text="+"
++                        android:textSize="24sp"
++                        android:textStyle="bold" />
++                    <Button
++                        android:id="@+id/chartZoomOut"
++                        android:layout_width="52dp"
++                        android:layout_height="48dp"
++                        android:layout_marginStart="6dp"
++                        android:minWidth="0dp"
++                        android:minHeight="48dp"
++                        android:text="−"
++                        android:textSize="24sp"
++                        android:textStyle="bold" />
++                    <Button
++                        android:id="@+id/btnTimeframeMenu"
++                        android:layout_width="wrap_content"
++                        android:layout_height="48dp"
++                        android:layout_marginStart="8dp"
++                        android:minWidth="118dp"
++                        android:minHeight="48dp"
++                        android:paddingStart="14dp"
++                        android:paddingEnd="14dp"
++                        android:maxLines="1"
++                        android:ellipsize="none"
++                        android:text="◷ Zaman ▼"
++                        android:textSize="14sp"
++                        android:textStyle="bold" />
++                    <Button android:id="@+id/toggleEma20" style="@style/ScanFilterButton" android:text="EMA20 ✓" android:layout_marginStart="8dp" android:minHeight="48dp" />
++                    <Button android:id="@+id/toggleEma50" style="@style/ScanFilterButton" android:text="EMA50 ✓" android:layout_marginStart="4dp" android:minHeight="48dp" />
++                    <Button android:id="@+id/toggleEma200" style="@style/ScanFilterButton" android:text="EMA200 ✓" android:layout_marginStart="4dp" android:minHeight="48dp" />
++                    <Button android:id="@+id/toggleBollinger" style="@style/ScanFilterButton" android:text="BOLLINGER ✓" android:layout_marginStart="4dp" android:minHeight="48dp" />
++                    <Button android:id="@+id/toggleTrend" style="@style/ScanFilterButton" android:text="TREND ✓" android:layout_marginStart="4dp" android:minHeight="48dp" />
++                    <Button android:id="@+id/toggleChannel" style="@style/ScanFilterButton" android:text="KANAL ✓" android:layout_marginStart="4dp" android:minHeight="48dp" />
+                 </LinearLayout>
+             </HorizontalScrollView>
+ 
+             <FrameLayout android:layout_width="match_parent" android:layout_height="600dp" android:layout_marginTop="8dp">
+                 <tr.borsatakip.v5.ui.PriceChartView android:id="@+id/chart" android:layout_width="match_parent" android:layout_height="match_parent" android:background="@drawable/bg_card" android:padding="8dp" />
+-                <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="vertical" android:layout_gravity="end|top" android:padding="6dp">
+-                    <Button android:id="@+id/chartZoomIn" android:layout_width="48dp" android:layout_height="48dp" android:minWidth="0dp" android:text="+" />
+-                    <Button android:id="@+id/chartZoomOut" android:layout_width="48dp" android:layout_height="48dp" android:minWidth="0dp" android:text="−" />
+-                    <Button android:id="@+id/chartFullscreen" android:layout_width="56dp" android:layout_height="48dp" android:minWidth="0dp" android:text="⛶" />
+-                </LinearLayout>
++                <Button
++                    android:id="@+id/chartFullscreen"
++                    android:layout_width="52dp"
++                    android:layout_height="48dp"
++                    android:layout_gravity="end|top"
++                    android:layout_margin="8dp"
++                    android:minWidth="0dp"
++                    android:minHeight="48dp"
++                    android:text="⛶"
++                    android:textSize="18sp" />
+             </FrameLayout>
+             <TextView android:id="@+id/chartStatus" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:textColor="@color/text_secondary" android:textSize="12sp" />
+             <TextView android:id="@+id/trendInfoPanel" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:background="@drawable/bg_card" android:padding="12dp" android:textColor="@color/text_primary" android:textSize="12sp" android:lineSpacingExtra="2dp" />
+--- v5131_base/app/src/test/java/tr/borsatakip/v5/analysis/ChartTimeframeTrendTest.kt	2026-09-11 21:01:57.000000000 +0000
++++ v5131_latest/app/src/test/java/tr/borsatakip/v5/analysis/ChartTimeframeTrendTest.kt	2026-09-12 13:54:27.308977395 +0000
+@@ -21,6 +21,9 @@
+         assertEquals(1, ChartTimeframe.THREE_MIN.requestIntervalMinutes)
+         assertEquals(3, ChartTimeframe.THREE_MIN.aggregateMinutes)
+         assertEquals(5, ChartTimeframe.FIVE_MIN.requestIntervalMinutes)
++        assertEquals("15 DK", ChartTimeframe.FIFTEEN_MIN.label)
++        assertEquals(5, ChartTimeframe.FIFTEEN_MIN.requestIntervalMinutes)
++        assertEquals(15, ChartTimeframe.FIFTEEN_MIN.aggregateMinutes)
+         assertEquals(60, ChartTimeframe.ONE_HOUR.requestIntervalMinutes)
+         assertTrue(ChartTimeframe.ONE_DAY.daily)
+         assertTrue(ChartTimeframe.ALL_TIME.maximumRange)
