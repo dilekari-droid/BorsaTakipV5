@@ -1,0 +1,116 @@
+name: Build V5.2.1 Research Foundation APK
+
+on:
+  push:
+    branches:
+      - v5.2.1-build
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 35
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Restore verified V5.1.50 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          lines = Path('.github/workflows/build-v5150-chatgpt.yml').read_text().splitlines()
+          targets = ['Restore verified V5.1.49 source', 'Apply V5.1.50 home opportunity entry patch']
+          for n, target in enumerate(targets):
+              marker = next(i for i, line in enumerate(lines) if line.strip() == f'- name: {target}')
+              run_line = next(i for i in range(marker, len(lines)) if lines[i].strip() == 'run: |')
+              out = []
+              for line in lines[run_line + 1:]:
+                  if line.startswith('      - name:'):
+                      break
+                  out.append(line[10:] if line.startswith('          ') else line)
+              Path(f'/tmp/v5150-step-{n}.sh').write_text('\n'.join(out) + '\n')
+          PY
+          for f in /tmp/v5150-step-*.sh; do bash "$f"; done
+          grep -Fq 'versionName = "5.1.50"' build_v5135/app/build.gradle.kts
+          grep -Fq 'versionCode = 100' build_v5135/app/build.gradle.kts
+
+      - name: Apply V5.2.1 research foundation patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat build_payload/v521.patch.xz.b64.part00 build_payload/v521.patch.xz.b64.part01 > /tmp/v521.clean.b64
+          test "$(wc -c < /tmp/v521.clean.b64)" -eq 11852
+          echo "b0c13b67a967217fa524cd71c9ca434ed9ce6b5ea7d8b5f31682ed0a2f172b40  /tmp/v521.clean.b64" | sha256sum -c -
+          base64 --decode /tmp/v521.clean.b64 > /tmp/v521.patch.xz
+          test "$(wc -c < /tmp/v521.patch.xz)" -eq 8888
+          echo "26bd9a7eea1be136bc7ad599a578658cd048ccfec6bc249cb442e277eebb4801  /tmp/v521.patch.xz" | sha256sum -c -
+          xz -dc /tmp/v521.patch.xz > /tmp/v521.patch
+          test "$(wc -c < /tmp/v521.patch)" -eq 42055
+          echo "0e08fb429835088b0c7bbc8b34b6abe2cf6482dadd7978c59bb49d0f229115e3  /tmp/v521.patch" | sha256sum -c -
+          cd build_v5135
+          patch --batch -p1 < /tmp/v521.patch
+          grep -Fq 'versionName = "5.2.1"' app/build.gradle.kts
+          grep -Fq 'versionCode = 102' app/build.gradle.kts
+          test -f app/src/main/java/tr/borsatakip/v5/research/ResearchModels.kt
+          test -f app/src/main/java/tr/borsatakip/v5/research/ResearchPolicies.kt
+          test -f app/src/main/java/tr/borsatakip/v5/research/ResearchFoundationEngine.kt
+          test -f app/src/main/java/tr/borsatakip/v5/data/ResearchApiClient.kt
+          test -f app/src/main/java/tr/borsatakip/v5/data/ResearchFoundationRepository.kt
+
+      - name: Run Android unit tests and build debug APK
+        working-directory: build_v5135
+        run: gradle :app:testDebugUnitTest :app:assembleDebug --stacktrace --no-daemon
+
+      - name: Verify and prepare V5.2.1 APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=build_v5135/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          python - <<'PY'
+          import zipfile
+          apk='build_v5135/app/build/outputs/apk/debug/app-debug.apk'
+          with zipfile.ZipFile(apk) as z:
+              assert z.testzip() is None
+              names=set(z.namelist())
+              assert 'AndroidManifest.xml' in names
+              assert 'classes.dex' in names
+          print('APK ZIP/Manifest/classes.dex OK')
+          PY
+          AAPT=$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)
+          test -x "$AAPT"
+          "$AAPT" dump badging "$APK" > /tmp/v521-badging.txt
+          grep -Fq "package: name='tr.borsatakip.v5' versionCode='102' versionName='5.2.1'" /tmp/v521-badging.txt
+          mkdir -p dist
+          cp "$APK" dist/BorsaTakipV5.2.1-RESEARCH-FOUNDATION-debug.apk
+          sha256sum dist/BorsaTakipV5.2.1-RESEARCH-FOUNDATION-debug.apk > dist/BorsaTakipV5.2.1-RESEARCH-FOUNDATION-debug.apk.sha256
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BorsaTakipV5.2.1-RESEARCH-FOUNDATION-debug-apk
+          path: |
+            dist/BorsaTakipV5.2.1-RESEARCH-FOUNDATION-debug.apk
+            dist/BorsaTakipV5.2.1-RESEARCH-FOUNDATION-debug.apk.sha256
+          if-no-files-found: error
+          retention-days: 7
