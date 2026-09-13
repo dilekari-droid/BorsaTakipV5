@@ -93,8 +93,15 @@ jobs:
           xz -dc /tmp/v521rev1.patch.xz > /tmp/v521rev1.patch
           test "$(wc -c < /tmp/v521rev1.patch)" -eq 80037
           echo "7e50000990bc3b6d8049ae5cf319a2f3fe5da4d13dc769562f0404a2dffd16ab  /tmp/v521rev1.patch" | sha256sum -c -
+          grep -Fq 'v521orig/backend/app/main.py' /tmp/v521rev1.patch
+          awk '/^diff -ruN .*v521orig\/backend\// {exit} {print}' /tmp/v521rev1.patch > /tmp/v521rev1-android.patch
+          test -s /tmp/v521rev1-android.patch
+          if grep -Fq 'v521orig/backend/' /tmp/v521rev1-android.patch; then
+            echo 'Backend content unexpectedly remained in Android-only patch.'
+            exit 1
+          fi
           cd build_v5135
-          patch --batch -p1 < /tmp/v521rev1.patch
+          patch --batch -p1 < /tmp/v521rev1-android.patch
           grep -Fq 'versionName = "5.2.1"' app/build.gradle.kts
           grep -Fq 'versionCode = 103' app/build.gradle.kts
           grep -Fq 'originSourceId = document.originSourceId' app/src/main/java/tr/borsatakip/v5/research/ResearchFoundationEngine.kt
@@ -129,7 +136,6 @@ jobs:
           "$AAPT" dump badging "$APK" > /tmp/v521rev1-badging.txt
           grep -Fq "package: name='tr.borsatakip.v5' versionCode='103' versionName='5.2.1'" /tmp/v521rev1-badging.txt
           "$APKSIGNER" verify --verbose --print-certs "$APK" > /tmp/v521rev1-signature.txt
-          grep -Fq 'Verifies' /tmp/v521rev1-signature.txt || cat /tmp/v521rev1-signature.txt
           mkdir -p dist
           cp "$APK" dist/BorsaTakipV5.2.1-RESEARCH-FOUNDATION-REV1-debug.apk
           sha256sum dist/BorsaTakipV5.2.1-RESEARCH-FOUNDATION-REV1-debug.apk > dist/BorsaTakipV5.2.1-RESEARCH-FOUNDATION-REV1-debug.apk.sha256
