@@ -1,0 +1,118 @@
+name: Build V5.1.46 Forward Semantics APK
+
+on:
+  push:
+    branches:
+      - chatgpt/build-v5146-forward-semantics
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 35
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Restore verified V5.1.45 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          lines = Path('.github/workflows/build-v5145-chatgpt.yml').read_text().splitlines()
+          targets = [
+              'Restore verified V5.1.44 source',
+              'Apply verified V5.1.45 integration closeout patch',
+          ]
+          for n, target in enumerate(targets):
+              marker = next(i for i, line in enumerate(lines) if line.strip() == f'- name: {target}')
+              run_line = next(i for i in range(marker, len(lines)) if lines[i].strip() == 'run: |')
+              out = []
+              for line in lines[run_line + 1:]:
+                  if line.startswith('      - name:'):
+                      break
+                  out.append(line[10:] if line.startswith('          ') else line)
+              Path(f'/tmp/v5145-step-{n}.sh').write_text('\n'.join(out) + '\n')
+          PY
+          for f in /tmp/v5145-step-*.sh; do bash "$f"; done
+          grep -Fq 'versionName = "5.1.45"' build_v5135/app/build.gradle.kts
+          grep -Fq 'versionCode = 95' build_v5135/app/build.gradle.kts
+
+      - name: Apply verified V5.1.46 forward semantics patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(wc -c < build_payload/v5146.patch.xz.b64)" -eq 6153
+          echo "f602ebefc92f6ec2caa48a61c894f96e132b79c59bd1ed4c944d869a33bd3d4b  build_payload/v5146.patch.xz.b64" | sha256sum -c -
+          base64 --decode build_payload/v5146.patch.xz.b64 > /tmp/v5146.patch.xz
+          test "$(wc -c < /tmp/v5146.patch.xz)" -eq 4612
+          echo "9dd6c2f2edaaa312515dd0cb0466e32b792ff2eeb13a88f2434d9d1c30f3c6af  /tmp/v5146.patch.xz" | sha256sum -c -
+          xz -dc /tmp/v5146.patch.xz > /tmp/v5146.patch
+          test "$(wc -c < /tmp/v5146.patch)" -eq 19408
+          echo "6d6dc4471b46dbb9452fe1975b87b8844bd5dee4a148bd596e10b5de4b07c722  /tmp/v5146.patch" | sha256sum -c -
+          cd build_v5135
+          patch --batch -p1 < /tmp/v5146.patch
+          grep -Fq 'versionName = "5.1.46"' app/build.gradle.kts
+          grep -Fq 'versionCode = 96' app/build.gradle.kts
+          test -f CHANGELOG_V5.1.46_FORWARD_SEMANTICS.md
+          grep -Fq 'it.timestamp > entryTime' app/src/main/java/tr/borsatakip/v5/analysis/TradeForwardEngine.kt
+          grep -Fq 'TARGET1_THEN_STOP' app/src/main/java/tr/borsatakip/v5/analysis/TradeForwardEngine.kt
+          grep -Fq 'target1Time' app/src/main/java/tr/borsatakip/v5/data/SignalHistoryStore.kt
+          grep -Fq 'entryCandleIsNeverCountedAsFutureOutcome' app/src/test/java/tr/borsatakip/v5/analysis/TradeForwardEngineTest.kt
+          grep -Fq 'target1ThenStopIsExplicitlyRecorded' app/src/test/java/tr/borsatakip/v5/analysis/TradeForwardEngineTest.kt
+
+      - name: Run backend tests when backend payload is present
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -d build_v5135/backend ]; then
+            (cd build_v5135/backend && python -m pytest -q)
+          else
+            echo "Backend payload not present; Android build remains authoritative."
+          fi
+
+      - name: Run Android unit tests and build debug APK
+        working-directory: build_v5135
+        run: gradle :app:testDebugUnitTest :app:assembleDebug --stacktrace --no-daemon
+
+      - name: Verify and prepare APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=build_v5135/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          unzip -l "$APK" | grep -q 'AndroidManifest.xml'
+          unzip -l "$APK" | grep -q 'classes.dex'
+          mkdir -p dist
+          cp "$APK" dist/BorsaTakipV5.1.46-FORWARD-SEMANTICS-debug.apk
+          sha256sum dist/BorsaTakipV5.1.46-FORWARD-SEMANTICS-debug.apk > dist/BorsaTakipV5.1.46-FORWARD-SEMANTICS-debug.apk.sha256
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BorsaTakipV5.1.46-FORWARD-SEMANTICS-debug-apk
+          path: |
+            dist/BorsaTakipV5.1.46-FORWARD-SEMANTICS-debug.apk
+            dist/BorsaTakipV5.1.46-FORWARD-SEMANTICS-debug.apk.sha256
+          if-no-files-found: error
+          retention-days: 7
