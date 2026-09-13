@@ -68,8 +68,10 @@ jobs:
           xz -dc /tmp/v5148.patch.xz > /tmp/v5148.patch
           test "$(wc -c < /tmp/v5148.patch)" -eq 64042
           echo "99d623bc08d3457893afa0e2649fff5be2b838053c03159d1bd364217b48f89e  /tmp/v5148.patch" | sha256sum -c -
+          echo "f150e800cd13316134b9219b88ab2b3b8cd8ca9ae90d152493b71a63add8f5ae  build_payload/v5148-testfix.patch" | sha256sum -c -
           cd build_v5135
           patch --batch -p1 < /tmp/v5148.patch
+          patch --batch -p1 < ../build_payload/v5148-testfix.patch
           grep -Fq 'versionName = "5.1.48"' app/build.gradle.kts
           grep -Fq 'versionCode = 98' app/build.gradle.kts
           test -f CHANGELOG_V5.1.48_ENSEMBLE_DYNAMIC_WEIGHTS.md
@@ -80,6 +82,8 @@ jobs:
           grep -Fq 'MAX_STEP = 0.05' app/src/main/java/tr/borsatakip/v5/analysis/StrategyOptimizationEngine.kt
           grep -Fq 'FALLBACK_COMBINED' app/src/main/java/tr/borsatakip/v5/data/SignalHistoryRecorder.kt
           grep -Fq 'VERIFIED_HISTORICAL' app/src/main/java/tr/borsatakip/v5/data/ViopStrategyHistoryStore.kt
+          grep -Fq 'assertEquals(87, StrategyOptimizationEngine.adjustedRanking(80, 100))' app/src/test/java/tr/borsatakip/v5/analysis/StrategyOptimizationEngineTest.kt
+          grep -Fq 'assertEquals(58, StrategyOptimizationEngine.adjustedRanking(50, 100))' app/src/test/java/tr/borsatakip/v5/analysis/StrategyOptimizationEngineTest.kt
 
       - name: Run backend tests when pytest is available
         shell: bash
