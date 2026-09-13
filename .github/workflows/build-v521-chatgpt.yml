@@ -1,4 +1,4 @@
-name: Build V5.2.1 Research Foundation REV1 APK
+name: Build V5.2.2 APK
 
 on:
   push:
@@ -109,11 +109,21 @@ jobs:
           grep -Fq 'asOfTime: Long? = null' app/src/main/java/tr/borsatakip/v5/data/ResearchApiClient.kt
           test -f app/src/test/java/tr/borsatakip/v5/research/ResearchFoundationSecurityTest.kt
 
+      - name: Set V5.2.2 release version
+        shell: bash
+        working-directory: build_v5135
+        run: |
+          set -euo pipefail
+          sed -i 's/versionCode = 103/versionCode = 104/' app/build.gradle.kts
+          sed -i 's/versionName = "5.2.1"/versionName = "5.2.2"/' app/build.gradle.kts
+          grep -Fq 'versionCode = 104' app/build.gradle.kts
+          grep -Fq 'versionName = "5.2.2"' app/build.gradle.kts
+
       - name: Run Android unit tests and build debug APK
         working-directory: build_v5135
         run: gradle :app:testDebugUnitTest :app:assembleDebug --stacktrace --no-daemon
 
-      - name: Verify and prepare V5.2.1 REV1 APK
+      - name: Verify and prepare V5.2.2 APK
         shell: bash
         run: |
           set -euo pipefail
@@ -133,23 +143,23 @@ jobs:
           APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)
           test -x "$AAPT"
           test -x "$APKSIGNER"
-          "$AAPT" dump badging "$APK" > /tmp/v521rev1-badging.txt
-          grep -Fq "package: name='tr.borsatakip.v5' versionCode='103' versionName='5.2.1'" /tmp/v521rev1-badging.txt
-          "$APKSIGNER" verify --verbose --print-certs "$APK" > /tmp/v521rev1-signature.txt
+          "$AAPT" dump badging "$APK" > /tmp/v522-badging.txt
+          grep -Fq "package: name='tr.borsatakip.v5' versionCode='104' versionName='5.2.2'" /tmp/v522-badging.txt
+          "$APKSIGNER" verify --verbose --print-certs "$APK" > /tmp/v522-signature.txt
           mkdir -p dist
-          cp "$APK" dist/BorsaTakipV5.2.1-RESEARCH-FOUNDATION-REV1-debug.apk
-          sha256sum dist/BorsaTakipV5.2.1-RESEARCH-FOUNDATION-REV1-debug.apk > dist/BorsaTakipV5.2.1-RESEARCH-FOUNDATION-REV1-debug.apk.sha256
-          cp /tmp/v521rev1-badging.txt dist/V5.2.1-REV1-badging.txt
-          cp /tmp/v521rev1-signature.txt dist/V5.2.1-REV1-signature.txt
+          cp "$APK" dist/BorsaTakipV5.2.2-debug.apk
+          sha256sum dist/BorsaTakipV5.2.2-debug.apk > dist/BorsaTakipV5.2.2-debug.apk.sha256
+          cp /tmp/v522-badging.txt dist/V5.2.2-badging.txt
+          cp /tmp/v522-signature.txt dist/V5.2.2-signature.txt
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: BorsaTakipV5.2.1-RESEARCH-FOUNDATION-REV1-debug-apk
+          name: BorsaTakipV5.2.2-debug-apk
           path: |
-            dist/BorsaTakipV5.2.1-RESEARCH-FOUNDATION-REV1-debug.apk
-            dist/BorsaTakipV5.2.1-RESEARCH-FOUNDATION-REV1-debug.apk.sha256
-            dist/V5.2.1-REV1-badging.txt
-            dist/V5.2.1-REV1-signature.txt
+            dist/BorsaTakipV5.2.2-debug.apk
+            dist/BorsaTakipV5.2.2-debug.apk.sha256
+            dist/V5.2.2-badging.txt
+            dist/V5.2.2-signature.txt
           if-no-files-found: error
           retention-days: 7
