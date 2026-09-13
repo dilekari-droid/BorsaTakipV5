@@ -1,0 +1,142 @@
+name: Build V5.1.39 VIOP Search Fix APK
+
+on:
+  push:
+    branches:
+      - chatgpt/build-v5139-viop-search-fix
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 35
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Restore verified source and apply V5.1.36 through V5.1.39 patches
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf build_v5135 /tmp/v5135_source.tar.xz /tmp/v5135_source.b64 /tmp/v5136.patch.xz /tmp/v5136.patch /tmp/v5137.patch.xz /tmp/v5137.patch /tmp/v5138.patch.xz /tmp/v5138.patch /tmp/v5138.patch.xz.b64 /tmp/v5139.patch.xz /tmp/v5139.patch
+          mkdir -p build_v5135
+          cat \
+            build_payload/v5135_chatgpt_source_part_00.b64 \
+            build_payload/v5135_chatgpt_source_part_01a.b64 \
+            build_payload/v5135_chatgpt_source_part_01b.b64 \
+            build_payload/v5135_chatgpt_source_part_01c.b64 \
+            build_payload/v5135_chatgpt_source_part_02.b64 \
+            build_payload/v5135_chatgpt_source_part_03.b64 \
+            build_payload/v5135_chatgpt_source_part_04.b64 \
+            build_payload/v5135_chatgpt_source_part_05.b64 \
+            build_payload/v5135_chatgpt_source_part_06.b64 \
+            build_payload/v5135_chatgpt_source_part_07.b64 \
+            > /tmp/v5135_source.b64
+          test "$(wc -c < /tmp/v5135_source.b64)" -eq 134444
+          echo "dc7f579dd5119bb925be2bdf382ec689da2c4cea7ea1a316335acdda029a5c94  /tmp/v5135_source.b64" | sha256sum -c -
+          base64 --decode /tmp/v5135_source.b64 > /tmp/v5135_source.tar.xz
+          echo "845bb7c3dba09142119ad507fb05cd9386e2a0ffb266f197fd8544f5cee087b6  /tmp/v5135_source.tar.xz" | sha256sum -c -
+          tar -xJf /tmp/v5135_source.tar.xz -C build_v5135
+
+          test "$(wc -c < build_payload/v5136.patch.xz.b64)" -eq 12664
+          echo "341adc7c34713ae95176b8e7fbfb21d40fa0177f1d1822c74497d6f41ee0758b  build_payload/v5136.patch.xz.b64" | sha256sum -c -
+          base64 --decode build_payload/v5136.patch.xz.b64 > /tmp/v5136.patch.xz
+          echo "fdc53b2a361eb2779ee31a1825d3b951c37bd18eaa4f1b51f04035684b06a921  /tmp/v5136.patch.xz" | sha256sum -c -
+          xz -dc /tmp/v5136.patch.xz > /tmp/v5136.patch
+          test "$(wc -c < /tmp/v5136.patch)" -eq 38502
+          echo "4b6d891a81a3ec90215f725fc54150078e928e79934c72a84dc66dce112d2b11  /tmp/v5136.patch" | sha256sum -c -
+          cd build_v5135
+          patch -p1 < /tmp/v5136.patch
+          grep -Fq 'versionName = "5.1.36"' app/build.gradle.kts
+          grep -Fq 'versionCode = 86' app/build.gradle.kts
+          cd ..
+
+          test "$(wc -c < build_payload/v5137-ui.patch.xz.b64)" -eq 6872
+          echo "6a7ddd145d319b15f81ab8cf9d767f146f0eabd9b149deb580658be3b7befe9a  build_payload/v5137-ui.patch.xz.b64" | sha256sum -c -
+          base64 --decode build_payload/v5137-ui.patch.xz.b64 > /tmp/v5137.patch.xz
+          echo "16638f1771e9f7d69c498ece065b6ab31cb07a7ae44cb6942ede318345186046  /tmp/v5137.patch.xz" | sha256sum -c -
+          xz -dc /tmp/v5137.patch.xz > /tmp/v5137.patch
+          test "$(wc -c < /tmp/v5137.patch)" -eq 47210
+          echo "1b1144c228c1d8e3a0ba5adc2ba88afa4176d3db31bbed8be8b9c8d327ffe9cb  /tmp/v5137.patch" | sha256sum -c -
+          cd build_v5135
+          patch -p1 < /tmp/v5137.patch
+          grep -Fq 'versionName = "5.1.37"' app/build.gradle.kts
+          grep -Fq 'versionCode = 87' app/build.gradle.kts
+          cd ..
+
+          cat \
+            build_payload/v5138_patch_part_00.b64 \
+            build_payload/v5138_patch_part_01.b64 \
+            build_payload/v5138_patch_part_02.b64 \
+            build_payload/v5138_patch_part_03.b64 \
+            build_payload/v5138_patch_part_04.b64 \
+            > /tmp/v5138.patch.xz.b64
+          test "$(wc -c < /tmp/v5138.patch.xz.b64)" -eq 12812
+          echo "e7ea1a94b2e6cd247d8cde5b8b50d60ae95bc7813c6c76c926bc0d311435ff03  /tmp/v5138.patch.xz.b64" | sha256sum -c -
+          base64 --decode /tmp/v5138.patch.xz.b64 > /tmp/v5138.patch.xz
+          echo "9ae6ebe7416ed5e25cefd862f8542a270388fc73b90a730bdd5b57fbcccd0ee2  /tmp/v5138.patch.xz" | sha256sum -c -
+          xz -dc /tmp/v5138.patch.xz > /tmp/v5138.patch
+          test "$(wc -c < /tmp/v5138.patch)" -eq 49151
+          echo "f0b53534805a63d9d26d5250c04a1481ded59f058c4bc85d9011ceb309ba2134  /tmp/v5138.patch" | sha256sum -c -
+          cd build_v5135
+          patch -p1 < /tmp/v5138.patch
+          grep -Fq 'versionName = "5.1.38"' app/build.gradle.kts
+          grep -Fq 'versionCode = 88' app/build.gradle.kts
+          cd ..
+
+          test "$(wc -c < build_payload/v5139.patch.xz.b64)" -eq 5792
+          echo "1e9e136a0d38d46adb413f2cab6ac2b8f80f86548fcdb59227082111088e3308  build_payload/v5139.patch.xz.b64" | sha256sum -c -
+          base64 --decode build_payload/v5139.patch.xz.b64 > /tmp/v5139.patch.xz
+          echo "07b5e8b959914075f6b063df6f946357075c5a2fa966ff660476afba18e1b6f2  /tmp/v5139.patch.xz" | sha256sum -c -
+          xz -dc /tmp/v5139.patch.xz > /tmp/v5139.patch
+          test "$(wc -c < /tmp/v5139.patch)" -eq 21241
+          echo "e0a414a03d54f7cac7520779f36a3af88e90aed39ec5b897c9c9101f2db3d5e0  /tmp/v5139.patch" | sha256sum -c -
+          cd build_v5135
+          patch -p1 < /tmp/v5139.patch
+          grep -Fq 'versionName = "5.1.39"' app/build.gradle.kts
+          grep -Fq 'versionCode = 89' app/build.gradle.kts
+
+      - name: Run Android unit tests and build debug APK
+        working-directory: build_v5135
+        run: gradle :app:testDebugUnitTest :app:assembleDebug --stacktrace --no-daemon
+
+      - name: Verify and prepare APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=build_v5135/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          unzip -l "$APK" | grep -q 'AndroidManifest.xml'
+          unzip -l "$APK" | grep -q 'classes.dex'
+          mkdir -p dist
+          cp "$APK" dist/BorsaTakipV5.1.39-VIOP-SEARCH-FIX-debug.apk
+          sha256sum dist/BorsaTakipV5.1.39-VIOP-SEARCH-FIX-debug.apk > dist/BorsaTakipV5.1.39-VIOP-SEARCH-FIX-debug.apk.sha256
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BorsaTakipV5.1.39-VIOP-SEARCH-FIX-debug-apk
+          path: |
+            dist/BorsaTakipV5.1.39-VIOP-SEARCH-FIX-debug.apk
+            dist/BorsaTakipV5.1.39-VIOP-SEARCH-FIX-debug.apk.sha256
+          if-no-files-found: error
+          retention-days: 7
