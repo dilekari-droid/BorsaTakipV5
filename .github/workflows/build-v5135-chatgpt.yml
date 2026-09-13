@@ -1,9 +1,9 @@
-name: Build V5.1.37 UI APK
+name: Build V5.1.38 VIOP Watchlist APK
 
 on:
   push:
     branches:
-      - chatgpt/build-v5137-ui
+      - chatgpt/build-v5138-viop-watchlist
   workflow_dispatch:
 
 jobs:
@@ -32,11 +32,11 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Restore verified source and apply V5.1.36 + V5.1.37 patches
+      - name: Restore verified source and apply V5.1.36 + V5.1.37 + V5.1.38 patches
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf build_v5135 /tmp/v5135_source.tar.xz /tmp/v5135_source.b64 /tmp/v5136.patch.xz /tmp/v5136.patch /tmp/v5137.patch.xz /tmp/v5137.patch
+          rm -rf build_v5135 /tmp/v5135_source.tar.xz /tmp/v5135_source.b64 /tmp/v5136.patch.xz /tmp/v5136.patch /tmp/v5137.patch.xz /tmp/v5137.patch /tmp/v5138.patch.xz /tmp/v5138.patch /tmp/v5138.patch.xz.b64
           mkdir -p build_v5135
           cat \
             build_payload/v5135_chatgpt_source_part_00.b64 \
@@ -80,6 +80,26 @@ jobs:
           patch -p1 < /tmp/v5137.patch
           grep -Fq 'versionName = "5.1.37"' app/build.gradle.kts
           grep -Fq 'versionCode = 87' app/build.gradle.kts
+          cd ..
+
+          cat \
+            build_payload/v5138_patch_part_00.b64 \
+            build_payload/v5138_patch_part_01.b64 \
+            build_payload/v5138_patch_part_02.b64 \
+            build_payload/v5138_patch_part_03.b64 \
+            build_payload/v5138_patch_part_04.b64 \
+            > /tmp/v5138.patch.xz.b64
+          test "$(wc -c < /tmp/v5138.patch.xz.b64)" -eq 12812
+          echo "e7ea1a94b2e6cd247d8cde5b8b50d60ae95bc7813c6c76c926bc0d311435ff03  /tmp/v5138.patch.xz.b64" | sha256sum -c -
+          base64 --decode /tmp/v5138.patch.xz.b64 > /tmp/v5138.patch.xz
+          echo "9ae6ebe7416ed5e25cefd862f8542a270388fc73b90a730bdd5b57fbcccd0ee2  /tmp/v5138.patch.xz" | sha256sum -c -
+          xz -dc /tmp/v5138.patch.xz > /tmp/v5138.patch
+          test "$(wc -c < /tmp/v5138.patch)" -eq 49151
+          echo "f0b53534805a63d9d26d5250c04a1481ded59f058c4bc85d9011ceb309ba2134  /tmp/v5138.patch" | sha256sum -c -
+          cd build_v5135
+          patch -p1 < /tmp/v5138.patch
+          grep -Fq 'versionName = "5.1.38"' app/build.gradle.kts
+          grep -Fq 'versionCode = 88' app/build.gradle.kts
 
       - name: Run Android unit tests and build debug APK
         working-directory: build_v5135
@@ -95,15 +115,15 @@ jobs:
           unzip -l "$APK" | grep -q 'AndroidManifest.xml'
           unzip -l "$APK" | grep -q 'classes.dex'
           mkdir -p dist
-          cp "$APK" dist/BorsaTakipV5.1.37-UI-debug.apk
-          sha256sum dist/BorsaTakipV5.1.37-UI-debug.apk > dist/BorsaTakipV5.1.37-UI-debug.apk.sha256
+          cp "$APK" dist/BorsaTakipV5.1.38-VIOP-WATCHLIST-debug.apk
+          sha256sum dist/BorsaTakipV5.1.38-VIOP-WATCHLIST-debug.apk > dist/BorsaTakipV5.1.38-VIOP-WATCHLIST-debug.apk.sha256
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: BorsaTakipV5.1.37-UI-debug-apk
+          name: BorsaTakipV5.1.38-VIOP-WATCHLIST-debug-apk
           path: |
-            dist/BorsaTakipV5.1.37-UI-debug.apk
-            dist/BorsaTakipV5.1.37-UI-debug.apk.sha256
+            dist/BorsaTakipV5.1.38-VIOP-WATCHLIST-debug.apk
+            dist/BorsaTakipV5.1.38-VIOP-WATCHLIST-debug.apk.sha256
           if-no-files-found: error
           retention-days: 7
