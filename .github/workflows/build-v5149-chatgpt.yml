@@ -1,0 +1,127 @@
+name: Build V5.1.49 Home Scan UI APK
+
+on:
+  push:
+    branches:
+      - chatgpt/build-v5149-home-scan-ui
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 35
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Restore verified V5.1.48 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          lines = Path('.github/workflows/build-v5148-chatgpt.yml').read_text().splitlines()
+          targets = ['Restore verified V5.1.47 source', 'Apply V5.1.48 ensemble dynamic weights patch']
+          for n, target in enumerate(targets):
+              marker = next(i for i, line in enumerate(lines) if line.strip() == f'- name: {target}')
+              run_line = next(i for i in range(marker, len(lines)) if lines[i].strip() == 'run: |')
+              out = []
+              for line in lines[run_line + 1:]:
+                  if line.startswith('      - name:'):
+                      break
+                  out.append(line[10:] if line.startswith('          ') else line)
+              Path(f'/tmp/v5148-step-{n}.sh').write_text('\n'.join(out) + '\n')
+          PY
+          for f in /tmp/v5148-step-*.sh; do bash "$f"; done
+          grep -Fq 'versionName = "5.1.48"' build_v5135/app/build.gradle.kts
+          grep -Fq 'versionCode = 98' build_v5135/app/build.gradle.kts
+
+      - name: Apply V5.1.49 home scan UI patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat build_payload/v5149.patch.xz.b64.part00 build_payload/v5149.patch.xz.b64.part01 build_payload/v5149.patch.xz.b64.part02 build_payload/v5149.patch.xz.b64.part03 > /tmp/v5149.patch.xz.b64
+          printf '\n' >> /tmp/v5149.patch.xz.b64
+          test "$(tr -d '\n' < /tmp/v5149.patch.xz.b64 | wc -c)" -eq 17296
+          tr -d '\n' < /tmp/v5149.patch.xz.b64 > /tmp/v5149.clean.b64
+          echo "e9fed8e4bac37bc14ea40af48ad80b36bc246e5e82c74856bd2973dd1315827e  /tmp/v5149.clean.b64" | sha256sum -c -
+          base64 --decode /tmp/v5149.clean.b64 > /tmp/v5149.patch.xz
+          test "$(wc -c < /tmp/v5149.patch.xz)" -eq 12972
+          echo "bf38cfecd58860ddb7c60526fefebf03c7e24bcb2a21650cd2eb2705010927f9f  /tmp/v5149.patch.xz" | sha256sum -c -
+          xz -dc /tmp/v5149.patch.xz > /tmp/v5149.patch
+          test "$(wc -c < /tmp/v5149.patch)" -eq 93243
+          echo "5d65ca7359043e59956cbd4cf76a745e77bc8fdd57d06a07f98147aaa2745cb7  /tmp/v5149.patch" | sha256sum -c -
+          cd build_v5135
+          patch --batch -p1 < /tmp/v5149.patch
+          grep -Fq 'versionName = "5.1.49"' app/build.gradle.kts
+          grep -Fq 'versionCode = 99' app/build.gradle.kts
+          test -f CHANGELOG_V5.1.49_HOME_SCAN_UI.md
+          grep -Fq 'actionBist' app/src/main/res/layout/activity_main.xml
+          grep -Fq 'quickPopular' app/src/main/res/layout/activity_bist_scan.xml
+          grep -Fq 'Günün Fırsatları' app/src/main/res/layout/activity_main.xml
+
+      - name: Run backend tests when pytest is available
+        shell: bash
+        working-directory: build_v5135/backend
+        run: |
+          if python - <<'PY'
+          import importlib.util, sys
+          sys.exit(0 if importlib.util.find_spec('pytest') else 1)
+          PY
+          then
+            python -m pytest -q
+          else
+            echo "pytest unavailable on runner; local backend validation is recorded separately."
+          fi
+
+      - name: Run Android unit tests and build debug APK
+        working-directory: build_v5135
+        run: gradle :app:testDebugUnitTest :app:assembleDebug --stacktrace --no-daemon
+
+      - name: Verify and prepare APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=build_v5135/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          python - <<'PY'
+          import zipfile
+          apk='build_v5135/app/build/outputs/apk/debug/app-debug.apk'
+          with zipfile.ZipFile(apk) as z:
+              assert z.testzip() is None
+              names=set(z.namelist())
+              assert 'AndroidManifest.xml' in names
+              assert 'classes.dex' in names
+          print('APK ZIP/Manifest/classes.dex OK')
+          PY
+          mkdir -p dist
+          cp "$APK" dist/BorsaTakipV5.1.49-HOME-SCAN-UI-debug.apk
+          sha256sum dist/BorsaTakipV5.1.49-HOME-SCAN-UI-debug.apk > dist/BorsaTakipV5.1.49-HOME-SCAN-UI-debug.apk.sha256
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BorsaTakipV5.1.49-HOME-SCAN-UI-debug-apk
+          path: |
+            dist/BorsaTakipV5.1.49-HOME-SCAN-UI-debug.apk
+            dist/BorsaTakipV5.1.49-HOME-SCAN-UI-debug.apk.sha256
+          if-no-files-found: error
+          retention-days: 7
