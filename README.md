@@ -1,4 +1,4 @@
-# BORSA TAKİP V5.1.1
+# BORSA TAKİP V5.1.28
 
 Android/Kotlin tabanlı BIST ve VİOP takip uygulaması.
 
@@ -21,18 +21,27 @@ Ana mobil backend şu sözleşmeleri sağlamalıdır:
 - `GET /v1/viop/contracts`
 - `WSS /v1/live`
 
-BIST evreni sabit 28 sembole bağlı değildir. Normal kullanımda sembol listesi sağlayıcıdan dinamik alınır ve cihazda önbelleğe kaydedilir. Küçük yerel liste yalnızca ana sağlayıcıya daha önce hiç erişilememişse yedek kaynağın güvenlik listesi olarak kullanılır.
+BIST evreni sabit birkaç sembole bağlı değildir. Normal kullanımda sembol listesi sağlayıcıdan dinamik alınır ve cihazda önbelleğe kaydedilir. Üretim backend yapılandırılmamışsa, kullanıcıya açıkça gecikmeli/deneysel olarak etiketlenen yedek veri yolu kullanılabilir; gecikmeli veri canlı veri gibi gösterilmez.
 
 ## Teknik özellikler
 
 - Koyu lacivert mobil arayüz
+- Dashboard odaklı ana ekran
 - BIST tarama ve gerçek sembol ilerlemesi
 - EMA20/50/200, Wilder RSI14, MACD, Bollinger, ATR, VWAP
 - Fırsat skoru, risk skoru, LONG/SHORT değerlendirmesi
-- VİOP için ayrı sözleşme modeli
+- Çelişkili veya yetersiz sinyaller için NÖTR sonucu
+- Ölçülen veri kalitesine dayalı veri güveni ve riskle düzeltilmiş nihai sinyal
+- Aşağı yönlü oynaklık ve azami düşüşü içeren açıklanabilir risk bileşenleri
+- VİOP için ayrı sözleşme modeli ve kart görünümü
 - Favoriler ve fırsat bildirim altyapısı
 - HTTPS zorunlu ana veri servisi
 - İsteğe bağlı Yahoo gecikmeli yedek kaynak
+- Gecikmeli/doğrulanmamış veriyi gerçek zamanlı diye göstermeyen veri bütünlüğü yaklaşımı
+
+## Sürüm yönetimi
+
+Uygulama içindeki sürüm etiketi `BuildConfig.VERSION_NAME` üzerinden üretilir. Gradle, APK, ana ekran ve README aynı sürüm kimliğini kullanmalıdır.
 
 ## Release imzası
 
@@ -47,4 +56,4 @@ Bu secret'lar yoksa workflow yalnızca debug APK üretir. Aynı `applicationId` 
 
 ## Derleme
 
-`main` dalına her gönderim `Android Build` workflow'unu çalıştırır. Release secret'ları tanımlıysa artifact içinde `BorsaTakipV5.1.1-release.apk`, tanımlı değilse `BorsaTakipV5.1.1-debug.apk` bulunur.
+`main` dalına her gönderim `Android Build` workflow'unu çalıştırır. Release secret'ları tanımlıysa artifact içinde `BorsaTakipV5.1.28-release.apk`, tanımlı değilse `BorsaTakipV5.1.28-debug.apk` bulunur.

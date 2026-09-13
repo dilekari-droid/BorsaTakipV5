@@ -8,10 +8,7 @@ import kotlin.math.sqrt
 
 object TechnicalAnalyzer {
     fun analyze(input: List<Candle>): TechnicalSnapshot {
-        val c = input.filter { candle ->
-            listOf(candle.open, candle.high, candle.low, candle.close, candle.volume).all { it.isFinite() } &&
-                candle.high >= candle.low && candle.volume >= 0.0
-        }
+        val c = CandleSeriesValidator.validate(input).candles
         if (c.isEmpty()) return emptySnapshot()
 
         val closes = c.map { it.close }
@@ -42,20 +39,25 @@ object TechnicalAnalyzer {
             Pair((m + 2 * sd).finiteOrNull(), (m - 2 * sd).finiteOrNull())
         } else null
         val atr = atr(c, 14).finiteOrNull()
-        val totalVolume = c.sumOf { it.volume }
+        // Daily data cannot produce session VWAP. This is explicitly a rolling 20-bar VWMA proxy.
+        val vwapWindow = c.takeLast(20)
+        val totalVolume = vwapWindow.sumOf { it.volume }
         val vwap = if (totalVolume > 0.0 && totalVolume.isFinite()) {
-            (c.sumOf { ((it.high + it.low + it.close) / 3.0) * it.volume } / totalVolume).finiteOrNull()
+            (vwapWindow.sumOf { it.close * it.volume } / totalVolume).finiteOrNull()
         } else null
         val vr = if (vols.size >= 21) {
             val base = vols.dropLast(1).takeLast(20).average()
             if (base > 0.0 && base.isFinite()) (vols.last() / base).finiteOrNull() else null
         } else null
-        val lows = c.takeLast(20).map { it.low }
-        val highs = c.takeLast(20).map { it.high }
+        // Current bar is excluded so breakout/breakdown is tested against prior information.
+        val completedWindow = c.dropLast(1).takeLast(20)
+        val lows = completedWindow.map { it.low }
+        val highs = completedWindow.map { it.high }
         return TechnicalSnapshot(
             e20, e50, e200, rsi, macdLine, macdSignal,
             bb?.first, bb?.second, atr, vwap, vr,
-            lows.minOrNull().finiteOrNull(), highs.maxOrNull().finiteOrNull()
+            lows.minOrNull().finiteOrNull(), highs.maxOrNull().finiteOrNull(),
+            vwma = vwap
         )
     }
 
@@ -96,6 +98,7 @@ object TechnicalAnalyzer {
             l = (l * (p - 1) + (if (x < 0) -x else 0.0)) / p
         }
         if (!g.isFinite() || !l.isFinite()) return null
+        if (g == 0.0 && l == 0.0) return 50.0
         if (l == 0.0) return 100.0
         val rs = g / l
         if (!rs.isFinite()) return null

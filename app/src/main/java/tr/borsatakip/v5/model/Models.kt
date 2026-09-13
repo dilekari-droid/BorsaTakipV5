@@ -44,6 +44,7 @@ data class Opportunity(
     val dataConfidenceLabel:String = "Yüksek",
     val finalSignalScore:Int = score,
     val volumeDirectionLabel:String = "Yön verisi yok",
+    val riskBreakdown:List<String> = emptyList(),
     val isRealtime:Boolean = false,
     val delaySeconds:Int? = null,
     val currentSessionIncluded:Boolean = false
