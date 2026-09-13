@@ -102,13 +102,13 @@ jobs:
           grep -Fq 'versionCode = 88' app/build.gradle.kts
           cd ..
 
-          test "$(wc -c < build_payload/v5139.patch.xz.b64)" -eq 5792
-          echo "1e9e136a0d38d46adb413f2cab6ac2b8f80f86548fcdb59227082111088e3308  build_payload/v5139.patch.xz.b64" | sha256sum -c -
+          test "$(wc -c < build_payload/v5139.patch.xz.b64)" -eq 6216
+          echo "ca998040287715cfff46243a2d38d1607a7d428653cbe8555f84acaad3e0d413  build_payload/v5139.patch.xz.b64" | sha256sum -c -
           base64 --decode build_payload/v5139.patch.xz.b64 > /tmp/v5139.patch.xz
-          echo "07b5e8b959914075f6b063df6f946357075c5a2fa966ff660476afba18e1b6f2  /tmp/v5139.patch.xz" | sha256sum -c -
+          echo "6ef5b9d12898a10eff690b164d5eb37d48d7d5fe767e16f8c6dc189ab4229ba3  /tmp/v5139.patch.xz" | sha256sum -c -
           xz -dc /tmp/v5139.patch.xz > /tmp/v5139.patch
-          test "$(wc -c < /tmp/v5139.patch)" -eq 21241
-          echo "e0a414a03d54f7cac7520779f36a3af88e90aed39ec5b897c9c9101f2db3d5e0  /tmp/v5139.patch" | sha256sum -c -
+          test "$(wc -c < /tmp/v5139.patch)" -eq 23173
+          echo "d8631307c55c07c12df0080fbf797410b8f02288d20fad11ee7485564196e04b  /tmp/v5139.patch" | sha256sum -c -
           cd build_v5135
           patch -p1 < /tmp/v5139.patch
           grep -Fq 'versionName = "5.1.39"' app/build.gradle.kts
