@@ -61,23 +61,25 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(wc -c < build_payload/v5145.patch.xz.b64)" -eq 13705
-          echo "0ca3c59ad66d5cd5204635f9e4d35f0d1e81cfe85702a1848cd05bb9e8a07a73  build_payload/v5145.patch.xz.b64" | sha256sum -c -
+          test "$(wc -c < build_payload/v5145.patch.xz.b64)" -eq 13737
+          echo "cb0f92ba4afb245be4428e07c6eb4b1344706d3a58d2379cc3a25b9a22cefca5  build_payload/v5145.patch.xz.b64" | sha256sum -c -
           base64 --decode build_payload/v5145.patch.xz.b64 > /tmp/v5145.patch.xz
-          test "$(wc -c < /tmp/v5145.patch.xz)" -eq 10276
-          echo "06cf8a2dabc5f7d4b59164415a9cff3d4c681d280cc95f019aa9452cfb405692  /tmp/v5145.patch.xz" | sha256sum -c -
+          test "$(wc -c < /tmp/v5145.patch.xz)" -eq 10300
+          echo "254e76952b329427979ceaf177c1d4d339eb8887f7f2160a0eb946500b9b236c  /tmp/v5145.patch.xz" | sha256sum -c -
           xz -dc /tmp/v5145.patch.xz > /tmp/v5145.patch
-          test "$(wc -c < /tmp/v5145.patch)" -eq 40822
-          echo "74d5068fa98f4d10efcbfa3a099a7476a83fe137bc00c6eefbce3f3d820583a0  /tmp/v5145.patch" | sha256sum -c -
+          test "$(wc -c < /tmp/v5145.patch)" -eq 40917
+          echo "4abe8b27bc8be820a6e63fd7d90d51f2e88db83ffe216551f994681bfc008776  /tmp/v5145.patch" | sha256sum -c -
           cd build_v5135
           patch --batch -p1 < /tmp/v5145.patch
           grep -Fq 'versionName = "5.1.45"' app/build.gradle.kts
           grep -Fq 'versionCode = 95' app/build.gradle.kts
+          test -f CHANGELOG_V5.1.45_VIOP_INTEGRATION.md
           test -f app/src/main/java/tr/borsatakip/v5/analysis/BreakoutVolumeEngine.kt
           grep -Fq 'loadViopHistoryFlexible' app/src/main/java/tr/borsatakip/v5/data/BackendProvider.kt
           grep -Fq 'evaluateViop' app/src/main/java/tr/borsatakip/v5/data/AlertEventStore.kt
           grep -Fq 'marketRegimeConfidence' app/src/main/java/tr/borsatakip/v5/model/Models.kt
           grep -Fq 'tradeSimulationQuantity' app/src/main/java/tr/borsatakip/v5/data/SettingsStore.kt
+          grep -Fq 'assertNotNull' app/src/test/java/tr/borsatakip/v5/analysis/TradeForwardEngineTest.kt
           test -f app/src/test/java/tr/borsatakip/v5/analysis/BreakoutVolumeEngineTest.kt
 
       - name: Run backend tests when backend payload is present
