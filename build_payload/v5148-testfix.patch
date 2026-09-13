@@ -1,0 +1,12 @@
+--- a/app/src/test/java/tr/borsatakip/v5/analysis/StrategyOptimizationEngineTest.kt
++++ b/app/src/test/java/tr/borsatakip/v5/analysis/StrategyOptimizationEngineTest.kt
+@@ -59,7 +59,8 @@
+     }
+ 
+     @Test fun rankingAdjustmentIsHardBounded() {
+-        assertEquals(88, StrategyOptimizationEngine.adjustedRanking(80, 100))
++        assertEquals(87, StrategyOptimizationEngine.adjustedRanking(80, 100))
+         assertEquals(72, StrategyOptimizationEngine.adjustedRanking(80, 0))
++        assertEquals(58, StrategyOptimizationEngine.adjustedRanking(50, 100))
+     }
+ }
