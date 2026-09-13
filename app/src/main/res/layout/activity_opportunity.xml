@@ -19,13 +19,38 @@
                 <TextView style="@style/Title" android:text="Fırsat Kontrol" />
                 <TextView android:id="@+id/txtSummary" style="@style/Sub" android:text="LONG / SHORT sonuçları nihai sinyale göre sıralanır." android:layout_marginTop="2dp" />
             </LinearLayout>
-            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Filtre" android:textColor="@color/blue" android:textStyle="bold" android:padding="8dp" />
+            <TextView
+                android:id="@+id/txtFilterState"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Filtre: Tümü"
+                android:textColor="@color/blue"
+                android:textStyle="bold"
+                android:padding="8dp"
+                android:clickable="true"
+                android:focusable="true"
+                android:contentDescription="Aktif filtreler. Dokununca filtreleri temizler." />
         </LinearLayout>
 
         <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginTop="12dp">
-            <TextView android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:layout_marginEnd="5dp" android:background="@drawable/bg_card" android:gravity="center" android:padding="10dp" android:text="LONG\nYeşil" android:textColor="@color/green" android:textStyle="bold" />
-            <TextView android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:layout_marginHorizontal="5dp" android:background="@drawable/bg_card" android:gravity="center" android:padding="10dp" android:text="SHORT\nKırmızı" android:textColor="@color/red" android:textStyle="bold" />
-            <TextView android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:layout_marginStart="5dp" android:background="@drawable/bg_card" android:gravity="center" android:padding="10dp" android:text="85+\nYüksek Güç" android:textColor="@color/yellow" android:textStyle="bold" />
+            <TextView
+                android:id="@+id/filterLong"
+                android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"
+                android:layout_marginEnd="5dp" android:background="@drawable/bg_card" android:gravity="center"
+                android:padding="10dp" android:text="LONG\nYeşil" android:textColor="@color/green" android:textStyle="bold"
+                android:clickable="true" android:focusable="true" android:contentDescription="LONG filtresi" />
+            <TextView
+                android:id="@+id/filterShort"
+                android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"
+                android:layout_marginHorizontal="5dp" android:background="@drawable/bg_card" android:gravity="center"
+                android:padding="10dp" android:text="SHORT\nKırmızı" android:textColor="@color/red" android:textStyle="bold"
+                android:clickable="true" android:focusable="true" android:contentDescription="SHORT filtresi" />
+            <TextView
+                android:id="@+id/filterHighPower"
+                android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"
+                android:layout_marginStart="5dp" android:background="@drawable/bg_card" android:gravity="center"
+                android:padding="10dp" android:text="85+\nYüksek Güç" android:textColor="@color/yellow" android:textStyle="bold"
+                android:clickable="true" android:focusable="true" android:contentDescription="85 ve üzeri sinyal filtresi" />
         </LinearLayout>
 
         <Button
@@ -38,6 +63,19 @@
             android:textColor="@color/white"
             android:textStyle="bold" />
     </LinearLayout>
+
+    <TextView
+        android:id="@+id/txtEmpty"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:visibility="gone"
+        android:paddingStart="24dp"
+        android:paddingEnd="24dp"
+        android:paddingTop="18dp"
+        android:paddingBottom="18dp"
+        android:gravity="center"
+        android:text="Bu filtrelere uygun fırsat bulunamadı."
+        android:textColor="@color/text_secondary" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/list"
