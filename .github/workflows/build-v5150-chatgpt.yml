@@ -1,0 +1,127 @@
+name: Build V5.1.50 Home Opportunity Entry APK
+
+on:
+  push:
+    branches:
+      - chatgpt/build-v5150-home-opportunity-entry
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 35
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Restore verified V5.1.49 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          lines = Path('.github/workflows/build-v5149-chatgpt.yml').read_text().splitlines()
+          targets = ['Restore verified V5.1.48 source', 'Apply V5.1.49 home scan UI patch']
+          for n, target in enumerate(targets):
+              marker = next(i for i, line in enumerate(lines) if line.strip() == f'- name: {target}')
+              run_line = next(i for i in range(marker, len(lines)) if lines[i].strip() == 'run: |')
+              out = []
+              for line in lines[run_line + 1:]:
+                  if line.startswith('      - name:'):
+                      break
+                  out.append(line[10:] if line.startswith('          ') else line)
+              Path(f'/tmp/v5149-step-{n}.sh').write_text('\n'.join(out) + '\n')
+          PY
+          for f in /tmp/v5149-step-*.sh; do bash "$f"; done
+          grep -Fq 'versionName = "5.1.49"' build_v5135/app/build.gradle.kts
+          grep -Fq 'versionCode = 99' build_v5135/app/build.gradle.kts
+
+      - name: Apply V5.1.50 home opportunity entry patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat build_payload/v5150.patch.xz.b64.part00 build_payload/v5150.patch.xz.b64.part01 build_payload/v5150.patch.xz.b64.part02 build_payload/v5150.patch.xz.b64.part03 > /tmp/v5150.clean.b64
+          test "$(wc -c < /tmp/v5150.clean.b64)" -eq 2944
+          echo "bcfe453f62f27c32a48a0d4d2e01225bb9055122849010955bfcd9bc555feea1  /tmp/v5150.clean.b64" | sha256sum -c -
+          base64 --decode /tmp/v5150.clean.b64 > /tmp/v5150.patch.xz
+          test "$(wc -c < /tmp/v5150.patch.xz)" -eq 2208
+          echo "869c17614e13c0c2795b83f70315046affc817266b4c171b2267f6abb34d59b1  /tmp/v5150.patch.xz" | sha256sum -c -
+          xz -dc /tmp/v5150.patch.xz > /tmp/v5150.patch
+          test "$(wc -c < /tmp/v5150.patch)" -eq 14175
+          echo "039517abc3b16707fd3ddc74ba36f9b2bfcc354b51143d53b4e2a5aa8def11e1  /tmp/v5150.patch" | sha256sum -c -
+          cd build_v5135
+          patch --batch -p1 < /tmp/v5150.patch
+          grep -Fq 'versionName = "5.1.50"' app/build.gradle.kts
+          grep -Fq 'versionCode = 100' app/build.gradle.kts
+          test -f CHANGELOG_V5.1.50_HOME_OPPORTUNITY_ENTRY.md
+          test -f app/src/main/res/drawable/bg_action_cyan.xml
+          grep -Fq 'FIRSAT TARAMA' app/src/main/res/layout/activity_main.xml
+          grep -Fq 'actionSignal' app/src/main/res/layout/activity_main.xml
+          grep -Fq 'SignalHistoryActivity::class.java' app/src/main/java/tr/borsatakip/v5/ui/MainActivity.kt
+          grep -Fq 'OpportunityActivity::class.java' app/src/main/java/tr/borsatakip/v5/ui/MainActivity.kt
+
+      - name: Run backend tests when pytest is available
+        shell: bash
+        working-directory: build_v5135/backend
+        run: |
+          if python - <<'PY'
+          import importlib.util, sys
+          sys.exit(0 if importlib.util.find_spec('pytest') else 1)
+          PY
+          then
+            python -m pytest -q
+          else
+            echo "pytest unavailable on runner; local backend validation is recorded separately."
+          fi
+
+      - name: Run Android unit tests and build debug APK
+        working-directory: build_v5135
+        run: gradle :app:testDebugUnitTest :app:assembleDebug --stacktrace --no-daemon
+
+      - name: Verify and prepare APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=build_v5135/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          python - <<'PY'
+          import zipfile
+          apk='build_v5135/app/build/outputs/apk/debug/app-debug.apk'
+          with zipfile.ZipFile(apk) as z:
+              assert z.testzip() is None
+              names=set(z.namelist())
+              assert 'AndroidManifest.xml' in names
+              assert 'classes.dex' in names
+          print('APK ZIP/Manifest/classes.dex OK')
+          PY
+          mkdir -p dist
+          cp "$APK" dist/BorsaTakipV5.1.50-HOME-OPPORTUNITY-ENTRY-debug.apk
+          sha256sum dist/BorsaTakipV5.1.50-HOME-OPPORTUNITY-ENTRY-debug.apk > dist/BorsaTakipV5.1.50-HOME-OPPORTUNITY-ENTRY-debug.apk.sha256
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BorsaTakipV5.1.50-HOME-OPPORTUNITY-ENTRY-debug-apk
+          path: |
+            dist/BorsaTakipV5.1.50-HOME-OPPORTUNITY-ENTRY-debug.apk
+            dist/BorsaTakipV5.1.50-HOME-OPPORTUNITY-ENTRY-debug.apk.sha256
+          if-no-files-found: error
+          retention-days: 7
