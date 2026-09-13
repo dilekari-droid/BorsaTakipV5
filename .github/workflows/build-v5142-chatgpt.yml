@@ -1,0 +1,121 @@
+name: Build V5.1.42 Signal Visual Hierarchy APK
+
+on:
+  push:
+    branches:
+      - chatgpt/build-v5142-signal-visuals
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 35
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Restore verified V5.1.39 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          workflow = Path('.github/workflows/build-v5139-chatgpt.yml').read_text().splitlines()
+          marker = next(i for i, line in enumerate(workflow) if 'Restore verified source and apply V5.1.36 through V5.1.39 patches' in line)
+          run_line = next(i for i in range(marker, len(workflow)) if workflow[i].strip() == 'run: |')
+          out = []
+          for line in workflow[run_line + 1:]:
+              if line.startswith('      - name:'):
+                  break
+              out.append(line[10:] if line.startswith('          ') else line)
+          Path('/tmp/restore-v5139.sh').write_text('\n'.join(out) + '\n')
+          PY
+          bash /tmp/restore-v5139.sh
+          grep -Fq 'versionName = "5.1.39"' build_v5135/app/build.gradle.kts
+          grep -Fq 'versionCode = 89' build_v5135/app/build.gradle.kts
+
+      - name: Apply verified V5.1.40 category autofill patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(wc -c < build_payload/v5140b.patch.xz.b64)" -eq 6800
+          echo "3dead90f4a171709e3da51a5f2e1522e4887db703c0ff9d66fd32b6d5fa99b97  build_payload/v5140b.patch.xz.b64" | sha256sum -c -
+          base64 --decode build_payload/v5140b.patch.xz.b64 > /tmp/v5140.patch.xz
+          echo "47e04b14f08864a821fcc5a0f9c725a21d702e82a18d57ed56fab6c99f5052ed  /tmp/v5140.patch.xz" | sha256sum -c -
+          xz -dc /tmp/v5140.patch.xz > /tmp/v5140.patch
+          test "$(wc -c < /tmp/v5140.patch)" -eq 19717
+          echo "642886d6943d9e0de9019f4b490f510086eddb200f99877d2b515466b1f792cc  /tmp/v5140.patch" | sha256sum -c -
+          cd build_v5135
+          patch --batch -p1 < /tmp/v5140.patch
+          grep -Fq 'versionName = "5.1.40"' app/build.gradle.kts
+          grep -Fq 'versionCode = 90' app/build.gradle.kts
+
+      - name: Apply verified V5.1.42 combined patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(wc -c < build_payload/v5142combined.patch.xz.b64)" -eq 14668
+          echo "d76725cdc0599400c710044782862c44ccf96ab9216120b9aa50e5d55d18f258  build_payload/v5142combined.patch.xz.b64" | sha256sum -c -
+          base64 --decode build_payload/v5142combined.patch.xz.b64 > /tmp/v5142.patch.xz
+          echo "ec0053d8c7786da796182bf1b6231aea3603354ccf6172b19a680b573531f1c4  /tmp/v5142.patch.xz" | sha256sum -c -
+          xz -dc /tmp/v5142.patch.xz > /tmp/v5142.patch
+          test "$(wc -c < /tmp/v5142.patch)" -eq 50360
+          echo "1aafdfbe9e2747bec2ad0c38070920334c03a925d8e41c1aaa9b813142a18968  /tmp/v5142.patch" | sha256sum -c -
+          cd build_v5135
+          patch --batch -p1 < /tmp/v5142.patch
+          grep -Fq 'versionName = "5.1.42"' app/build.gradle.kts
+          grep -Fq 'versionCode = 92' app/build.gradle.kts
+          grep -Fq 'SignalVisualPolicy' app/src/main/java/tr/borsatakip/v5/ui/OpportunityAdapter.kt
+          grep -Fq 'signalQualityLabel' app/src/main/res/layout/item_opportunity.xml
+          grep -Fq 'long95UsesMaximumGreen' app/src/test/java/tr/borsatakip/v5/analysis/SignalVisualPolicyTest.kt
+          grep -Fq 'isPastLastTradingAt' app/src/main/java/tr/borsatakip/v5/analysis/ViopScanner.kt
+          grep -Fq 'insufficientDataOpportunity' app/src/main/java/tr/borsatakip/v5/analysis/OpportunityEngine.kt
+
+      - name: Run backend tests
+        working-directory: build_v5135/backend
+        run: python -m pytest -q
+
+      - name: Run Android unit tests and build debug APK
+        working-directory: build_v5135
+        run: gradle :app:testDebugUnitTest :app:assembleDebug --stacktrace --no-daemon
+
+      - name: Verify and prepare APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=build_v5135/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          unzip -l "$APK" | grep -q 'AndroidManifest.xml'
+          unzip -l "$APK" | grep -q 'classes.dex'
+          mkdir -p dist
+          cp "$APK" dist/BorsaTakipV5.1.42-SIGNAL-VISUAL-HIERARCHY-debug.apk
+          sha256sum dist/BorsaTakipV5.1.42-SIGNAL-VISUAL-HIERARCHY-debug.apk > dist/BorsaTakipV5.1.42-SIGNAL-VISUAL-HIERARCHY-debug.apk.sha256
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BorsaTakipV5.1.42-SIGNAL-VISUAL-HIERARCHY-debug-apk
+          path: |
+            dist/BorsaTakipV5.1.42-SIGNAL-VISUAL-HIERARCHY-debug.apk
+            dist/BorsaTakipV5.1.42-SIGNAL-VISUAL-HIERARCHY-debug.apk.sha256
+          if-no-files-found: error
+          retention-days: 7
