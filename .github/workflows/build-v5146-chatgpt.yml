@@ -61,14 +61,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(wc -c < build_payload/v5146.patch.xz.b64)" -eq 6153
-          echo "f602ebefc92f6ec2caa48a61c894f96e132b79c59bd1ed4c944d869a33bd3d4b  build_payload/v5146.patch.xz.b64" | sha256sum -c -
+          test "$(wc -c < build_payload/v5146.patch.xz.b64)" -eq 6137
+          echo "2cf05af5f7f0b567a6a519e177d3b2090e942f677cab3d7e8afac3e25687a5d5  build_payload/v5146.patch.xz.b64" | sha256sum -c -
           base64 --decode build_payload/v5146.patch.xz.b64 > /tmp/v5146.patch.xz
-          test "$(wc -c < /tmp/v5146.patch.xz)" -eq 4612
-          echo "9dd6c2f2edaaa312515dd0cb0466e32b792ff2eeb13a88f2434d9d1c30f3c6af  /tmp/v5146.patch.xz" | sha256sum -c -
+          test "$(wc -c < /tmp/v5146.patch.xz)" -eq 4600
+          echo "98b8bf34845cd291b7f764279c03d4347965c3caab2c237a2a2747bce1db812e  /tmp/v5146.patch.xz" | sha256sum -c -
           xz -dc /tmp/v5146.patch.xz > /tmp/v5146.patch
-          test "$(wc -c < /tmp/v5146.patch)" -eq 19408
-          echo "6d6dc4471b46dbb9452fe1975b87b8844bd5dee4a148bd596e10b5de4b07c722  /tmp/v5146.patch" | sha256sum -c -
+          test "$(wc -c < /tmp/v5146.patch)" -eq 19208
+          echo "ae7501738a4cd96020e7d4acfd59d338875202c47c49d7eee6591a76d7c475ac  /tmp/v5146.patch" | sha256sum -c -
           cd build_v5135
           patch --batch -p1 < /tmp/v5146.patch
           grep -Fq 'versionName = "5.1.46"' app/build.gradle.kts
