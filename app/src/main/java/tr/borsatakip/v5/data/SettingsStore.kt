@@ -22,12 +22,12 @@ class SettingsStore(c: Context) {
         set(v) = putEncrypted("api_key_encrypted", v)
 
     /**
-     * Üretim veri modu varsayılandır. Bu anahtar yalnız Yahoo'nun gecikmeli BIST yedeği
-     * gibi açıkça deneysel olarak etiketlenmiş fallback kaynaklarını etkinleştirir.
-     * TradingView BIST/VİOP veri sağlayıcısı değildir.
+     * Production backend remains the primary source. On a fresh install the experimental
+     * Yahoo fallback is enabled so BIST scanning can still work when no backend is configured.
+     * Yahoo data is always labelled delayed/experimental and is never presented as real-time.
      */
     var experimentalProvidersEnabled: Boolean
-        get() = p.getBoolean("experimental_providers_enabled", false)
+        get() = p.getBoolean("experimental_providers_enabled", true)
         set(v) = p.edit().putBoolean("experimental_providers_enabled", v).apply()
 
     /** V5.1.24 ve öncesinden kalmış TradingView kimlik/oturum kayıtlarını siler. */
@@ -51,7 +51,7 @@ class SettingsStore(c: Context) {
         set(v) = p.edit().putBoolean("notifications", v).apply()
 
     var yahooFallbackEnabled: Boolean
-        get() = p.getBoolean("yahoo_fallback_enabled", false)
+        get() = p.getBoolean("yahoo_fallback_enabled", true)
         set(v) = p.edit().putBoolean("yahoo_fallback_enabled", v).apply()
 
     var lastProviderId: String
