@@ -1,0 +1,118 @@
+name: Build V5.1.45 Integration Closeout APK
+
+on:
+  push:
+    branches:
+      - chatgpt/build-v5145-integration-closeout
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 35
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Restore verified V5.1.44 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          lines = Path('.github/workflows/build-v5144-chatgpt.yml').read_text().splitlines()
+          targets = [
+              'Restore verified V5.1.43 source',
+              'Apply verified V5.1.44 category watchlists patch',
+          ]
+          for n, target in enumerate(targets):
+              marker = next(i for i, line in enumerate(lines) if line.strip() == f'- name: {target}')
+              run_line = next(i for i in range(marker, len(lines)) if lines[i].strip() == 'run: |')
+              out = []
+              for line in lines[run_line + 1:]:
+                  if line.startswith('      - name:'):
+                      break
+                  out.append(line[10:] if line.startswith('          ') else line)
+              Path(f'/tmp/v5144-step-{n}.sh').write_text('\n'.join(out) + '\n')
+          PY
+          for f in /tmp/v5144-step-*.sh; do bash "$f"; done
+          grep -Fq 'versionName = "5.1.44"' build_v5135/app/build.gradle.kts
+          grep -Fq 'versionCode = 94' build_v5135/app/build.gradle.kts
+
+      - name: Apply verified V5.1.45 integration closeout patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(wc -c < build_payload/v5145.patch.xz.b64)" -eq 13705
+          echo "0ca3c59ad66d5cd5204635f9e4d35f0d1e81cfe85702a1848cd05bb9e8a07a73  build_payload/v5145.patch.xz.b64" | sha256sum -c -
+          base64 --decode build_payload/v5145.patch.xz.b64 > /tmp/v5145.patch.xz
+          test "$(wc -c < /tmp/v5145.patch.xz)" -eq 10276
+          echo "06cf8a2dabc5f7d4b59164415a9cff3d4c681d280cc95f019aa9452cfb405692  /tmp/v5145.patch.xz" | sha256sum -c -
+          xz -dc /tmp/v5145.patch.xz > /tmp/v5145.patch
+          test "$(wc -c < /tmp/v5145.patch)" -eq 40822
+          echo "74d5068fa98f4d10efcbfa3a099a7476a83fe137bc00c6eefbce3f3d820583a0  /tmp/v5145.patch" | sha256sum -c -
+          cd build_v5135
+          patch --batch -p1 < /tmp/v5145.patch
+          grep -Fq 'versionName = "5.1.45"' app/build.gradle.kts
+          grep -Fq 'versionCode = 95' app/build.gradle.kts
+          test -f app/src/main/java/tr/borsatakip/v5/analysis/BreakoutVolumeEngine.kt
+          grep -Fq 'loadViopHistoryFlexible' app/src/main/java/tr/borsatakip/v5/data/BackendProvider.kt
+          grep -Fq 'evaluateViop' app/src/main/java/tr/borsatakip/v5/data/AlertEventStore.kt
+          grep -Fq 'marketRegimeConfidence' app/src/main/java/tr/borsatakip/v5/model/Models.kt
+          grep -Fq 'tradeSimulationQuantity' app/src/main/java/tr/borsatakip/v5/data/SettingsStore.kt
+          test -f app/src/test/java/tr/borsatakip/v5/analysis/BreakoutVolumeEngineTest.kt
+
+      - name: Run backend tests when backend payload is present
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -d build_v5135/backend ]; then
+            (cd build_v5135/backend && python -m pytest -q)
+          else
+            echo "Backend payload not present; Android build remains authoritative."
+          fi
+
+      - name: Run Android unit tests and build debug APK
+        working-directory: build_v5135
+        run: gradle :app:testDebugUnitTest :app:assembleDebug --stacktrace --no-daemon
+
+      - name: Verify and prepare APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=build_v5135/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          unzip -l "$APK" | grep -q 'AndroidManifest.xml'
+          unzip -l "$APK" | grep -q 'classes.dex'
+          mkdir -p dist
+          cp "$APK" dist/BorsaTakipV5.1.45-INTEGRATION-CLOSEOUT-debug.apk
+          sha256sum dist/BorsaTakipV5.1.45-INTEGRATION-CLOSEOUT-debug.apk > dist/BorsaTakipV5.1.45-INTEGRATION-CLOSEOUT-debug.apk.sha256
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BorsaTakipV5.1.45-INTEGRATION-CLOSEOUT-debug-apk
+          path: |
+            dist/BorsaTakipV5.1.45-INTEGRATION-CLOSEOUT-debug.apk
+            dist/BorsaTakipV5.1.45-INTEGRATION-CLOSEOUT-debug.apk.sha256
+          if-no-files-found: error
+          retention-days: 7
