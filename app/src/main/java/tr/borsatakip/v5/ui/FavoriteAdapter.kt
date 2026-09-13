@@ -4,13 +4,15 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
+import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
 import tr.borsatakip.v5.R
 import tr.borsatakip.v5.data.favorites.FavoriteStock
 import tr.borsatakip.v5.model.Opportunity
+import java.util.Locale
 
 class FavoriteAdapter(
-    private var items: List<Pair<FavoriteStock, Opportunity?>>, 
+    private var items: List<Pair<FavoriteStock, Opportunity?>>,
     private val onRemove: (FavoriteStock) -> Unit,
     private val onOpen: (Opportunity) -> Unit
 ) : RecyclerView.Adapter<FavoriteAdapter.H>() {
@@ -30,15 +32,36 @@ class FavoriteAdapter(
 
     override fun onBindViewHolder(holder: H, position: Int) {
         val (fav, opportunity) = items[position]
-        holder.symbol.text = "★ ${fav.symbol}"
+        val direction = opportunity?.direction?.uppercase(Locale.ROOT)
+        holder.symbol.text = if (opportunity == null) {
+            "★ ${fav.symbol} • TREND BİLİNMİYOR"
+        } else {
+            "★ ${fav.symbol} $direction ${opportunity.finalSignalScore}/100"
+        }
+        holder.symbol.setTextColor(
+            when (direction) {
+                "LONG" -> ContextCompat.getColor(holder.itemView.context, R.color.green)
+                "SHORT" -> ContextCompat.getColor(holder.itemView.context, R.color.red)
+                else -> ContextCompat.getColor(holder.itemView.context, R.color.text_primary)
+            }
+        )
+
         holder.company.text = opportunity?.companyName ?: fav.displayName.orEmpty()
         holder.details.text = if (opportunity == null) {
             "Son tarama sonucu yok • Favori kaydı korunuyor"
         } else {
             buildString {
-                append("${opportunity.direction} • Nihai ${opportunity.finalSignalScore}/100 • Teknik ${opportunity.score}/100\n")
-                append("Risk ${opportunity.riskScore}/100 • Veri Güveni ${opportunity.dataConfidenceScore}/100 • Hacim ${opportunity.volumeLabel}\n")
-                append("Günlük ${"%.2f".format(opportunity.dailyChangePct)}% • Kaynak: ${opportunity.source}")
+                append("Teknik ${opportunity.score}/100 • Risk ${opportunity.riskScore}/100 • Veri Güveni ${opportunity.dataConfidenceScore}/100\n")
+                append("Hacim ${opportunity.volumeLabel} • Günlük ${"%.2f".format(opportunity.dailyChangePct)}%\n")
+                opportunity.lrc?.let { lrc ->
+                    val arrow = when (lrc.trend) {
+                        "YÜKSELEN" -> "↑"
+                        "DÜŞEN" -> "↓"
+                        else -> "→"
+                    }
+                    append("LRC100 $arrow R ${"%.2f".format(lrc.pearsonR)} • ${lrc.channelPosition}\n")
+                }
+                append("Kaynak: ${opportunity.source}")
             }
         }
         holder.remove.text = "★ Favoriden çıkar"
