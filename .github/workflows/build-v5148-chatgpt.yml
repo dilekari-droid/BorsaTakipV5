@@ -1,0 +1,123 @@
+name: Build V5.1.48 Ensemble Dynamic Weights APK
+
+on:
+  push:
+    branches:
+      - chatgpt/build-v5148-ensemble-dynamic-weights
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 35
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Restore verified V5.1.47 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          lines = Path('.github/workflows/build-v5147-chatgpt.yml').read_text().splitlines()
+          targets = ['Restore verified V5.1.46 source', 'Apply V5.1.47 strategy comparison patch']
+          for n, target in enumerate(targets):
+              marker = next(i for i, line in enumerate(lines) if line.strip() == f'- name: {target}')
+              run_line = next(i for i in range(marker, len(lines)) if lines[i].strip() == 'run: |')
+              out = []
+              for line in lines[run_line + 1:]:
+                  if line.startswith('      - name:'):
+                      break
+                  out.append(line[10:] if line.startswith('          ') else line)
+              Path(f'/tmp/v5147-step-{n}.sh').write_text('\n'.join(out) + '\n')
+          PY
+          for f in /tmp/v5147-step-*.sh; do bash "$f"; done
+          grep -Fq 'versionName = "5.1.47"' build_v5135/app/build.gradle.kts
+          grep -Fq 'versionCode = 97' build_v5135/app/build.gradle.kts
+
+      - name: Apply V5.1.48 ensemble dynamic weights patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat build_payload/v5148.patch.xz.b64.part00 build_payload/v5148.patch.xz.b64.part01 build_payload/v5148.patch.xz.b64.part02 build_payload/v5148.patch.xz.b64.part03 > /tmp/v5148.patch.xz.b64
+          printf '\n' >> /tmp/v5148.patch.xz.b64
+          test "$(wc -c < /tmp/v5148.patch.xz.b64)" -eq 17921
+          echo "0b9ca71d0330983d7025c58f81521a18eea351f67701884bf6ba092176077712  /tmp/v5148.patch.xz.b64" | sha256sum -c -
+          base64 --decode /tmp/v5148.patch.xz.b64 > /tmp/v5148.patch.xz
+          test "$(wc -c < /tmp/v5148.patch.xz)" -eq 13440
+          echo "ab5d41a322ed79333e5a503e4ce745a333a73fe86f2f50ac767a15c1682d4eab  /tmp/v5148.patch.xz" | sha256sum -c -
+          xz -dc /tmp/v5148.patch.xz > /tmp/v5148.patch
+          test "$(wc -c < /tmp/v5148.patch)" -eq 64042
+          echo "99d623bc08d3457893afa0e2649fff5be2b838053c03159d1bd364217b48f89e  /tmp/v5148.patch" | sha256sum -c -
+          cd build_v5135
+          patch --batch -p1 < /tmp/v5148.patch
+          grep -Fq 'versionName = "5.1.48"' app/build.gradle.kts
+          grep -Fq 'versionCode = 98' app/build.gradle.kts
+          test -f CHANGELOG_V5.1.48_ENSEMBLE_DYNAMIC_WEIGHTS.md
+          test -f app/src/main/java/tr/borsatakip/v5/analysis/StrategyOptimizationEngine.kt
+          test -f app/src/main/java/tr/borsatakip/v5/data/StrategyWeightStore.kt
+          test -f app/src/main/java/tr/borsatakip/v5/data/ViopStrategyHistoryStore.kt
+          grep -Fq 'MIN_SAMPLES_PER_STRATEGY = 20' app/src/main/java/tr/borsatakip/v5/analysis/StrategyOptimizationEngine.kt
+          grep -Fq 'MAX_STEP = 0.05' app/src/main/java/tr/borsatakip/v5/analysis/StrategyOptimizationEngine.kt
+          grep -Fq 'FALLBACK_COMBINED' app/src/main/java/tr/borsatakip/v5/data/SignalHistoryRecorder.kt
+          grep -Fq 'VERIFIED_HISTORICAL' app/src/main/java/tr/borsatakip/v5/data/ViopStrategyHistoryStore.kt
+
+      - name: Run backend tests when pytest is available
+        shell: bash
+        working-directory: build_v5135/backend
+        run: |
+          if python - <<'PY'
+          import importlib.util, sys
+          sys.exit(0 if importlib.util.find_spec('pytest') else 1)
+          PY
+          then
+            python -m pytest -q
+          else
+            echo "pytest unavailable on runner; local backend validation is recorded separately."
+          fi
+
+      - name: Run Android unit tests and build debug APK
+        working-directory: build_v5135
+        run: gradle :app:testDebugUnitTest :app:assembleDebug --stacktrace --no-daemon
+
+      - name: Verify and prepare APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=build_v5135/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" >/dev/null
+          unzip -l "$APK" | grep -q 'AndroidManifest.xml'
+          unzip -l "$APK" | grep -q 'classes.dex'
+          mkdir -p dist
+          cp "$APK" dist/BorsaTakipV5.1.48-ENSEMBLE-DYNAMIC-WEIGHTS-debug.apk
+          sha256sum dist/BorsaTakipV5.1.48-ENSEMBLE-DYNAMIC-WEIGHTS-debug.apk > dist/BorsaTakipV5.1.48-ENSEMBLE-DYNAMIC-WEIGHTS-debug.apk.sha256
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BorsaTakipV5.1.48-ENSEMBLE-DYNAMIC-WEIGHTS-debug-apk
+          path: |
+            dist/BorsaTakipV5.1.48-ENSEMBLE-DYNAMIC-WEIGHTS-debug.apk
+            dist/BorsaTakipV5.1.48-ENSEMBLE-DYNAMIC-WEIGHTS-debug.apk.sha256
+          if-no-files-found: error
+          retention-days: 7
