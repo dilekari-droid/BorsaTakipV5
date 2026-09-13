@@ -1,9 +1,9 @@
-name: Build V5.1.36 CAHT6 APK
+name: Build V5.1.37 UI APK
 
 on:
   push:
     branches:
-      - chatgpt/build-v5136-caht6-patch
+      - chatgpt/build-v5137-ui
   workflow_dispatch:
 
 jobs:
@@ -32,11 +32,11 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Restore verified V5.1.35 source and apply V5.1.36 patch
+      - name: Restore verified source and apply V5.1.36 + V5.1.37 patches
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf build_v5135 /tmp/v5135_source.tar.xz /tmp/v5135_source.b64 /tmp/v5136.patch.xz /tmp/v5136.patch
+          rm -rf build_v5135 /tmp/v5135_source.tar.xz /tmp/v5135_source.b64 /tmp/v5136.patch.xz /tmp/v5136.patch /tmp/v5137.patch.xz /tmp/v5137.patch
           mkdir -p build_v5135
           cat \
             build_payload/v5135_chatgpt_source_part_00.b64 \
@@ -55,8 +55,6 @@ jobs:
           base64 --decode /tmp/v5135_source.b64 > /tmp/v5135_source.tar.xz
           echo "845bb7c3dba09142119ad507fb05cd9386e2a0ffb266f197fd8544f5cee087b6  /tmp/v5135_source.tar.xz" | sha256sum -c -
           tar -xJf /tmp/v5135_source.tar.xz -C build_v5135
-          grep -Fq 'versionName = "5.1.35"' build_v5135/app/build.gradle.kts
-          grep -Fq 'versionCode = 85' build_v5135/app/build.gradle.kts
 
           test "$(wc -c < build_payload/v5136.patch.xz.b64)" -eq 12664
           echo "341adc7c34713ae95176b8e7fbfb21d40fa0177f1d1822c74497d6f41ee0758b  build_payload/v5136.patch.xz.b64" | sha256sum -c -
@@ -69,6 +67,19 @@ jobs:
           patch -p1 < /tmp/v5136.patch
           grep -Fq 'versionName = "5.1.36"' app/build.gradle.kts
           grep -Fq 'versionCode = 86' app/build.gradle.kts
+          cd ..
+
+          test "$(wc -c < build_payload/v5137-ui.patch.xz.b64)" -eq 6872
+          echo "6a7ddd145d319b15f81ab8cf9d767f146f0eabd9b149deb580658be3b7befe9a  build_payload/v5137-ui.patch.xz.b64" | sha256sum -c -
+          base64 --decode build_payload/v5137-ui.patch.xz.b64 > /tmp/v5137.patch.xz
+          echo "16638f1771e9f7d69c498ece065b6ab31cb07a7ae44cb6942ede318345186046  /tmp/v5137.patch.xz" | sha256sum -c -
+          xz -dc /tmp/v5137.patch.xz > /tmp/v5137.patch
+          test "$(wc -c < /tmp/v5137.patch)" -eq 47210
+          echo "1b1144c228c1d8e3a0ba5adc2ba88afa4176d3db31bbed8be8b9c8d327ffe9cb  /tmp/v5137.patch" | sha256sum -c -
+          cd build_v5135
+          patch -p1 < /tmp/v5137.patch
+          grep -Fq 'versionName = "5.1.37"' app/build.gradle.kts
+          grep -Fq 'versionCode = 87' app/build.gradle.kts
 
       - name: Run Android unit tests and build debug APK
         working-directory: build_v5135
@@ -84,15 +95,15 @@ jobs:
           unzip -l "$APK" | grep -q 'AndroidManifest.xml'
           unzip -l "$APK" | grep -q 'classes.dex'
           mkdir -p dist
-          cp "$APK" dist/BorsaTakipV5.1.36-CAHT6-debug.apk
-          sha256sum dist/BorsaTakipV5.1.36-CAHT6-debug.apk > dist/BorsaTakipV5.1.36-CAHT6-debug.apk.sha256
+          cp "$APK" dist/BorsaTakipV5.1.37-UI-debug.apk
+          sha256sum dist/BorsaTakipV5.1.37-UI-debug.apk > dist/BorsaTakipV5.1.37-UI-debug.apk.sha256
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: BorsaTakipV5.1.36-CAHT6-debug-apk
+          name: BorsaTakipV5.1.37-UI-debug-apk
           path: |
-            dist/BorsaTakipV5.1.36-CAHT6-debug.apk
-            dist/BorsaTakipV5.1.36-CAHT6-debug.apk.sha256
+            dist/BorsaTakipV5.1.37-UI-debug.apk
+            dist/BorsaTakipV5.1.37-UI-debug.apk.sha256
           if-no-files-found: error
           retention-days: 7
