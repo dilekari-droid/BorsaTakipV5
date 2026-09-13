@@ -1,4 +1,4 @@
-name: Build V5.2.1 Research Foundation APK
+name: Build V5.2.1 Research Foundation REV1 APK
 
 on:
   push:
@@ -77,11 +77,36 @@ jobs:
           test -f app/src/main/java/tr/borsatakip/v5/data/ResearchApiClient.kt
           test -f app/src/main/java/tr/borsatakip/v5/data/ResearchFoundationRepository.kt
 
+      - name: Apply V5.2.1 REV1 security and provenance fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat build_payload/v521rev1.patch.xz.b64.part00 \
+              build_payload/v521rev1.patch.xz.b64.part01 \
+              build_payload/v521rev1.patch.xz.b64.part02 \
+              build_payload/v521rev1.patch.xz.b64.part03 > /tmp/v521rev1.clean.b64
+          test "$(wc -c < /tmp/v521rev1.clean.b64)" -eq 20144
+          echo "0bc38aebfc32de1e73436ade5101c104d7cedb1189e9364978f19bfcd2da609b  /tmp/v521rev1.clean.b64" | sha256sum -c -
+          base64 --decode /tmp/v521rev1.clean.b64 > /tmp/v521rev1.patch.xz
+          test "$(wc -c < /tmp/v521rev1.patch.xz)" -eq 15108
+          echo "c202286eb43d49ead24346f567cb04fad18f0a234b55689985be912f8723461f  /tmp/v521rev1.patch.xz" | sha256sum -c -
+          xz -dc /tmp/v521rev1.patch.xz > /tmp/v521rev1.patch
+          test "$(wc -c < /tmp/v521rev1.patch)" -eq 80037
+          echo "7e50000990bc3b6d8049ae5cf319a2f3fe5da4d13dc769562f0404a2dffd16ab  /tmp/v521rev1.patch" | sha256sum -c -
+          cd build_v5135
+          patch --batch -p1 < /tmp/v521rev1.patch
+          grep -Fq 'versionName = "5.2.1"' app/build.gradle.kts
+          grep -Fq 'versionCode = 103' app/build.gradle.kts
+          grep -Fq 'originSourceId = document.originSourceId' app/src/main/java/tr/borsatakip/v5/research/ResearchFoundationEngine.kt
+          grep -Fq 'sourceIdentityVerified' app/src/main/java/tr/borsatakip/v5/research/ResearchFoundationEngine.kt
+          grep -Fq 'asOfTime: Long? = null' app/src/main/java/tr/borsatakip/v5/data/ResearchApiClient.kt
+          test -f app/src/test/java/tr/borsatakip/v5/research/ResearchFoundationSecurityTest.kt
+
       - name: Run Android unit tests and build debug APK
         working-directory: build_v5135
         run: gradle :app:testDebugUnitTest :app:assembleDebug --stacktrace --no-daemon
 
-      - name: Verify and prepare V5.2.1 APK
+      - name: Verify and prepare V5.2.1 REV1 APK
         shell: bash
         run: |
           set -euo pipefail
@@ -98,19 +123,27 @@ jobs:
           print('APK ZIP/Manifest/classes.dex OK')
           PY
           AAPT=$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)
           test -x "$AAPT"
-          "$AAPT" dump badging "$APK" > /tmp/v521-badging.txt
-          grep -Fq "package: name='tr.borsatakip.v5' versionCode='102' versionName='5.2.1'" /tmp/v521-badging.txt
+          test -x "$APKSIGNER"
+          "$AAPT" dump badging "$APK" > /tmp/v521rev1-badging.txt
+          grep -Fq "package: name='tr.borsatakip.v5' versionCode='103' versionName='5.2.1'" /tmp/v521rev1-badging.txt
+          "$APKSIGNER" verify --verbose --print-certs "$APK" > /tmp/v521rev1-signature.txt
+          grep -Fq 'Verifies' /tmp/v521rev1-signature.txt || cat /tmp/v521rev1-signature.txt
           mkdir -p dist
-          cp "$APK" dist/BorsaTakipV5.2.1-RESEARCH-FOUNDATION-debug.apk
-          sha256sum dist/BorsaTakipV5.2.1-RESEARCH-FOUNDATION-debug.apk > dist/BorsaTakipV5.2.1-RESEARCH-FOUNDATION-debug.apk.sha256
+          cp "$APK" dist/BorsaTakipV5.2.1-RESEARCH-FOUNDATION-REV1-debug.apk
+          sha256sum dist/BorsaTakipV5.2.1-RESEARCH-FOUNDATION-REV1-debug.apk > dist/BorsaTakipV5.2.1-RESEARCH-FOUNDATION-REV1-debug.apk.sha256
+          cp /tmp/v521rev1-badging.txt dist/V5.2.1-REV1-badging.txt
+          cp /tmp/v521rev1-signature.txt dist/V5.2.1-REV1-signature.txt
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: BorsaTakipV5.2.1-RESEARCH-FOUNDATION-debug-apk
+          name: BorsaTakipV5.2.1-RESEARCH-FOUNDATION-REV1-debug-apk
           path: |
-            dist/BorsaTakipV5.2.1-RESEARCH-FOUNDATION-debug.apk
-            dist/BorsaTakipV5.2.1-RESEARCH-FOUNDATION-debug.apk.sha256
+            dist/BorsaTakipV5.2.1-RESEARCH-FOUNDATION-REV1-debug.apk
+            dist/BorsaTakipV5.2.1-RESEARCH-FOUNDATION-REV1-debug.apk.sha256
+            dist/V5.2.1-REV1-badging.txt
+            dist/V5.2.1-REV1-signature.txt
           if-no-files-found: error
           retention-days: 7
