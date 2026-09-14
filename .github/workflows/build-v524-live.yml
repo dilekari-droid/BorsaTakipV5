@@ -1,0 +1,120 @@
+name: Build V5.2.4 LIVE DATA + TradingView APK
+
+on:
+  push:
+    branches:
+      - v5.2.4-live-build
+    paths:
+      - '.github/workflows/build-v524-live.yml'
+      - 'build_payload/v524live_overlay_part*.b64'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 35
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Reconstruct verified V5.2.1 REV1 baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          lines = Path('.github/workflows/build-v521-chatgpt.yml').read_text().splitlines()
+          targets = [
+              'Restore verified V5.1.50 source',
+              'Apply V5.2.1 research foundation patch',
+              'Apply V5.2.1 REV1 security and provenance fixes',
+          ]
+          for n, target in enumerate(targets):
+              marker = next(i for i, line in enumerate(lines) if line.strip() == f'- name: {target}')
+              run_line = next(i for i in range(marker, len(lines)) if lines[i].strip() == 'run: |')
+              out = []
+              for line in lines[run_line + 1:]:
+                  if line.startswith('      - name:'):
+                      break
+                  out.append(line[10:] if line.startswith('          ') else line)
+              Path(f'/tmp/v524-base-step-{n}.sh').write_text('\n'.join(out) + '\n')
+          PY
+          for f in /tmp/v524-base-step-*.sh; do bash "$f"; done
+          grep -Fq 'versionName = "5.2.1"' build_v5135/app/build.gradle.kts
+          grep -Fq 'versionCode = 103' build_v5135/app/build.gradle.kts
+
+      - name: Reconstruct and verify V5.2.4 Android overlay
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat build_payload/v524live_overlay_part{00..08}.b64 > /tmp/v524live.b64
+          test "$(wc -c < /tmp/v524live.b64)" -eq 53612
+          base64 --decode /tmp/v524live.b64 > /tmp/v524live-overlay.tar.xz
+          echo "efcd086250d69dd367bd8aa84d19d1767dbcb4ef9b9b79ef5d50966f0a1605f5  /tmp/v524live-overlay.tar.xz" | sha256sum -c -
+          xz -t /tmp/v524live-overlay.tar.xz
+          tar -xJf /tmp/v524live-overlay.tar.xz -C build_v5135
+          grep -Fq 'versionName = "5.2.4"' build_v5135/app/build.gradle.kts
+          grep -Fq 'versionCode = 107' build_v5135/app/build.gradle.kts
+          test -f build_v5135/app/src/main/java/tr/borsatakip/v5/data/TradingViewSignalClient.kt
+          test -f build_v5135/app/src/main/java/tr/borsatakip/v5/analysis/OpportunityPublicationPolicy.kt
+          grep -Fq 'class LiveMarketSocket' build_v5135/app/src/main/java/tr/borsatakip/v5/data/LiveMarketSocket.kt
+          grep -Fq 'marketDataRealtime' build_v5135/app/src/main/java/tr/borsatakip/v5/data/TradingViewSignalClient.kt
+
+      - name: Run Android unit tests and build debug APK
+        working-directory: build_v5135
+        run: gradle :app:testDebugUnitTest :app:assembleDebug --stacktrace --no-daemon
+
+      - name: Verify APK metadata structure alignment and signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=build_v5135/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" > /tmp/v524-unzip.txt
+          AAPT=$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)
+          ZIPALIGN=$(find "$ANDROID_HOME/build-tools" -type f -name zipalign | sort -V | tail -1)
+          test -x "$AAPT"
+          test -x "$APKSIGNER"
+          test -x "$ZIPALIGN"
+          "$AAPT" dump badging "$APK" | tee /tmp/v524-badging.txt
+          grep -Fq "package: name='tr.borsatakip.v5' versionCode='107' versionName='5.2.4'" /tmp/v524-badging.txt
+          "$ZIPALIGN" -c -v 4 "$APK" | tee /tmp/v524-zipalign.txt
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee /tmp/v524-signature.txt
+          mkdir -p dist
+          cp "$APK" dist/V5-ARACI-KURUM-5.2.4-LIVE-DATA-TRADINGVIEW-debug.apk
+          sha256sum dist/V5-ARACI-KURUM-5.2.4-LIVE-DATA-TRADINGVIEW-debug.apk | tee dist/V5-ARACI-KURUM-5.2.4-LIVE-DATA-TRADINGVIEW-debug.apk.sha256
+          cp /tmp/v524-badging.txt dist/V5.2.4-badging.txt
+          cp /tmp/v524-zipalign.txt dist/V5.2.4-zipalign.txt
+          cp /tmp/v524-signature.txt dist/V5.2.4-signature.txt
+
+      - name: Upload V5.2.4 APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: V5-ARACI-KURUM-5.2.4-LIVE-DATA-TRADINGVIEW-debug-apk
+          path: |
+            dist/V5-ARACI-KURUM-5.2.4-LIVE-DATA-TRADINGVIEW-debug.apk
+            dist/V5-ARACI-KURUM-5.2.4-LIVE-DATA-TRADINGVIEW-debug.apk.sha256
+            dist/V5.2.4-badging.txt
+            dist/V5.2.4-zipalign.txt
+            dist/V5.2.4-signature.txt
+          if-no-files-found: error
+          retention-days: 7
