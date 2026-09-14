@@ -70,7 +70,7 @@ jobs:
               build_payload/v524_live_android_patch_part02.b64 \
               build_payload/v524_live_android_patch_part03.b64 > /tmp/v524-live-android.b64
           base64 --decode /tmp/v524-live-android.b64 > /tmp/v524-live-android.patch.xz
-          echo '904639eb23aaa0b40ef85dbcd6e36f2115f7329ba97780d28f7a4d7c59c9449b  /tmp/v524-live-android.patch.xz' | sha256sum -c -
+          echo 'b481699937534c1f4761bbe2208076f5ba9cfe53ac2132b199c0ae8894cc73bb  /tmp/v524-live-android.patch.xz' | sha256sum -c -
           xz -t /tmp/v524-live-android.patch.xz
           xz -dc /tmp/v524-live-android.patch.xz > /tmp/v524-live-android.patch
           cd build_v5135
