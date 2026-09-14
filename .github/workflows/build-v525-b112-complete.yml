@@ -22,13 +22,31 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Locate Android SDK
+        run: |
+          set -euo pipefail
+          echo "ANDROID_HOME=${ANDROID_HOME:-}"
+          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-}"
+          SDKROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          test -n "$SDKROOT"
+          if command -v sdkmanager >/dev/null 2>&1; then
+            SDKMANAGER="$(command -v sdkmanager)"
+          elif [ -x "$SDKROOT/cmdline-tools/latest/bin/sdkmanager" ]; then
+            SDKMANAGER="$SDKROOT/cmdline-tools/latest/bin/sdkmanager"
+          else
+            SDKMANAGER="$(find "$SDKROOT" -type f -name sdkmanager | sort | tail -1)"
+          fi
+          test -x "$SDKMANAGER"
+          echo "SDKMANAGER=$SDKMANAGER" >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=$SDKROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDKROOT" >> "$GITHUB_ENV"
+          "$SDKMANAGER" --version
 
       - name: Install Android SDK packages
         run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+          set -euo pipefail
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0"
 
       - name: Setup Gradle 8.9
         uses: gradle/actions/setup-gradle@v4
@@ -40,8 +58,10 @@ jobs:
           set -euo pipefail
           cat ci_payload/v525_b112_exact/part-* | base64 -d > /tmp/b112.tar.xz
           echo "4303b11735da4fca0836877e52b2124165bf7f7337d3bba492e720426a00a3c9  /tmp/b112.tar.xz" | sha256sum -c -
+          rm -rf /tmp/v525b112
           mkdir -p /tmp/v525b112
           tar -xJf /tmp/b112.tar.xz -C /tmp/v525b112
+          printf 'sdk.dir=%s\n' "$ANDROID_SDK_ROOT" > /tmp/v525b112/local.properties
 
       - name: Verify source version
         run: |
