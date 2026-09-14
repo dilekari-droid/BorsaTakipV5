@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/build-v524-live.yml'
       - 'build_payload/v524live_overlay_part*.b64'
+      - 'build_payload/v524live_safety_test.b64'
   workflow_dispatch:
 
 jobs:
@@ -77,6 +78,15 @@ jobs:
           test -f build_v5135/app/src/main/java/tr/borsatakip/v5/analysis/OpportunityPublicationPolicy.kt
           grep -Fq 'class LiveMarketSocket' build_v5135/app/src/main/java/tr/borsatakip/v5/data/LiveMarketSocket.kt
           grep -Fq 'marketDataRealtime' build_v5135/app/src/main/java/tr/borsatakip/v5/data/TradingViewSignalClient.kt
+
+      - name: Apply V5.2.4 safety contract test update
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 --decode build_payload/v524live_safety_test.b64 > /tmp/TechnicalSafetyTest.kt.xz
+          echo "548276ac3ec3fd7b332c7f8888a8d8cd0370dfd595cf4f09ebf73b9577ab746e  /tmp/TechnicalSafetyTest.kt.xz" | sha256sum -c -
+          xz -dc /tmp/TechnicalSafetyTest.kt.xz > build_v5135/app/src/test/java/tr/borsatakip/v5/analysis/TechnicalSafetyTest.kt
+          echo "5ad5ccca7a6c38572a650166f45eb7e3d3f9c10526da8a3bec8258b705dcffb6  build_v5135/app/src/test/java/tr/borsatakip/v5/analysis/TechnicalSafetyTest.kt" | sha256sum -c -
 
       - name: Run Android unit tests and build debug APK
         working-directory: build_v5135
