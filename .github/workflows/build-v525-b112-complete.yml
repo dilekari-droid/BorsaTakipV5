@@ -5,6 +5,8 @@ on:
     branches: [ v525-b112-complete-build ]
     paths:
       - '.github/workflows/build-v525-b112-complete.yml'
+  pull_request:
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
