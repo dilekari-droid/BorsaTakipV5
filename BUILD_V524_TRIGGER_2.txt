@@ -1,0 +1,2 @@
+V5.2.4 LIVE DATA + TradingView rebuild
+checksum=b481699937534c1f4761bbe2208076f5ba9cfe53ac2132b199c0ae8894cc73bb
