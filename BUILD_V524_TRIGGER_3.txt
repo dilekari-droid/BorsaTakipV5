@@ -1,0 +1,2 @@
+V5.2.4 LIVE DATA + TradingView rebuild
+mode=verified-context-tolerance
