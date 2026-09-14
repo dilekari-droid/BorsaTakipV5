@@ -84,9 +84,9 @@ jobs:
         run: |
           set -euo pipefail
           base64 --decode build_payload/v524live_safety_test.b64 > /tmp/TechnicalSafetyTest.kt.xz
-          echo "548276ac3ec3fd7b332c7f8888a8d8cd0370dfd595cf4f09ebf73b9577ab746e  /tmp/TechnicalSafetyTest.kt.xz" | sha256sum -c -
+          echo "1c7104d9ba8f2965f56be27fd858a68b1a3137ef200edd17f1e1075787eab7a2  /tmp/TechnicalSafetyTest.kt.xz" | sha256sum -c -
           xz -dc /tmp/TechnicalSafetyTest.kt.xz > build_v5135/app/src/test/java/tr/borsatakip/v5/analysis/TechnicalSafetyTest.kt
-          echo "5ad5ccca7a6c38572a650166f45eb7e3d3f9c10526da8a3bec8258b705dcffb6  build_v5135/app/src/test/java/tr/borsatakip/v5/analysis/TechnicalSafetyTest.kt" | sha256sum -c -
+          echo "3b96128ff91be395a1ebffcb0fbc7a956c35d51ceb6931f128c197122257919a  build_v5135/app/src/test/java/tr/borsatakip/v5/analysis/TechnicalSafetyTest.kt" | sha256sum -c -
 
       - name: Run Android unit tests and build debug APK
         working-directory: build_v5135
