@@ -126,7 +126,7 @@ jobs:
         run: |
           set -euo pipefail
           base64 --decode build_payload/v527_auto_rescan.patch.xz.b64 > /tmp/v527-auto-rescan.patch.xz
-          echo 'a16914147a5bfb862c678fe8cf1c0c98e9095c3e1084fd969c4c9914668db21d  /tmp/v527-auto-rescan.patch.xz' | sha256sum -c -
+          echo '097c00373995370762adca5eaea475b99e75a1dbaf3adac5d709b62d878a241b  /tmp/v527-auto-rescan.patch.xz' | sha256sum -c -
           xz -t /tmp/v527-auto-rescan.patch.xz
           xz -dc /tmp/v527-auto-rescan.patch.xz > /tmp/v527-auto-rescan.patch
           cd build_v5135
