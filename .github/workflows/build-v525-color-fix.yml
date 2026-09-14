@@ -7,6 +7,11 @@ on:
     paths:
       - '.github/workflows/build-v525-color-fix.yml'
       - 'build_payload/v525_colorfix_*.b64'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/build-v525-color-fix.yml'
+      - 'build_payload/v525_colorfix_*.b64'
 
 jobs:
   build:
