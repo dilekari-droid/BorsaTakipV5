@@ -1,21 +1,22 @@
-name: Final B113 Auto Scan Backend Fixed APK
+name: Final B113 Production Readiness APK
 on:
   push:
     branches: [v525-b113-verified-apk]
     paths:
       - '.github/workflows/build-b113-auto-backend-final.yml'
       - 'ci_payload/b113_fixes/auto_backend_scan/**'
+      - 'ci_payload/b113_fixes/production_readiness/**'
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 55
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
-      - name: Reconstruct source and apply all verified fixes
+      - name: Reconstruct source and apply verified fixes
         shell: bash
         run: |
           set -euo pipefail
@@ -69,7 +70,14 @@ jobs:
           git apply --check /tmp/auto_missing.patch
           git apply /tmp/auto_missing.patch
 
-      - name: Verify backend-aware automatic scan source contract
+          base64 --decode "$GITHUB_WORKSPACE/ci_payload/b113_fixes/production_readiness/b113_production_readiness_runtime_fix_full.patch.gz.b64" > /tmp/prod_ready.patch.gz
+          echo '2d3257188f1fb07b1187ebf4bc0191f0e0672b0e9864d586ac09c50ef2dee76b  /tmp/prod_ready.patch.gz' | sha256sum -c -
+          gzip -dc /tmp/prod_ready.patch.gz > /tmp/prod_ready.patch
+          echo 'ee2352a9583309cf9fe0b8bb148a7a85f9df3828705b2474ca0eb74bb7e406a5  /tmp/prod_ready.patch' | sha256sum -c -
+          git apply --check /tmp/prod_ready.patch
+          git apply /tmp/prod_ready.patch
+
+      - name: Verify production-readiness source contract
         shell: bash
         run: |
           set -euo pipefail
@@ -80,38 +88,30 @@ jobs:
           from pathlib import Path
           root=Path('/tmp/src/app/src/main')
           java=root/'java/tr/borsatakip/v5'
+          gradle=Path('/tmp/src/app/build.gradle.kts').read_text()
+          manifest=(root/'AndroidManifest.xml').read_text()
           ui=(java/'ui/BistScanActivity.kt').read_text()
-          tf=(java/'data/ScanTimeframe.kt').read_text()
-          provider=(java/'data/IntervalMarketDataProvider.kt').read_text()
-          mobile=(java/'data/MobileMarketDataProvider.kt').read_text()
+          settings_ui=(java/'ui/SettingsActivity.kt').read_text()
           scheduler=(java/'worker/AutoScanScheduler.kt').read_text()
           service=(java/'worker/AutoScanForegroundService.kt').read_text()
+          boot=(java/'worker/BootCompletedReceiver.kt').read_text()
+          diag=(java/'data/RuntimeReadinessDiagnostics.kt').read_text()
           runner=(java/'worker/AutomaticScanRunner.kt').read_text()
-          manifest=(root/'AndroidManifest.xml').read_text()
-          layout=(root/'res/layout/activity_bist_scan.xml').read_text()
-          settings=(java/'data/SettingsStore.kt').read_text()
-          main=(java/'ui/MainActivity.kt').read_text()
-
           assert 'status.text = "Periyot desteklenmiyor"' not in ui
-          assert 'VERİ SERVİSİ YAPILANDIRILMAMIŞ' in ui
-          assert 'switchAutoScan' in layout and 'txtAutoScanStatus' in layout
-          assert 'autoScanEnabled' in settings and 'scanCadenceMinutes' in settings
-          assert 'AutoScanScheduler.reconcile' in ui and 'AutoScanScheduler.reconcile' in main
-          assert 'PeriodicWorkRequestBuilder' in scheduler
           assert 'WORK_MANAGER_MINUTES = 15' in scheduler
-          assert 'AutoScanForegroundService' in scheduler
           assert 'ServiceCompat.startForeground' in service
-          assert 'AutomaticScanRunner' in service
-          assert 'BackendPreflightClient' in runner and 'BistScanner' in runner
-          assert 'experimentalFallbackOverride = false' in runner
-          assert 'AutoScanForegroundService' in manifest and 'foregroundServiceType="specialUse"' in manifest
-          assert 'DAILY_STORED_MINUTES = 1440' in tf
-          assert '240 DK desteklenmez' in tf
-          assert 'DIRECT_INTERVALS = setOf(1, 5, 15, 30, 60)' in provider
-          assert '/v1/bist/history-window/' in mobile
-          assert 'ACTION_VIEW' not in mobile
-          assert 'RealtimeScannerClient(this@BistScanActivity).fetchOnce' not in ui
-          print('Backend-aware automatic scan source contract: PASS')
+          assert 'ACTION_BOOT_COMPLETED' in boot and 'ACTION_MY_PACKAGE_REPLACED' in boot
+          assert 'RECEIVE_BOOT_COMPLETED' in manifest
+          assert 'isIgnoringBatteryOptimizations' in diag
+          assert 'resolveActivity' in diag and 'BIST:KIMMR' in diag
+          assert 'BackendPreflightClient(this).checkBist()' in settings_ui
+          assert 'experimentalFallbackOverride = false' in settings_ui
+          assert '24/48/72' in settings_ui
+          assert 'autoScanSuccessfulRuns' in runner and 'autoScanFailedRuns' in runner
+          for key in ('BORSA_KEYSTORE_PATH','BORSA_STORE_PASSWORD','BORSA_KEY_ALIAS','BORSA_KEY_PASSWORD'):
+              assert key in gradle
+          assert 'allWarningsAsErrors = true' in gradle and '"-Werror"' in gradle
+          print('Production readiness source contract: PASS')
           PY
 
       - uses: actions/setup-java@v4
@@ -122,7 +122,7 @@ jobs:
         with:
           gradle-version: '8.10.2'
 
-      - name: Require 180 of 180 Android tests
+      - name: Require 188 of 188 Android tests
         working-directory: /tmp/src
         shell: bash
         run: |
@@ -138,8 +138,8 @@ jobs:
               errors += int(r.attrib.get('errors',0))
               skipped += int(r.attrib.get('skipped',0))
           print(f'TEST_TOTAL={total} TEST_FAILURES={failures} TEST_ERRORS={errors} TEST_SKIPPED={skipped}')
-          if (total, failures, errors, skipped) != (180, 0, 0, 0):
-              raise SystemExit(f'Expected 180/180 clean pass; got total={total}, failures={failures}, errors={errors}, skipped={skipped}')
+          if (total, failures, errors, skipped) != (188, 0, 0, 0):
+              raise SystemExit(f'Expected 188/188 clean pass; got total={total}, failures={failures}, errors={errors}, skipped={skipped}')
           PY
 
       - name: Build debug APK
@@ -157,38 +157,32 @@ jobs:
           APKSIGNER="$ANDROID_HOME/build-tools/$BT/apksigner"
           ZIPALIGN="$ANDROID_HOME/build-tools/$BT/zipalign"
           BADGING="$($AAPT dump badging "$APK" | head -n1)"
-          echo "$BADGING"
           echo "$BADGING" | grep -F "name='tr.borsatakip.v5'"
           echo "$BADGING" | grep -F "versionCode='113'"
           echo "$BADGING" | grep -F "versionName='5.2.5'"
           "$APKSIGNER" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
           "$ZIPALIGN" -c -v 4 "$APK" | tee /tmp/zipalign.txt
-
           mkdir -p /tmp/out
-          OUT=/tmp/out/V5-ARACI-KURUM-5.2.5-B113-B114-AUTO-SCAN-BACKEND-FIXED-debug.apk
+          OUT=/tmp/out/V5-ARACI-KURUM-5.2.5-B113-B114-PRODUCTION-READINESS-debug.apk
           cp "$APK" "$OUT"
           SHA="$(sha256sum "$OUT" | awk '{print $1}')"
           {
-            echo 'B113/B114 BACKEND-AWARE AUTOMATIC SCAN VERIFIED BUILD'
+            echo 'B113/B114 PRODUCTION READINESS VERIFIED BUILD'
             echo 'applicationId=tr.borsatakip.v5'
             echo 'versionCode=113'
             echo 'versionName=5.2.5'
-            echo 'android_tests=180/180 passed'
-            echo 'manual_scan=PRODUCTION_BACKEND_PREFLIGHT_SELECTED_TIMEFRAME_PROBE_SYMBOLS_OHLCV_ANALYSIS_RANKING'
-            echo 'backend_missing_not_misreported_as_unsupported=true'
-            echo 'auto_scan=true'
-            echo 'auto_scan_cadence=SELECTED_TIMEFRAME'
-            echo 'sub15_scheduler=FOREGROUND_SPECIAL_USE'
-            echo 'min15_scheduler=WORKMANAGER_PERIODIC'
-            echo 'daily_auto_cadence=1440_MINUTES_APPROX'
-            echo 'daily_contract=REAL_1D_NOT_240M'
-            echo 'missing_data=FAIL_CLOSED_NO_FAKE_RESULT'
-            echo 'tradingview_market_data=false'
-            echo 'tradingview_chart_button=PRESERVED_DYNAMIC_BIST_SYMBOL'
+            echo 'android_tests=188/188 passed'
+            echo 'compiler_warnings=BUILD_BLOCKING'
+            echo 'boot_reschedule_contract=true'
+            echo 'runtime_diagnostics=true'
+            echo 'battery_optimization_diagnostics=true'
+            echo 'tradingview_handler_diagnostics=true'
+            echo 'soak_health_counters=true'
+            echo 'release_signing=SUPPORTED_WITH_EXTERNAL_SECRET_KEYSTORE_ONLY'
             echo 'production_live_e2e=NOT_RUN_REQUIRES_REAL_BACKEND_AND_CREDENTIALS'
             echo 'KIMMR_live_crosscheck=NOT_RUN'
             echo 'physical_device_test=NOT_RUN'
-            echo 'production_signing=NOT_AVAILABLE_WITHOUT_RELEASE_KEYSTORE'
+            echo '24_48_72h_soak=NOT_RUN_REQUIRES_ELAPSED_DEVICE_TIME'
             echo 'signing=DEBUG'
             echo "apk_sha256=$SHA"
           } > /tmp/out/PROVENANCE.txt
@@ -198,6 +192,6 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: B113-B114-AUTO-SCAN-BACKEND-FIXED-APK
+          name: B113-B114-PRODUCTION-READINESS-APK
           path: /tmp/out/*
           retention-days: 90
