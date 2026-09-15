@@ -44,6 +44,7 @@ jobs:
           git apply /tmp/prod.patch
 
           python3 "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b114_final/apply_b114_final.py" /tmp/src
+          python3 "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b114_final/post_b114_condition_fix.py" /tmp/src
 
       - name: Verify B114 source contract
         shell: bash
