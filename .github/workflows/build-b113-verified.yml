@@ -8,6 +8,7 @@ on:
       - ".github/workflows/build-b113-verified.yml"
       - "ci_payload/b113_fixes/b113_140_tests.patch"
       - "ci_payload/b113_fixes/b113_fgs_crash_fix.patch"
+      - "ci_payload/b113_fixes/b113_fgs_regression_test.patch"
   workflow_dispatch:
 
 permissions:
@@ -49,6 +50,15 @@ jobs:
           cd /tmp/b113-src
           git apply --check "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_fgs_crash_fix.patch"
           git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_fgs_crash_fix.patch"
+
+      - name: Apply foreground-service regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "c3d3cc58f8000d9f629c4a236e108ee2352008ab7206bea43227447d1857733f  ci_payload/b113_fixes/b113_fgs_regression_test.patch" | sha256sum -c -
+          cd /tmp/b113-src
+          git apply --check "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_fgs_regression_test.patch"
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_fgs_regression_test.patch"
 
       - name: Verify source identity and FGS lifecycle invariants
         shell: bash
@@ -103,7 +113,7 @@ jobs:
           set -euo pipefail
           gradle --no-daemon testDebugUnitTest --stacktrace
 
-      - name: Verify 140 of 140 tests passed
+      - name: Verify 144 of 144 tests passed
         working-directory: /tmp/b113-src
         shell: bash
         run: |
@@ -125,8 +135,8 @@ jobs:
           print(f'TEST_FAILURES={failures}')
           print(f'TEST_ERRORS={errors}')
           print(f'TEST_SKIPPED={skipped}')
-          if total != 140 or failures != 0 or errors != 0:
-              raise SystemExit(f'Expected 140/140 passing tests, got total={total}, failures={failures}, errors={errors}')
+          if total != 144 or failures != 0 or errors != 0:
+              raise SystemExit(f'Expected 144/144 passing tests, got total={total}, failures={failures}, errors={errors}')
           PY
 
       - name: Build debug APK
@@ -171,11 +181,12 @@ jobs:
             echo "original_android_source_archive_sha256=7046afbb99b19c2b7e682c9aceee87f3c73260027b687f97ca941ceea6a2a93e"
             echo "quality_fix_patch_sha256=4153eac5b14cb0abf4235209162f27a61b8cd61ef89272aa1ffb7c39f255ddff"
             echo "fgs_crash_fix_patch_sha256=0b7091fea889289cdf6b7eb2f946ec77eb9fa1f4ea5786e2ac7ede75b8770e09"
+            echo "fgs_regression_test_patch_sha256=c3d3cc58f8000d9f629c4a236e108ee2352008ab7206bea43227447d1857733f"
             echo "applicationId=tr.borsatakip.v5"
             echo "versionCode=113"
             echo "versionName=5.2.5"
             echo "foreground_service_type=specialUse"
-            echo "unit_tests=140/140 passed"
+            echo "unit_tests=144/144 passed"
             echo "physical_device_runtime_test=NOT_RUN"
             echo "apk_sha256=$APK_SHA"
             echo "apk_file=$(basename "$OUT")"
