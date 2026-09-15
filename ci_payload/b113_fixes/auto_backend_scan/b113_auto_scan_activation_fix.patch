@@ -1,0 +1,121 @@
+diff --git a/app/src/main/java/tr/borsatakip/v5/ui/BistScanActivity.kt b/app/src/main/java/tr/borsatakip/v5/ui/BistScanActivity.kt
+--- a/app/src/main/java/tr/borsatakip/v5/ui/BistScanActivity.kt
++++ b/app/src/main/java/tr/borsatakip/v5/ui/BistScanActivity.kt
+@@ -94,26 +94,20 @@ class BistScanActivity : BaseActivity() {
+         refreshAutoScanUi()
+         scanTimeButton.setOnClickListener { toggleScanTimeMenu() }
+         autoScanSwitch.setOnCheckedChangeListener { _, enabled ->
+             if (suppressAutoScanListener) return@setOnCheckedChangeListener
+-            if (enabled && !productionBackendConfigured()) {
+-                settings.autoScanEnabled = false
+-                suppressAutoScanListener = true
+-                autoScanSwitch.isChecked = false
+-                suppressAutoScanListener = false
+-                status.text = "VERİ SERVİSİ YAPILANDIRILMAMIŞ"
+-                heroSubtitle.text = "Otomatik tarama için Production Backend HTTPS adresi ve API anahtarı gereklidir."
+-                configure.setTextColor(getColor(R.color.white))
+-                Toast.makeText(this, "Otomatik tarama başlatılamadı: Production Backend yapılandırılmamış.", Toast.LENGTH_LONG).show()
+-                refreshAutoScanUi()
+-                return@setOnCheckedChangeListener
+-            }
+             settings.autoScanEnabled = enabled
+             if (enabled && settings.autoScanMonitoringStartedAt <= 0L) settings.autoScanMonitoringStartedAt = System.currentTimeMillis()
+             val selected = ScanTimeframe.fromStored(settings.analysisTimeframeMinutes)
+             settings.scanCadenceMinutes = selected.storedMinutes.coerceIn(1, 1440)
+             AutoScanScheduler.reconcile(this, allowForegroundStart = true)
++            if (enabled && !productionBackendConfigured()) {
++                status.text = "OTOMATİK TARAMA AKTİF • VERİ SERVİSİ BEKLENİYOR"
++                heroSubtitle.text = "${selected.label} otomatik tarama etkin. Production Backend yapılandırıldığında gerçek OHLCV taraması otomatik başlayacak."
++                configure.setTextColor(getColor(R.color.white))
++                Toast.makeText(this, "Otomatik tarama etkinleştirildi • veri servisi bekleniyor.", Toast.LENGTH_LONG).show()
++            }
+             refreshAutoScanUi()
+         }
+@@ -588,8 +582,8 @@ class BistScanActivity : BaseActivity() {
+         autoScanSwitch.isChecked = settings.autoScanEnabled
+         suppressAutoScanListener = false
+         autoScanStatus.text = when {
+             !settings.autoScanEnabled -> "Kapalı • manuel tarama"
+-            !productionBackendConfigured() -> "Bekliyor • Production Backend gerekli"
++            !productionBackendConfigured() -> "Açık • ${tf.label} • veri servisi bekleniyor"
+             tf.storedMinutes < AutoScanScheduler.WORK_MANAGER_MINUTES -> "Açık • ${tf.label} OHLCV • her ${tf.label} • foreground servis"
+             tf.isDaily -> "Açık • gerçek 1 GÜN OHLCV • yaklaşık 24 saatte bir"
+             else -> "Açık • ${tf.label} OHLCV • her ${tf.label} • WorkManager"
+@@ -656,7 +650,7 @@ class BistScanActivity : BaseActivity() {
+             refreshSourceLabel()
+             refreshScanTimeUi()
+             refreshAutoScanUi()
+-            if (settings.autoScanEnabled && productionBackendConfigured()) {
++            if (settings.autoScanEnabled) {
+                 AutoScanScheduler.reconcile(this, allowForegroundStart = true)
+             }
+             findViewById<Button>(R.id.btnStartScan)?.text = defaultScanButtonLabel()
+diff --git a/app/src/main/java/tr/borsatakip/v5/worker/AutoScanForegroundService.kt b/app/src/main/java/tr/borsatakip/v5/worker/AutoScanForegroundService.kt
+--- a/app/src/main/java/tr/borsatakip/v5/worker/AutoScanForegroundService.kt
++++ b/app/src/main/java/tr/borsatakip/v5/worker/AutoScanForegroundService.kt
+@@ -112,7 +112,7 @@ class AutoScanForegroundService : Service() {
+         fun start(context: Context): Boolean {
+             val app = context.applicationContext
+             val settings = SettingsStore(app)
+-            if (!settings.autoScanEnabled || !settings.baseUrl.startsWith("https://") || settings.apiKey.isBlank()) return false
++            if (!settings.autoScanEnabled) return false
+             if (!startRequested.compareAndSet(false, true)) return true
+             return runCatching {
+                 val intent = Intent(app, AutoScanForegroundService::class.java)
+diff --git a/app/src/test/java/tr/borsatakip/v5/data/AutoScanActivationSourceTest.kt b/app/src/test/java/tr/borsatakip/v5/data/AutoScanActivationSourceTest.kt
+new file mode 100644
+--- /dev/null
++++ b/app/src/test/java/tr/borsatakip/v5/data/AutoScanActivationSourceTest.kt
+@@ -0,0 +1,54 @@
++package tr.borsatakip.v5.data
++
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertTrue
++import org.junit.Test
++import java.io.File
++
++class AutoScanActivationSourceTest {
++    private fun mainRoot(): File {
++        val cwd = File(System.getProperty("user.dir"))
++        return sequenceOf(
++            File(cwd, "src/main"),
++            File(cwd, "app/src/main"),
++            cwd.parentFile?.let { File(it, "app/src/main") }
++        ).filterNotNull().firstOrNull { it.isDirectory }
++            ?: error("app/src/main bulunamadı: ${cwd.absolutePath}")
++    }
++
++    private fun source(path: String): String = File(mainRoot(), path).readText()
++
++    @Test
++    fun userCanEnableAutoScanBeforeBackendIsConfigured() {
++        val src = source("java/tr/borsatakip/v5/ui/BistScanActivity.kt")
++        assertTrue(src.contains("settings.autoScanEnabled = enabled"))
++        assertTrue(src.contains("OTOMATİK TARAMA AKTİF • VERİ SERVİSİ BEKLENİYOR"))
++        assertFalse(src.contains("if (enabled && !productionBackendConfigured()) {\n                settings.autoScanEnabled = false"))
++        assertFalse(src.contains("autoScanSwitch.isChecked = false"))
++    }
++
++    @Test
++    fun autoScanUiShowsEnabledWaitingStateInsteadOfForcedOff() {
++        val src = source("java/tr/borsatakip/v5/ui/BistScanActivity.kt")
++        assertTrue(src.contains("!productionBackendConfigured() -> \"Açık • ${'$'}{tf.label} • veri servisi bekleniyor\""))
++        assertFalse(src.contains("!productionBackendConfigured() -> \"Bekliyor • Production Backend gerekli\""))
++    }
++
++    @Test
++    fun foregroundServiceMayWaitForBackendWhileAutoScanRemainsEnabled() {
++        val src = source("java/tr/borsatakip/v5/worker/AutoScanForegroundService.kt")
++        assertTrue(src.contains("if (!settings.autoScanEnabled) return false"))
++        assertFalse(src.contains("if (!settings.autoScanEnabled || !settings.baseUrl.startsWith(\"https://\") || settings.apiKey.isBlank()) return false"))
++        assertTrue(src.contains("veri servisi yapılandırılmamış"))
++        assertTrue(src.contains("delay(cadence * 60_000L)"))
++    }
++
++    @Test
++    fun activityResumeReconcilesEnabledAutoScanEvenWhenBackendIsStillWaiting() {
++        val src = source("java/tr/borsatakip/v5/ui/BistScanActivity.kt")
++        assertTrue(src.contains("if (settings.autoScanEnabled) {\n                AutoScanScheduler.reconcile(this, allowForegroundStart = true)"))
++        assertFalse(src.contains("if (settings.autoScanEnabled && productionBackendConfigured())"))
++    }
++}
