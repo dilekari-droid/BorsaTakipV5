@@ -1,0 +1,33 @@
+name: Export B113 Verified Source
+
+on:
+  push:
+    branches:
+      - v525-b113-verified-apk
+    paths:
+      - ".github/workflows/export-b113-source.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Reconstruct and verify source archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat ci_payload/v525_b113_android_exact/part-*.b64 > /tmp/b113_source.b64
+          base64 --decode /tmp/b113_source.b64 > /tmp/b113_android_exact.tar.xz
+          echo "7046afbb99b19c2b7e682c9aceee87f3c73260027b687f97ca941ceea6a2a93e  /tmp/b113_android_exact.tar.xz" | sha256sum -c -
+      - name: Upload exact source archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: B113-EXACT-SOURCE-ARCHIVE
+          path: /tmp/b113_android_exact.tar.xz
+          if-no-files-found: error
+          retention-days: 7
