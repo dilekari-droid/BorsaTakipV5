@@ -1,0 +1,109 @@
+name: Build B113 Verified APK
+
+on:
+  push:
+    branches:
+      - v525-b113-verified-apk
+    paths:
+      - ".github/workflows/build-b113-verified.yml"
+      - "ci_payload/v525_b113_android_exact/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Reconstruct verified B113 Android source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/b113-src
+          cat ci_payload/v525_b113_android_exact/part-*.b64 > /tmp/b113_android_exact.b64
+          base64 --decode /tmp/b113_android_exact.b64 > /tmp/b113_android_exact.tar.xz
+          echo "7046afbb99b19c2b7e682c9aceee87f3c73260027b687f97ca941ceea6a2a93e  /tmp/b113_android_exact.tar.xz" | sha256sum -c -
+          tar -xJf /tmp/b113_android_exact.tar.xz -C /tmp/b113-src
+
+      - name: Verify source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -F 'applicationId = "tr.borsatakip.v5"' /tmp/b113-src/app/build.gradle.kts
+          grep -F 'versionCode = 113' /tmp/b113-src/app/build.gradle.kts
+          grep -F 'versionName = "5.2.5"' /tmp/b113-src/app/build.gradle.kts
+          grep -R -n -F 'Tarama Zamanı' /tmp/b113-src/app/src/main | head -20
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle 8.10.2
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.10.2"
+
+      - name: Run unit tests and build debug APK
+        working-directory: /tmp/b113-src
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon testDebugUnitTest assembleDebug --stacktrace
+
+      - name: Verify APK package, version, signature and alignment
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=/tmp/b113-src/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)"
+          AAPT="$ANDROID_HOME/build-tools/$BUILD_TOOLS/aapt"
+          APKSIGNER="$ANDROID_HOME/build-tools/$BUILD_TOOLS/apksigner"
+          ZIPALIGN="$ANDROID_HOME/build-tools/$BUILD_TOOLS/zipalign"
+
+          BADGING="$($AAPT dump badging "$APK" | head -n 1)"
+          echo "$BADGING"
+          echo "$BADGING" | grep -F "name='tr.borsatakip.v5'"
+          echo "$BADGING" | grep -F "versionCode='113'"
+          echo "$BADGING" | grep -F "versionName='5.2.5'"
+
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
+          "$ZIPALIGN" -c -v 4 "$APK"
+
+          mkdir -p /tmp/b113-output
+          OUT=/tmp/b113-output/V5-ARACI-KURUM-5.2.5-B113-TARAMA-ZAMANI-debug.apk
+          cp "$APK" "$OUT"
+          APK_SHA="$(sha256sum "$OUT" | awk '{print $1}')"
+
+          {
+            echo "B113 VERIFIED BUILD"
+            echo "repository=dilekari-droid/BorsaTakipV5"
+            echo "branch=v525-b113-verified-apk"
+            echo "git_commit=$GITHUB_SHA"
+            echo "source_zip_sha256=ebcf0eb32d5ba8e5968647e9e956be40e49765caeecaeb3d466f3235e897e46e"
+            echo "android_source_archive_sha256=7046afbb99b19c2b7e682c9aceee87f3c73260027b687f97ca941ceea6a2a93e"
+            echo "applicationId=tr.borsatakip.v5"
+            echo "versionCode=113"
+            echo "versionName=5.2.5"
+            echo "apk_sha256=$APK_SHA"
+            echo "apk_file=$(basename "$OUT")"
+          } | tee /tmp/b113-output/B113_BUILD_PROVENANCE.txt
+
+      - name: Upload verified B113 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: V5-ARACI-KURUM-5.2.5-B113-TARAMA-ZAMANI-APK
+          path: |
+            /tmp/b113-output/V5-ARACI-KURUM-5.2.5-B113-TARAMA-ZAMANI-debug.apk
+            /tmp/b113-output/B113_BUILD_PROVENANCE.txt
+          if-no-files-found: error
+          retention-days: 90
