@@ -38,7 +38,6 @@ jobs:
           grep -F 'applicationId = "tr.borsatakip.v5"' /tmp/b113-src/app/build.gradle.kts
           grep -F 'versionCode = 113' /tmp/b113-src/app/build.gradle.kts
           grep -F 'versionName = "5.2.5"' /tmp/b113-src/app/build.gradle.kts
-          grep -R -n -F 'Tarama Zamanı' /tmp/b113-src/app/src/main | head -20
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
