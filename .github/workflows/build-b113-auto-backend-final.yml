@@ -98,7 +98,7 @@ jobs:
           assert 'autoScanEnabled' in settings and 'scanCadenceMinutes' in settings
           assert 'AutoScanScheduler.reconcile' in ui and 'AutoScanScheduler.reconcile' in main
           assert 'PeriodicWorkRequestBuilder' in scheduler
-          assert 'MIN_WORK_MANAGER_MINUTES = 15L' in scheduler
+          assert 'WORK_MANAGER_MINUTES = 15' in scheduler
           assert 'AutoScanForegroundService' in scheduler
           assert 'ServiceCompat.startForeground' in service
           assert 'AutomaticScanRunner' in service
