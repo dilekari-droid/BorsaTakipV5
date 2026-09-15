@@ -1,0 +1,173 @@
+name: Final B113 Dual Timeframe Real Scan APK v2
+on:
+  push:
+    branches: [v525-b113-verified-apk]
+    paths:
+      - '.github/workflows/build-b113-dual-scan-final-v2.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct source and apply verified fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/src && mkdir -p /tmp/src
+          cat ci_payload/v525_b113_android_exact/part-*.b64 | base64 --decode > /tmp/src.tar.xz
+          echo '7046afbb99b19c2b7e682c9aceee87f3c73260027b687f97ca941ceea6a2a93e  /tmp/src.tar.xz' | sha256sum -c -
+          tar -xJf /tmp/src.tar.xz -C /tmp/src
+          cd /tmp/src
+          git apply --check "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_140_tests.patch"
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_140_tests.patch"
+          git apply --check "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_fgs_crash_fix.patch"
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_fgs_crash_fix.patch"
+          git apply --check "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_fgs_regression_test.patch"
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_fgs_regression_test.patch"
+
+          cat "$GITHUB_WORKSPACE"/ci_payload/b113_fixes/b113_b114_acceptance_fix.part-*.b64 | base64 --decode > /tmp/accept.gz
+          gzip -dc /tmp/accept.gz > /tmp/accept.patch
+          echo '3f66ad69afab268e397856741af19a1505b966b6740cd083b2d23c7f00bb68c6  /tmp/accept.patch' | sha256sum -c -
+          git apply --check --exclude='backend/**' /tmp/accept.patch
+          git apply --exclude='backend/**' /tmp/accept.patch
+          mkdir -p app/src/test/java/tr/borsatakip/v5/data
+          cp "$GITHUB_WORKSPACE/ci_payload/b113_fixes/broad_tests/B113B114AcceptanceSourceTest.kt" app/src/test/java/tr/borsatakip/v5/data/B113B114AcceptanceSourceTest.kt
+
+          echo '9b2358c6db6b2dbfe9dc02133f7e2a3c465a5fc8461974f1fc91efb07fa4a61b  '"$GITHUB_WORKSPACE"'/ci_payload/b113_fixes/b113_tradingview_chart_button_v2.patch' | sha256sum -c -
+          git apply --check "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_tradingview_chart_button_v2.patch"
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_tradingview_chart_button_v2.patch"
+
+          cat "$GITHUB_WORKSPACE"/ci_payload/b113_fixes/dual_scan/part-*.b64 | base64 --decode > /tmp/dual_scan.patch.gz
+          echo '313892bf0d16aa6cdd4dca2b979ddf18216a14133713dd7289cada64362d4a91  /tmp/dual_scan.patch.gz' | sha256sum -c -
+          gzip -dc /tmp/dual_scan.patch.gz > /tmp/dual_scan.patch
+          echo 'e4e549dc52fa0585937a4cbbe1efa2a37a2f28221fc745c3eb13526b2200b3ac  /tmp/dual_scan.patch' | sha256sum -c -
+          git apply --check /tmp/dual_scan.patch
+          git apply /tmp/dual_scan.patch
+
+          echo 'f11d62235a6d6561c220f434500739517f9457dcf23508619132d1bc7f5f50e7  '"$GITHUB_WORKSPACE"'/ci_payload/b113_fixes/b113_dual_scan_universe_acceptance_fix.patch' | sha256sum -c -
+          git apply --check "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_dual_scan_universe_acceptance_fix.patch"
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_dual_scan_universe_acceptance_fix.patch"
+
+      - name: Verify final dual scan source contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -F 'applicationId = "tr.borsatakip.v5"' /tmp/src/app/build.gradle.kts
+          grep -F 'versionCode = 113' /tmp/src/app/build.gradle.kts
+          grep -F 'versionName = "5.2.5"' /tmp/src/app/build.gradle.kts
+          python3 - <<'PY'
+          from pathlib import Path
+          root=Path('/tmp/src/app/src/main')
+          tf=(root/'java/tr/borsatakip/v5/data/ScanTimeframe.kt').read_text()
+          provider=(root/'java/tr/borsatakip/v5/data/IntervalMarketDataProvider.kt').read_text()
+          mobile=(root/'java/tr/borsatakip/v5/data/MobileMarketDataProvider.kt').read_text()
+          scanner=(root/'java/tr/borsatakip/v5/scan/BistScanner.kt').read_text()
+          ui=(root/'java/tr/borsatakip/v5/ui/BistScanActivity.kt').read_text()
+          layout=(root/'res/layout/activity_bist_scan.xml').read_text()
+          assert 'DAILY_STORED_MINUTES = 1440' in tf
+          assert '240 DK desteklenmez' in tf
+          assert 'listOf(1, 3, 5, 10, 15, 30, 60)' in tf
+          assert 'fetchDailyWithRetry' in provider and 'timeframe.isDaily' in provider
+          assert 'DIRECT_INTERVALS = setOf(1, 5, 15, 30, 60)' in provider
+          assert 'OhlcvResampler.aggregate(oneMinute, timeframe.storedMinutes)' in provider
+          assert 'MAX_CONCURRENCY = 6' in provider and 'MAX_FETCH_ATTEMPTS = 3' in provider
+          assert '/v1/bist/snapshot-batch?symbols=' in mobile
+          assert 'RATE_LIMIT' in mobile and 'BATCH_RETRY' in mobile
+          for phase in ['READY','STARTING','LOADING_SYMBOLS','LOADING_DATA','SCANNING','CALCULATING','RANKING','COMPLETED','ERROR','NO_DATA','STOPPED']:
+              assert phase in scanner
+          assert 'BackendPreflightClient' in ui
+          assert 'IntervalMarketDataProvider(baseProvider, analysisTimeframeMinutes)' in ui
+          assert 'TARAMAYI DURDUR' in ui
+          assert 'AppSession.lastOpportunities = emptyList()' in ui
+          assert 'universeVerified' in ui
+          assert '>= 95' not in ui and '%95' not in ui and 'Tüm BIST canlı hazır' not in ui
+          assert 'OHLCV:' in ui and 'Teknik analiz:' in ui and 'Kırılım:' in ui
+          assert 'txtActiveTimeframeDetails' in layout
+          assert 'RealtimeScannerClient(this@BistScanActivity).fetchOnce' not in ui
+          print('Final dual timeframe + real manual scan source contract: PASS')
+          PY
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Require 170 of 170 Android tests
+        working-directory: /tmp/src
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon testDebugUnitTest --stacktrace
+          python3 - <<'PY'
+          import glob, xml.etree.ElementTree as ET
+          total=failures=errors=skipped=0
+          for p in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
+              r=ET.parse(p).getroot()
+              total += int(r.attrib.get('tests',0))
+              failures += int(r.attrib.get('failures',0))
+              errors += int(r.attrib.get('errors',0))
+              skipped += int(r.attrib.get('skipped',0))
+          print(f'TEST_TOTAL={total} TEST_FAILURES={failures} TEST_ERRORS={errors} TEST_SKIPPED={skipped}')
+          if (total, failures, errors, skipped) != (170, 0, 0, 0):
+              raise SystemExit(f'Expected 170/170 clean pass; got total={total}, failures={failures}, errors={errors}, skipped={skipped}')
+          PY
+
+      - name: Build debug APK
+        working-directory: /tmp/src
+        run: gradle --no-daemon assembleDebug --stacktrace
+
+      - name: Verify and package APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=/tmp/src/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          BT="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)"
+          AAPT="$ANDROID_HOME/build-tools/$BT/aapt"
+          APKSIGNER="$ANDROID_HOME/build-tools/$BT/apksigner"
+          ZIPALIGN="$ANDROID_HOME/build-tools/$BT/zipalign"
+          BADGING="$($AAPT dump badging "$APK" | head -n1)"
+          echo "$BADGING" | grep -F "name='tr.borsatakip.v5'"
+          echo "$BADGING" | grep -F "versionCode='113'"
+          echo "$BADGING" | grep -F "versionName='5.2.5'"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
+          "$ZIPALIGN" -c -v 4 "$APK" | tee /tmp/zipalign.txt
+          mkdir -p /tmp/out
+          OUT=/tmp/out/V5-ARACI-KURUM-5.2.5-B113-B114-DUAL-TIMEFRAME-REAL-SCAN-FIXED-debug.apk
+          cp "$APK" "$OUT"
+          SHA="$(sha256sum "$OUT" | awk '{print $1}')"
+          {
+            echo 'B113/B114 DUAL TIMEFRAME + REAL MANUAL SCAN VERIFIED BUILD'
+            echo 'applicationId=tr.borsatakip.v5'
+            echo 'versionCode=113'
+            echo 'versionName=5.2.5'
+            echo 'android_tests=170/170 passed'
+            echo 'timeframes=1m,3m,5m,10m,15m,30m,60m,1d,custom_1_to_239m'
+            echo 'daily_contract=REAL_1D_NOT_240M'
+            echo 'manual_scan=PROVIDER_SYMBOLS_OHLCV_ANALYSIS_RANKING'
+            echo 'progress=PROCESSED_SYMBOL_COUNT'
+            echo 'stop_scan=CANCELLATION_NOT_COMPLETED'
+            echo 'missing_data=FAIL_CLOSED_NO_FAKE_RESULT'
+            echo 'rate_limit_retry=BATCH_PLUS_BOUNDED_RETRY'
+            echo 'universe_verification=SYMBOL_ENDPOINT_CONTRACT_NOT_95_PERCENT_HEURISTIC'
+            echo 'tradingview_button=PRESERVED_DYNAMIC_BIST_SYMBOL'
+            echo 'live_production_api_e2e=NOT_RUN_REQUIRES_CONFIGURED_BACKEND_AND_CREDENTIALS'
+            echo 'physical_device_test=NOT_RUN'
+            echo 'signing=DEBUG'
+            echo "apk_sha256=$SHA"
+          } > /tmp/out/PROVENANCE.txt
+          sha256sum "$OUT" > "$OUT.sha256"
+          cp /tmp/apksigner.txt /tmp/out/APKSIGNER.txt
+          cp /tmp/zipalign.txt /tmp/out/ZIPALIGN.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: B113-B114-DUAL-TIMEFRAME-REAL-SCAN-FIXED-APK-V2
+          path: /tmp/out/*
+          retention-days: 90
