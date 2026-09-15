@@ -1,0 +1,138 @@
+name: Final B113 Auto Activation Fixed APK
+on:
+  push:
+    branches: [v525-b113-verified-apk]
+    paths:
+      - '.github/workflows/build-b113-auto-activation-fixed.yml'
+      - 'ci_payload/b113_fixes/auto_backend_scan/b113_auto_scan_activation_fix.patch'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct source and apply all fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/src && mkdir -p /tmp/src
+          cat ci_payload/v525_b113_android_exact/part-*.b64 | base64 --decode > /tmp/src.tar.xz
+          echo '7046afbb99b19c2b7e682c9aceee87f3c73260027b687f97ca941ceea6a2a93e  /tmp/src.tar.xz' | sha256sum -c -
+          tar -xJf /tmp/src.tar.xz -C /tmp/src
+          cd /tmp/src
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_140_tests.patch"
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_fgs_crash_fix.patch"
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_fgs_regression_test.patch"
+          cat "$GITHUB_WORKSPACE"/ci_payload/b113_fixes/b113_b114_acceptance_fix.part-*.b64 | base64 --decode | gzip -dc > /tmp/accept.patch
+          git apply --exclude='backend/**' /tmp/accept.patch
+          mkdir -p app/src/test/java/tr/borsatakip/v5/data
+          cp "$GITHUB_WORKSPACE/ci_payload/b113_fixes/broad_tests/B113B114AcceptanceSourceTest.kt" app/src/test/java/tr/borsatakip/v5/data/B113B114AcceptanceSourceTest.kt
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_tradingview_chart_button_v2.patch"
+          cat "$GITHUB_WORKSPACE"/ci_payload/b113_fixes/dual_scan/part-*.b64 | base64 --decode | gzip -dc > /tmp/dual.patch
+          git apply /tmp/dual.patch
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_dual_scan_universe_acceptance_fix.patch"
+          cat "$GITHUB_WORKSPACE"/ci_payload/b113_fixes/auto_backend_scan/part-*.b64 | base64 --decode | gzip -dc > /tmp/auto.patch
+          git apply /tmp/auto.patch
+          cat "$GITHUB_WORKSPACE"/ci_payload/b113_fixes/auto_backend_scan/missing-*.b64 | base64 --decode | gzip -dc > /tmp/missing.patch
+          git apply /tmp/missing.patch
+          base64 --decode "$GITHUB_WORKSPACE/ci_payload/b113_fixes/production_readiness/b113_production_readiness_runtime_fix_full.patch.gz.b64" | gzip -dc > /tmp/prod.patch
+          git apply /tmp/prod.patch
+          git apply --check "$GITHUB_WORKSPACE/ci_payload/b113_fixes/auto_backend_scan/b113_auto_scan_activation_fix.patch"
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/auto_backend_scan/b113_auto_scan_activation_fix.patch"
+
+      - name: Verify activation fix source contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          java=Path('/tmp/src/app/src/main/java/tr/borsatakip/v5')
+          ui=(java/'ui/BistScanActivity.kt').read_text()
+          svc=(java/'worker/AutoScanForegroundService.kt').read_text()
+          sch=(java/'worker/AutoScanScheduler.kt').read_text()
+          assert 'settings.autoScanEnabled = enabled' in ui
+          assert 'settings.autoScanEnabled = false\n                suppressAutoScanListener' not in ui
+          assert 'autoScanSwitch.isChecked = false' not in ui
+          assert 'OTOMATİK TARAMA AKTİF • VERİ SERVİSİ BEKLENİYOR' in ui
+          assert 'Açık • ${tf.label} • veri servisi bekleniyor' in ui
+          assert 'if (settings.autoScanEnabled) {' in ui
+          assert 'if (settings.autoScanEnabled && productionBackendConfigured())' not in ui
+          assert 'if (!settings.autoScanEnabled) return false' in svc
+          assert '!settings.autoScanEnabled || !settings.baseUrl.startsWith("https://")' not in svc
+          assert 'veri servisi yapılandırılmamış' in svc
+          assert 'WORK_MANAGER_MINUTES = 15' in sch
+          print('Auto-scan activation source contract: PASS')
+          PY
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Require 192 of 192 Android tests
+        working-directory: /tmp/src
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon testDebugUnitTest --stacktrace
+          python3 - <<'PY'
+          import glob, xml.etree.ElementTree as ET
+          total=failures=errors=skipped=0
+          for p in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
+              r=ET.parse(p).getroot()
+              total += int(r.attrib.get('tests',0)); failures += int(r.attrib.get('failures',0)); errors += int(r.attrib.get('errors',0)); skipped += int(r.attrib.get('skipped',0))
+          print(f'TEST_TOTAL={total} TEST_FAILURES={failures} TEST_ERRORS={errors} TEST_SKIPPED={skipped}')
+          if (total, failures, errors, skipped) != (192,0,0,0): raise SystemExit(1)
+          PY
+
+      - name: Build debug APK
+        working-directory: /tmp/src
+        run: gradle --no-daemon assembleDebug --stacktrace
+
+      - name: Verify and package APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=/tmp/src/app/build/outputs/apk/debug/app-debug.apk
+          BT="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)"
+          AAPT="$ANDROID_HOME/build-tools/$BT/aapt"; APKSIGNER="$ANDROID_HOME/build-tools/$BT/apksigner"; ZIPALIGN="$ANDROID_HOME/build-tools/$BT/zipalign"
+          BADGING="$($AAPT dump badging "$APK" | head -n1)"
+          echo "$BADGING" | grep -F "name='tr.borsatakip.v5'"
+          echo "$BADGING" | grep -F "versionCode='113'"
+          echo "$BADGING" | grep -F "versionName='5.2.5'"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
+          "$ZIPALIGN" -c -v 4 "$APK" | tee /tmp/zipalign.txt
+          mkdir -p /tmp/out
+          OUT=/tmp/out/V5-ARACI-KURUM-5.2.5-B113-B114-AUTO-ACTIVATION-FIXED-debug.apk
+          cp "$APK" "$OUT"
+          SHA="$(sha256sum "$OUT" | awk '{print $1}')"
+          {
+            echo 'B113/B114 AUTO ACTIVATION FIXED VERIFIED BUILD'
+            echo 'applicationId=tr.borsatakip.v5'
+            echo 'versionCode=113'
+            echo 'versionName=5.2.5'
+            echo 'android_tests=192/192 passed'
+            echo 'auto_scan_switch_persists_without_backend=true'
+            echo 'auto_scan_waiting_state=true'
+            echo 'foreground_service_waits_for_backend=true'
+            echo 'on_resume_reconcile_without_backend=true'
+            echo 'production_live_e2e=NOT_RUN_REQUIRES_REAL_BACKEND_AND_CREDENTIALS'
+            echo 'physical_device_test=NOT_RUN'
+            echo 'signing=DEBUG'
+            echo "apk_sha256=$SHA"
+          } > /tmp/out/PROVENANCE.txt
+          sha256sum "$OUT" > "$OUT.sha256"
+          cp /tmp/apksigner.txt /tmp/out/APKSIGNER.txt
+          cp /tmp/zipalign.txt /tmp/out/ZIPALIGN.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: B113-B114-AUTO-ACTIVATION-FIXED-APK
+          path: /tmp/out/*
+          retention-days: 90
