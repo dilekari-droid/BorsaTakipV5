@@ -56,7 +56,11 @@ jobs:
       - name: Reconstruct exact B112 source
         run: |
           set -euo pipefail
-          cat ci_payload/v525_b112_exact/part-* | base64 -d > /tmp/b112.tar.xz
+          : > /tmp/b112.tar.xz
+          for f in $(find ci_payload/v525_b112_exact -maxdepth 1 -type f -name 'part-*' | sort -V); do
+            echo "Decoding $f"
+            base64 -d "$f" >> /tmp/b112.tar.xz
+          done
           echo "4303b11735da4fca0836877e52b2124165bf7f7337d3bba492e720426a00a3c9  /tmp/b112.tar.xz" | sha256sum -c -
           rm -rf /tmp/v525b112
           mkdir -p /tmp/v525b112
