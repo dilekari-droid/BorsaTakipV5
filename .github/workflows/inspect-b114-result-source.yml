@@ -1,0 +1,53 @@
+name: Inspect B114 Result Source
+on:
+  push:
+    branches: [v525-b113-verified-apk]
+    paths: ['.github/workflows/inspect-b114-result-source.yml']
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct latest verified source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/src && mkdir -p /tmp/src
+          cat ci_payload/v525_b113_android_exact/part-*.b64 | base64 --decode > /tmp/src.tar.xz
+          tar -xJf /tmp/src.tar.xz -C /tmp/src
+          cd /tmp/src
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_140_tests.patch"
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_fgs_crash_fix.patch"
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_fgs_regression_test.patch"
+          cat "$GITHUB_WORKSPACE"/ci_payload/b113_fixes/b113_b114_acceptance_fix.part-*.b64 | base64 --decode | gzip -dc > /tmp/accept.patch
+          git apply --exclude='backend/**' /tmp/accept.patch
+          mkdir -p app/src/test/java/tr/borsatakip/v5/data
+          cp "$GITHUB_WORKSPACE/ci_payload/b113_fixes/broad_tests/B113B114AcceptanceSourceTest.kt" app/src/test/java/tr/borsatakip/v5/data/B113B114AcceptanceSourceTest.kt
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_tradingview_chart_button_v2.patch"
+          cat "$GITHUB_WORKSPACE"/ci_payload/b113_fixes/dual_scan/part-*.b64 | base64 --decode | gzip -dc > /tmp/dual.patch
+          git apply /tmp/dual.patch
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_dual_scan_universe_acceptance_fix.patch"
+          cat "$GITHUB_WORKSPACE"/ci_payload/b113_fixes/auto_backend_scan/part-*.b64 | base64 --decode | gzip -dc > /tmp/auto.patch
+          git apply /tmp/auto.patch
+          cat "$GITHUB_WORKSPACE"/ci_payload/b113_fixes/auto_backend_scan/missing-*.b64 | base64 --decode | gzip -dc > /tmp/missing.patch
+          git apply /tmp/missing.patch
+          base64 --decode "$GITHUB_WORKSPACE/ci_payload/b113_fixes/production_readiness/b113_production_readiness_runtime_fix_full.patch.gz.b64" | gzip -dc > /tmp/prod.patch
+          git apply /tmp/prod.patch
+      - name: Print result source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /tmp/src
+          for f in \
+            app/src/main/java/tr/borsatakip/v5/ui/ScanResultsAdapter.kt \
+            app/src/main/java/tr/borsatakip/v5/ui/OpportunityAdapter.kt \
+            app/src/main/java/tr/borsatakip/v5/model/Models.kt \
+            app/src/main/java/tr/borsatakip/v5/analysis/OpportunityDiscoveryPresentation.kt \
+            app/src/main/res/layout/item_scan_result.xml \
+            app/src/main/res/layout/item_opportunity.xml \
+            app/src/main/res/values/colors.xml; do
+            echo "===== FILE: $f ====="
+            if [ -f "$f" ]; then nl -ba "$f"; else echo 'MISSING'; fi
+          done
