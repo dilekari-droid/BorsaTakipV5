@@ -1,0 +1,196 @@
+name: Final B113 Auto Scan Backend Fixed APK
+on:
+  push:
+    branches: [v525-b113-verified-apk]
+    paths:
+      - '.github/workflows/build-b113-auto-backend-final.yml'
+      - 'ci_payload/b113_fixes/auto_backend_scan/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reconstruct source and apply all verified fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/src && mkdir -p /tmp/src
+          cat ci_payload/v525_b113_android_exact/part-*.b64 | base64 --decode > /tmp/src.tar.xz
+          echo '7046afbb99b19c2b7e682c9aceee87f3c73260027b687f97ca941ceea6a2a93e  /tmp/src.tar.xz' | sha256sum -c -
+          tar -xJf /tmp/src.tar.xz -C /tmp/src
+          cd /tmp/src
+
+          git apply --check "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_140_tests.patch"
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_140_tests.patch"
+          git apply --check "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_fgs_crash_fix.patch"
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_fgs_crash_fix.patch"
+          git apply --check "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_fgs_regression_test.patch"
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_fgs_regression_test.patch"
+
+          cat "$GITHUB_WORKSPACE"/ci_payload/b113_fixes/b113_b114_acceptance_fix.part-*.b64 | base64 --decode > /tmp/accept.gz
+          gzip -dc /tmp/accept.gz > /tmp/accept.patch
+          echo '3f66ad69afab268e397856741af19a1505b966b6740cd083b2d23c7f00bb68c6  /tmp/accept.patch' | sha256sum -c -
+          git apply --check --exclude='backend/**' /tmp/accept.patch
+          git apply --exclude='backend/**' /tmp/accept.patch
+          mkdir -p app/src/test/java/tr/borsatakip/v5/data
+          cp "$GITHUB_WORKSPACE/ci_payload/b113_fixes/broad_tests/B113B114AcceptanceSourceTest.kt" app/src/test/java/tr/borsatakip/v5/data/B113B114AcceptanceSourceTest.kt
+
+          echo '9b2358c6db6b2dbfe9dc02133f7e2a3c465a5fc8461974f1fc91efb07fa4a61b  '"$GITHUB_WORKSPACE"'/ci_payload/b113_fixes/b113_tradingview_chart_button_v2.patch' | sha256sum -c -
+          git apply --check "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_tradingview_chart_button_v2.patch"
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_tradingview_chart_button_v2.patch"
+
+          cat "$GITHUB_WORKSPACE"/ci_payload/b113_fixes/dual_scan/part-*.b64 | base64 --decode > /tmp/dual_scan.patch.gz
+          echo '313892bf0d16aa6cdd4dca2b979ddf18216a14133713dd7289cada64362d4a91  /tmp/dual_scan.patch.gz' | sha256sum -c -
+          gzip -dc /tmp/dual_scan.patch.gz > /tmp/dual_scan.patch
+          echo 'e4e549dc52fa0585937a4cbbe1efa2a37a2f28221fc745c3eb13526b2200b3ac  /tmp/dual_scan.patch' | sha256sum -c -
+          git apply --check /tmp/dual_scan.patch
+          git apply /tmp/dual_scan.patch
+
+          echo 'f11d62235a6d6561c220f434500739517f9457dcf23508619132d1bc7f5f50e7  '"$GITHUB_WORKSPACE"'/ci_payload/b113_fixes/b113_dual_scan_universe_acceptance_fix.patch' | sha256sum -c -
+          git apply --check "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_dual_scan_universe_acceptance_fix.patch"
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_dual_scan_universe_acceptance_fix.patch"
+
+          cat "$GITHUB_WORKSPACE"/ci_payload/b113_fixes/auto_backend_scan/part-*.b64 | base64 --decode > /tmp/auto_backend.patch.gz
+          echo 'fc71cad2116ba1d6d2be6750081346c5ea767f4ef0c39e117bff960604ea1f75  /tmp/auto_backend.patch.gz' | sha256sum -c -
+          gzip -dc /tmp/auto_backend.patch.gz > /tmp/auto_backend.patch
+          echo 'f78fe202351193c36e2bd75aa8179ff6137d511d932fa44d963d8dc1f1d5fb0b  /tmp/auto_backend.patch' | sha256sum -c -
+          git apply --check /tmp/auto_backend.patch
+          git apply /tmp/auto_backend.patch
+
+      - name: Verify backend-aware automatic scan source contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -F 'applicationId = "tr.borsatakip.v5"' /tmp/src/app/build.gradle.kts
+          grep -F 'versionCode = 113' /tmp/src/app/build.gradle.kts
+          grep -F 'versionName = "5.2.5"' /tmp/src/app/build.gradle.kts
+          python3 - <<'PY'
+          from pathlib import Path
+          root=Path('/tmp/src/app/src/main')
+          java=root/'java/tr/borsatakip/v5'
+          ui=(java/'ui/BistScanActivity.kt').read_text()
+          tf=(java/'data/ScanTimeframe.kt').read_text()
+          provider=(java/'data/IntervalMarketDataProvider.kt').read_text()
+          mobile=(java/'data/MobileMarketDataProvider.kt').read_text()
+          scheduler=(java/'worker/AutoScanScheduler.kt').read_text()
+          service=(java/'worker/AutoScanForegroundService.kt').read_text()
+          runner=(java/'worker/AutomaticScanRunner.kt').read_text()
+          manifest=(root/'AndroidManifest.xml').read_text()
+          layout=(root/'res/layout/activity_bist_scan.xml').read_text()
+          settings=(java/'data/SettingsStore.kt').read_text()
+          main=(java/'ui/MainActivity.kt').read_text()
+
+          assert 'status.text = "Periyot desteklenmiyor"' not in ui
+          assert 'VERİ SERVİSİ YAPILANDIRILMAMIŞ' in ui
+          assert 'switchAutoScan' in layout and 'txtAutoScanStatus' in layout
+          assert 'autoScanEnabled' in settings and 'scanCadenceMinutes' in settings
+          assert 'AutoScanScheduler.reconcile' in ui and 'AutoScanScheduler.reconcile' in main
+          assert 'PeriodicWorkRequestBuilder' in scheduler
+          assert 'MIN_WORK_MANAGER_MINUTES = 15L' in scheduler
+          assert 'AutoScanForegroundService' in scheduler
+          assert 'ServiceCompat.startForeground' in service
+          assert 'AutomaticScanRunner' in service
+          assert 'BackendPreflightClient' in runner and 'BistScanner' in runner
+          assert 'experimentalFallbackOverride = false' in runner
+          assert 'AutoScanForegroundService' in manifest and 'foregroundServiceType="specialUse"' in manifest
+          assert 'DAILY_STORED_MINUTES = 1440' in tf
+          assert '240 DK desteklenmez' in tf
+          assert 'DIRECT_INTERVALS = setOf(1, 5, 15, 30, 60)' in provider
+          assert '/v1/bist/history-window/' in mobile
+          assert 'ACTION_VIEW' not in mobile
+          assert 'RealtimeScannerClient(this@BistScanActivity).fetchOnce' not in ui
+          print('Backend-aware automatic scan source contract: PASS')
+          PY
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Require 180 of 180 Android tests
+        working-directory: /tmp/src
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon testDebugUnitTest --stacktrace
+          python3 - <<'PY'
+          import glob, xml.etree.ElementTree as ET
+          total=failures=errors=skipped=0
+          for p in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
+              r=ET.parse(p).getroot()
+              total += int(r.attrib.get('tests',0))
+              failures += int(r.attrib.get('failures',0))
+              errors += int(r.attrib.get('errors',0))
+              skipped += int(r.attrib.get('skipped',0))
+          print(f'TEST_TOTAL={total} TEST_FAILURES={failures} TEST_ERRORS={errors} TEST_SKIPPED={skipped}')
+          if (total, failures, errors, skipped) != (180, 0, 0, 0):
+              raise SystemExit(f'Expected 180/180 clean pass; got total={total}, failures={failures}, errors={errors}, skipped={skipped}')
+          PY
+
+      - name: Build debug APK
+        working-directory: /tmp/src
+        run: gradle --no-daemon assembleDebug --stacktrace
+
+      - name: Verify and package APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=/tmp/src/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          BT="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)"
+          AAPT="$ANDROID_HOME/build-tools/$BT/aapt"
+          APKSIGNER="$ANDROID_HOME/build-tools/$BT/apksigner"
+          ZIPALIGN="$ANDROID_HOME/build-tools/$BT/zipalign"
+          BADGING="$($AAPT dump badging "$APK" | head -n1)"
+          echo "$BADGING"
+          echo "$BADGING" | grep -F "name='tr.borsatakip.v5'"
+          echo "$BADGING" | grep -F "versionCode='113'"
+          echo "$BADGING" | grep -F "versionName='5.2.5'"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
+          "$ZIPALIGN" -c -v 4 "$APK" | tee /tmp/zipalign.txt
+
+          mkdir -p /tmp/out
+          OUT=/tmp/out/V5-ARACI-KURUM-5.2.5-B113-B114-AUTO-SCAN-BACKEND-FIXED-debug.apk
+          cp "$APK" "$OUT"
+          SHA="$(sha256sum "$OUT" | awk '{print $1}')"
+          {
+            echo 'B113/B114 BACKEND-AWARE AUTOMATIC SCAN VERIFIED BUILD'
+            echo 'applicationId=tr.borsatakip.v5'
+            echo 'versionCode=113'
+            echo 'versionName=5.2.5'
+            echo 'android_tests=180/180 passed'
+            echo 'manual_scan=PRODUCTION_BACKEND_PREFLIGHT_SELECTED_TIMEFRAME_PROBE_SYMBOLS_OHLCV_ANALYSIS_RANKING'
+            echo 'backend_missing_not_misreported_as_unsupported=true'
+            echo 'auto_scan=true'
+            echo 'auto_scan_cadence=SELECTED_TIMEFRAME'
+            echo 'sub15_scheduler=FOREGROUND_SPECIAL_USE'
+            echo 'min15_scheduler=WORKMANAGER_PERIODIC'
+            echo 'daily_auto_cadence=1440_MINUTES_APPROX'
+            echo 'daily_contract=REAL_1D_NOT_240M'
+            echo 'missing_data=FAIL_CLOSED_NO_FAKE_RESULT'
+            echo 'tradingview_market_data=false'
+            echo 'tradingview_chart_button=PRESERVED_DYNAMIC_BIST_SYMBOL'
+            echo 'production_live_e2e=NOT_RUN_REQUIRES_REAL_BACKEND_AND_CREDENTIALS'
+            echo 'KIMMR_live_crosscheck=NOT_RUN'
+            echo 'physical_device_test=NOT_RUN'
+            echo 'production_signing=NOT_AVAILABLE_WITHOUT_RELEASE_KEYSTORE'
+            echo 'signing=DEBUG'
+            echo "apk_sha256=$SHA"
+          } > /tmp/out/PROVENANCE.txt
+          sha256sum "$OUT" > "$OUT.sha256"
+          cp /tmp/apksigner.txt /tmp/out/APKSIGNER.txt
+          cp /tmp/zipalign.txt /tmp/out/ZIPALIGN.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: B113-B114-AUTO-SCAN-BACKEND-FIXED-APK
+          path: /tmp/out/*
+          retention-days: 90
