@@ -1,0 +1,220 @@
+diff --git a/app/src/main/java/tr/borsatakip/v5/ui/StockDetailActivity.kt b/app/src/main/java/tr/borsatakip/v5/ui/StockDetailActivity.kt
+index 0f2ee2b..b9f482e 100644
+--- a/app/src/main/java/tr/borsatakip/v5/ui/StockDetailActivity.kt
++++ b/app/src/main/java/tr/borsatakip/v5/ui/StockDetailActivity.kt
+@@ -4,8 +4,10 @@ import android.content.Intent
+ import android.net.Uri
+ import android.os.Bundle
+ import android.os.SystemClock
++import android.view.View
+ import android.widget.Button
+ import android.widget.TextView
++import android.widget.Toast
+ import androidx.appcompat.widget.PopupMenu
+ import androidx.browser.customtabs.CustomTabsIntent
+ import androidx.lifecycle.lifecycleScope
+@@ -103,7 +105,10 @@ class StockDetailActivity : BaseActivity() {
+         findViewById<Button>(R.id.btnTechnicalScreen).setOnClickListener { startActivity(Intent(this, TechnicalAnalysisActivity::class.java).putExtra("opportunity", x)) }
+         findViewById<Button>(R.id.btnNewsScreen).setOnClickListener { startActivity(Intent(this, NewsActivity::class.java).putExtra("opportunity", x)) }
+         findViewById<Button>(R.id.btnSignalScreen).setOnClickListener { startActivity(Intent(this, SignalHistoryActivity::class.java)) }
+-        findViewById<Button>(R.id.btnTradingViewChart).setOnClickListener { openTradingViewChart() }
++        findViewById<View>(R.id.btnTradingViewChart).apply {
++            contentDescription = "${this@StockDetailActivity.x.symbol} TradingView grafiğini aç"
++            setOnClickListener { openTradingViewChart() }
++        }
+     }
+ 
+     override fun onStart() {
+@@ -200,12 +205,20 @@ class StockDetailActivity : BaseActivity() {
+     }
+ 
+     private fun openTradingViewChart() {
+-        val encoded = Uri.encode("BIST:${x.symbol}")
++        val tradingViewSymbol = TradingViewChartLink.toBistSymbol(x.symbol) ?: run {
++            Toast.makeText(this, "TradingView sembolü oluşturulamadı", Toast.LENGTH_SHORT).show()
++            return
++        }
++        val encoded = Uri.encode(tradingViewSymbol)
+         val uri = Uri.parse("https://www.tradingview.com/chart/?symbol=$encoded")
+-        // Android'e standart VIEW intent'i verilir. TradingView uygulaması bu URL'yi
+-        // destekliyorsa uygulama açılır; aksi halde kullanıcının tarayıcısı devreye girer.
+-        runCatching { startActivity(Intent(Intent.ACTION_VIEW, uri)) }
+-            .onFailure { CustomTabsIntent.Builder().build().launchUrl(this, uri) }
++        // Implicit ACTION_VIEW is deliberate: if TradingView owns the URL on the device,
++        // Android opens the TradingView app directly. Otherwise a browser/Custom Tab is used.
++        val intent = Intent(Intent.ACTION_VIEW, uri).apply { addCategory(Intent.CATEGORY_BROWSABLE) }
++        runCatching { startActivity(intent) }
++            .recoverCatching { CustomTabsIntent.Builder().build().launchUrl(this, uri) }
++            .onFailure {
++                Toast.makeText(this, "TradingView grafiği açılamadı", Toast.LENGTH_SHORT).show()
++            }
+     }
+ 
+     private fun bindLiveDecisionSnapshot() {
+diff --git a/app/src/main/java/tr/borsatakip/v5/ui/TradingViewChartLink.kt b/app/src/main/java/tr/borsatakip/v5/ui/TradingViewChartLink.kt
+new file mode 100644
+index 0000000..5a69aef
+--- /dev/null
++++ b/app/src/main/java/tr/borsatakip/v5/ui/TradingViewChartLink.kt
+@@ -0,0 +1,19 @@
++package tr.borsatakip.v5.ui
++
++import java.util.Locale
++
++/** Builds the TradingView symbol used only for external chart navigation. */
++internal object TradingViewChartLink {
++    private val bistTicker = Regex("[A-Z0-9_]{2,12}")
++
++    fun toBistSymbol(rawSymbol: String): String? {
++        val ticker = rawSymbol
++            .trim()
++            .uppercase(Locale.ROOT)
++            .removePrefix("BIST:")
++            .removeSuffix(".IS")
++            .trim()
++        if (!bistTicker.matches(ticker)) return null
++        return "BIST:$ticker"
++    }
++}
+diff --git a/app/src/main/res/drawable/bg_tradingview_button.xml b/app/src/main/res/drawable/bg_tradingview_button.xml
+new file mode 100644
+index 0000000..ce719e1
+--- /dev/null
++++ b/app/src/main/res/drawable/bg_tradingview_button.xml
+@@ -0,0 +1,16 @@
++<?xml version="1.0" encoding="utf-8"?>
++<ripple xmlns:android="http://schemas.android.com/apk/res/android"
++    android:color="#33FFFFFF">
++    <item>
++        <shape android:shape="rectangle">
++            <gradient
++                android:angle="0"
++                android:startColor="#0B65E8"
++                android:endColor="#16A8FF" />
++            <corners android:radius="16dp" />
++            <stroke
++                android:width="1dp"
++                android:color="#45C4FF" />
++        </shape>
++    </item>
++</ripple>
+diff --git a/app/src/main/res/drawable/ic_open_external.xml b/app/src/main/res/drawable/ic_open_external.xml
+new file mode 100644
+index 0000000..232d134
+--- /dev/null
++++ b/app/src/main/res/drawable/ic_open_external.xml
+@@ -0,0 +1,9 @@
++<vector xmlns:android="http://schemas.android.com/apk/res/android"
++    android:width="18dp"
++    android:height="18dp"
++    android:viewportWidth="24"
++    android:viewportHeight="24">
++    <path
++        android:fillColor="#FFFFFFFF"
++        android:pathData="M14,3h7v7h-2V6.41l-9.29,9.3 -1.42,-1.42L17.59,5H14V3zM19,19H5V5h7V3H5c-1.11,0 -2,0.9 -2,2v14c0,1.1 0.89,2 2,2h14c1.1,0 2,-0.9 2,-2v-7h-2v7z" />
++</vector>
+diff --git a/app/src/main/res/layout/activity_stock_detail.xml b/app/src/main/res/layout/activity_stock_detail.xml
+index 0a74ef7..5075f0b 100644
+--- a/app/src/main/res/layout/activity_stock_detail.xml
++++ b/app/src/main/res/layout/activity_stock_detail.xml
+@@ -10,6 +10,27 @@
+             <TextView android:id="@+id/title" style="@style/Title" />
+             <TextView android:id="@+id/subtitle" style="@style/Sub" android:layout_marginTop="2dp" />
+ 
++            <Button
++                android:id="@+id/btnTradingViewChart"
++                android:layout_width="match_parent"
++                android:layout_height="56dp"
++                android:layout_marginTop="12dp"
++                android:background="@drawable/bg_tradingview_button"
++                android:backgroundTint="@null"
++                android:drawableEnd="@drawable/ic_open_external"
++                android:drawablePadding="10dp"
++                android:elevation="3dp"
++                android:gravity="center"
++                android:minHeight="56dp"
++                android:minWidth="0dp"
++                android:paddingStart="18dp"
++                android:paddingEnd="18dp"
++                android:text="TRADINGVIEW GRAFİĞİNİ AÇ"
++                android:textAllCaps="false"
++                android:textColor="@color/white"
++                android:textSize="14sp"
++                android:textStyle="bold" />
++
+             <LinearLayout
+                 android:layout_width="match_parent"
+                 android:layout_height="wrap_content"
+@@ -34,7 +55,6 @@
+                 <TextView android:id="@+id/liveCandle" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="1 dk mum bekleniyor" android:textColor="@color/text_secondary" android:textSize="12sp" />
+                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:text="TRADINGVIEW DOĞRULAMASI" android:textColor="@color/blue" android:textStyle="bold" />
+                 <TextView android:id="@+id/liveTradingViewSignal" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="5dp" android:text="TradingView alarmı bekleniyor" android:textColor="@color/text_secondary" />
+-                <Button android:id="@+id/btnTradingViewChart" style="@style/PrimaryButton" android:layout_marginTop="12dp" android:text="TRADINGVIEW'DE İNCELE / İŞLEM YAP" />
+                 <TextView
+                     android:layout_width="match_parent"
+                     android:layout_height="wrap_content"
+diff --git a/app/src/test/java/tr/borsatakip/v5/ui/TradingViewChartButtonSourceTest.kt b/app/src/test/java/tr/borsatakip/v5/ui/TradingViewChartButtonSourceTest.kt
+new file mode 100644
+index 0000000..b80d3d3
+--- /dev/null
++++ b/app/src/test/java/tr/borsatakip/v5/ui/TradingViewChartButtonSourceTest.kt
+@@ -0,0 +1,29 @@
++package tr.borsatakip.v5.ui
++
++import org.junit.Assert.assertTrue
++import org.junit.Test
++import java.io.File
++
++class TradingViewChartButtonSourceTest {
++    @Test
++    fun tradingViewButtonIsTopLevelDynamicAndUsesAndroidRouting() {
++        val cwd = File(System.getProperty("user.dir"))
++        val mainRoot = sequenceOf(
++            File(cwd, "src/main"),
++            File(cwd, "app/src/main"),
++            cwd.parentFile?.let { File(it, "app/src/main") }
++        ).filterNotNull().first { it.isDirectory }
++
++        val layout = File(mainRoot, "res/layout/activity_stock_detail.xml").readText()
++        val activity = File(mainRoot, "java/tr/borsatakip/v5/ui/StockDetailActivity.kt").readText()
++        val subtitle = layout.indexOf("@+id/subtitle")
++        val button = layout.indexOf("@+id/btnTradingViewChart")
++        val liveCard = layout.indexOf("@+id/liveConnectionStatus")
++
++        assertTrue("TradingView button must be immediately in the top detail region", subtitle >= 0 && button > subtitle && button < liveCard)
++        assertTrue("Only one TradingView chart button should exist", Regex("@\\+id/btnTradingViewChart").findAll(layout).count() == 1)
++        assertTrue("Link must be built from the active stock symbol", activity.contains("TradingViewChartLink.toBistSymbol(x.symbol)"))
++        assertTrue("Android ACTION_VIEW routing must remain so TradingView app can open directly", activity.contains("Intent(Intent.ACTION_VIEW, uri)"))
++        assertTrue("KIMMR must not be hardcoded in production activity", !activity.contains("KIMMR"))
++    }
++}
+diff --git a/app/src/test/java/tr/borsatakip/v5/ui/TradingViewChartLinkTest.kt b/app/src/test/java/tr/borsatakip/v5/ui/TradingViewChartLinkTest.kt
+new file mode 100644
+index 0000000..7afb9ee
+--- /dev/null
++++ b/app/src/test/java/tr/borsatakip/v5/ui/TradingViewChartLinkTest.kt
+@@ -0,0 +1,24 @@
++package tr.borsatakip.v5.ui
++
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertNull
++import org.junit.Test
++
++class TradingViewChartLinkTest {
++    @Test
++    fun plainBistTickerMapsToTradingViewExchangeSymbol() {
++        assertEquals("BIST:KIMMR", TradingViewChartLink.toBistSymbol("KIMMR"))
++    }
++
++    @Test
++    fun alreadyPrefixedOrYahooStyleTickerIsNormalized() {
++        assertEquals("BIST:THYAO", TradingViewChartLink.toBistSymbol("bist:thyao"))
++        assertEquals("BIST:AKBNK", TradingViewChartLink.toBistSymbol("akbnk.is"))
++    }
++
++    @Test
++    fun unsafeOrEmptyTickerFailsClosed() {
++        assertNull(TradingViewChartLink.toBistSymbol(""))
++        assertNull(TradingViewChartLink.toBistSymbol("THYAO/../"))
++    }
++}
