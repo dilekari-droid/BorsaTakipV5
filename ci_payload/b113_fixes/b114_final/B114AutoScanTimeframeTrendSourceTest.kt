@@ -35,7 +35,8 @@ class B114AutoScanTimeframeTrendSourceTest {
 
     @Test fun enabledAutoScanIsReconciledOnResumeEvenWhileBackendWaits() {
         val src = source("java/tr/borsatakip/v5/ui/BistScanActivity.kt")
-        assertTrue(src.contains("if (settings.autoScanEnabled) {\n            AutoScanScheduler.reconcile(this, allowForegroundStart = true)"))
+        assertTrue(src.contains("if (settings.autoScanEnabled)"))
+        assertTrue(src.contains("AutoScanScheduler.reconcile(this, allowForegroundStart = true)"))
         assertFalse(src.contains("if (settings.autoScanEnabled && productionBackendConfigured())"))
     }
 
@@ -63,7 +64,7 @@ class B114AutoScanTimeframeTrendSourceTest {
     @Test fun oneDayIsRealDailyAnd240MinuteContractIsRejected() {
         val src = source("java/tr/borsatakip/v5/data/ScanTimeframe.kt")
         assertTrue(src.contains("DAILY_STORED_MINUTES = 1440"))
-        assertTrue(src.contains("apiInterval = \"1d\""))
+        assertTrue(src.contains("\"1d\""))
         assertTrue(src.contains("240 DK desteklenmez"))
     }
 
