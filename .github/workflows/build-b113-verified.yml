@@ -6,6 +6,7 @@ on:
       - v525-b113-verified-apk
     paths:
       - ".github/workflows/build-b113-verified.yml"
+      - "ci_payload/b113_fixes/b113_140_tests.patch"
   workflow_dispatch:
 
 permissions:
@@ -34,7 +35,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "83b11f91b979b6752d10e464f245062109f49466eaab50a2c5a74caccb9ca95a  ci_payload/b113_fixes/b113_140_tests.patch" | sha256sum -c -
+          echo "4153eac5b14cb0abf4235209162f27a61b8cd61ef89272aa1ffb7c39f255ddff  ci_payload/b113_fixes/b113_140_tests.patch" | sha256sum -c -
           cd /tmp/b113-src
           git apply --check "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_140_tests.patch"
           git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_140_tests.patch"
@@ -135,7 +136,7 @@ jobs:
             echo "git_commit=$GITHUB_SHA"
             echo "original_source_zip_sha256=ebcf0eb32d5ba8e5968647e9e956be40e49765caeecaeb3d466f3235e897e46e"
             echo "original_android_source_archive_sha256=7046afbb99b19c2b7e682c9aceee87f3c73260027b687f97ca941ceea6a2a93e"
-            echo "fix_patch_sha256=83b11f91b979b6752d10e464f245062109f49466eaab50a2c5a74caccb9ca95a"
+            echo "fix_patch_sha256=4153eac5b14cb0abf4235209162f27a61b8cd61ef89272aa1ffb7c39f255ddff"
             echo "applicationId=tr.borsatakip.v5"
             echo "versionCode=113"
             echo "versionName=5.2.5"
