@@ -1,0 +1,169 @@
+name: Final B114 AutoScan Timeframe Trend APK
+on:
+  push:
+    branches: [v525-b113-verified-apk]
+    paths:
+      - '.github/workflows/build-b114-combined-final.yml'
+      - 'ci_payload/b113_fixes/b114_final/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reconstruct verified B113/B114 baseline and apply final fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/src && mkdir -p /tmp/src
+          cat ci_payload/v525_b113_android_exact/part-*.b64 | base64 --decode > /tmp/src.tar.xz
+          echo '7046afbb99b19c2b7e682c9aceee87f3c73260027b687f97ca941ceea6a2a93e  /tmp/src.tar.xz' | sha256sum -c -
+          tar -xJf /tmp/src.tar.xz -C /tmp/src
+          cd /tmp/src
+
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_140_tests.patch"
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_fgs_crash_fix.patch"
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_fgs_regression_test.patch"
+          cat "$GITHUB_WORKSPACE"/ci_payload/b113_fixes/b113_b114_acceptance_fix.part-*.b64 | base64 --decode | gzip -dc > /tmp/accept.patch
+          git apply --exclude='backend/**' /tmp/accept.patch
+          mkdir -p app/src/test/java/tr/borsatakip/v5/data
+          cp "$GITHUB_WORKSPACE/ci_payload/b113_fixes/broad_tests/B113B114AcceptanceSourceTest.kt" app/src/test/java/tr/borsatakip/v5/data/B113B114AcceptanceSourceTest.kt
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_tradingview_chart_button_v2.patch"
+          cat "$GITHUB_WORKSPACE"/ci_payload/b113_fixes/dual_scan/part-*.b64 | base64 --decode | gzip -dc > /tmp/dual.patch
+          git apply /tmp/dual.patch
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_dual_scan_universe_acceptance_fix.patch"
+          cat "$GITHUB_WORKSPACE"/ci_payload/b113_fixes/auto_backend_scan/part-*.b64 | base64 --decode | gzip -dc > /tmp/auto.patch
+          git apply /tmp/auto.patch
+          cat "$GITHUB_WORKSPACE"/ci_payload/b113_fixes/auto_backend_scan/missing-*.b64 | base64 --decode | gzip -dc > /tmp/missing.patch
+          git apply /tmp/missing.patch
+          base64 --decode "$GITHUB_WORKSPACE/ci_payload/b113_fixes/production_readiness/b113_production_readiness_runtime_fix_full.patch.gz.b64" | gzip -dc > /tmp/prod.patch
+          git apply /tmp/prod.patch
+
+          python3 "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b114_final/apply_b114_final.py" /tmp/src
+
+      - name: Verify B114 source contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          root=Path('/tmp/src/app/src/main')
+          java=root/'java/tr/borsatakip/v5'
+          activity=(java/'ui/BistScanActivity.kt').read_text()
+          service=(java/'worker/AutoScanForegroundService.kt').read_text()
+          scheduler=(java/'worker/AutoScanScheduler.kt').read_text()
+          timeframe=(java/'data/ScanTimeframe.kt').read_text()
+          provider=(java/'data/IntervalMarketDataProvider.kt').read_text()
+          trend=(java/'analysis/TrendUiPolicy.kt').read_text()
+          scan=(java/'ui/ScanResultsAdapter.kt').read_text()
+          opp=(java/'ui/OpportunityAdapter.kt').read_text()
+          assert 'if (enabled && !productionBackendConfigured())' not in activity
+          assert 'settings.autoScanEnabled = enabled' in activity
+          assert 'VERİ SERVİSİ BEKLENİYOR' in activity
+          assert 'if (settings.autoScanEnabled) {' in activity
+          start=service.split('fun start(context: Context): Boolean',1)[1].split('fun stop(context: Context)',1)[0]
+          assert 'if (!settings.autoScanEnabled) return false' in start
+          assert 'baseUrl.startsWith' not in start and 'apiKey.isBlank' not in start
+          assert 'WORK_MANAGER_MINUTES = 15' in scheduler
+          assert 'DIRECT_INTERVALS = setOf(1, 5, 15, 30, 60)' in provider
+          assert 'OhlcvResampler.aggregate' in provider
+          assert 'DAILY_STORED_MINUTES = 1440' in timeframe and 'apiInterval = "1d"' in timeframe
+          assert '240 DK desteklenmez' in timeframe
+          assert 'Daily price change is deliberately NOT used' in trend
+          for state in ('STRONG_BULLISH','BULLISH','NEUTRAL','BEARISH','STRONG_BEARISH','INSUFFICIENT_DATA','REJECTED'):
+              assert state in trend
+          assert 'TrendUiPolicy.resolve(item)' in scan and 'TREND:' in scan
+          assert 'TrendUiPolicy.resolve(x)' in opp and 'trendAccent' in opp
+          print('B114 source contract: PASS')
+          PY
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Require 202 of 202 Android tests
+        working-directory: /tmp/src
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon testDebugUnitTest --stacktrace
+          python3 - <<'PY'
+          import glob, xml.etree.ElementTree as ET
+          total=failures=errors=skipped=0
+          for p in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
+              r=ET.parse(p).getroot()
+              total += int(r.attrib.get('tests',0))
+              failures += int(r.attrib.get('failures',0))
+              errors += int(r.attrib.get('errors',0))
+              skipped += int(r.attrib.get('skipped',0))
+          print(f'TEST_TOTAL={total} TEST_FAILURES={failures} TEST_ERRORS={errors} TEST_SKIPPED={skipped}')
+          if (total, failures, errors, skipped) != (202, 0, 0, 0):
+              raise SystemExit(f'Expected 202/202 clean pass; got total={total}, failures={failures}, errors={errors}, skipped={skipped}')
+          PY
+
+      - name: Build debug APK
+        working-directory: /tmp/src
+        run: gradle --no-daemon assembleDebug --stacktrace
+
+      - name: Verify APK package signature alignment and provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=/tmp/src/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          BT="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)"
+          AAPT="$ANDROID_HOME/build-tools/$BT/aapt"
+          APKSIGNER="$ANDROID_HOME/build-tools/$BT/apksigner"
+          ZIPALIGN="$ANDROID_HOME/build-tools/$BT/zipalign"
+          BADGING="$($AAPT dump badging "$APK" | head -n1)"
+          echo "$BADGING" | tee /tmp/badging.txt
+          echo "$BADGING" | grep -F "name='tr.borsatakip.v5'"
+          echo "$BADGING" | grep -F "versionCode='113'"
+          echo "$BADGING" | grep -F "versionName='5.2.5'"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
+          "$ZIPALIGN" -c -v 4 "$APK" | tee /tmp/zipalign.txt
+
+          mkdir -p /tmp/out
+          OUT=/tmp/out/V5-ARACI-KURUM-5.2.5-B114-AUTOSCAN-TIMEFRAME-TREND-FIXED-debug.apk
+          cp "$APK" "$OUT"
+          SHA="$(sha256sum "$OUT" | awk '{print $1}')"
+          sha256sum "$OUT" > "$OUT.sha256"
+          cp /tmp/apksigner.txt /tmp/out/APKSIGNER.txt
+          cp /tmp/zipalign.txt /tmp/out/ZIPALIGN.txt
+          cp /tmp/badging.txt /tmp/out/BADGING.txt
+          {
+            echo 'B114 AUTOSCAN + TIMEFRAME + TREND COLOUR VERIFIED BUILD'
+            echo 'applicationId=tr.borsatakip.v5'
+            echo 'versionCode=113'
+            echo 'versionName=5.2.5'
+            echo 'android_tests=202/202 passed'
+            echo 'auto_scan_switch=persistent_on_even_when_backend_waiting'
+            echo 'auto_scan_backend_waiting=NO_FAKE_RESULTS'
+            echo 'sub15_scheduler=FOREGROUND_SERVICE'
+            echo '15plus_scheduler=WORKMANAGER'
+            echo 'timeframe_1m=DIRECT_PROVIDER_PATH'
+            echo 'timeframe_3m=REAL_1M_AGGREGATION_PATH'
+            echo 'timeframe_5m=DIRECT_PROVIDER_PATH'
+            echo 'timeframe_15m=DIRECT_PROVIDER_PATH'
+            echo 'timeframe_60m=DIRECT_PROVIDER_PATH'
+            echo 'daily=REAL_1D_NOT_240M'
+            echo 'trend_colour=SELECTED_TIMEFRAME_TECHNICAL_SNAPSHOT_NOT_DAILY_CHANGE'
+            echo 'production_live_e2e=NOT_RUN_REQUIRES_REAL_BACKEND_AND_CREDENTIALS'
+            echo 'physical_device_test=NOT_RUN'
+            echo 'signing=DEBUG'
+            echo "apk_sha256=$SHA"
+          } > /tmp/out/PROVENANCE.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: B114-AUTOSCAN-TIMEFRAME-TREND-FIXED-APK
+          path: /tmp/out/*
+          retention-days: 90
