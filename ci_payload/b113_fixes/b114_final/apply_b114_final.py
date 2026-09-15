@@ -30,41 +30,56 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
     return text.replace(old, new, 1)
 
 
-# 1) Auto-scan preference must remain ON while the production data service is unavailable.
+def regex_once(text: str, pattern: str, replacement: str, label: str, flags: int = 0) -> str:
+    out, count = re.subn(pattern, replacement, text, count=1, flags=flags)
+    if count != 1:
+        raise RuntimeError(f"{label}: expected exactly 1 match, got {count}")
+    return out
+
+
+# 1) Auto-scan preference remains ON while the production data service is unavailable.
 activity_path = "app/src/main/java/tr/borsatakip/v5/ui/BistScanActivity.kt"
 activity = read(activity_path)
-block_pattern = re.compile(
-    r"\n\s*if \(enabled && !productionBackendConfigured\(\)\) \{.*?"
-    r"return@setOnCheckedChangeListener\s*\n\s*\}\s*\n",
+activity = regex_once(
+    activity,
+    r"\n\s*if \(enabled && !productionBackendConfigured\(\)\) \{.*?return@setOnCheckedChangeListener\s*\n\s*\}\s*\n",
+    "\n",
+    "BistScanActivity backend-off switch block",
     re.DOTALL,
 )
-activity, n = block_pattern.subn("\n", activity, count=1)
-if n != 1:
-    raise RuntimeError(f"BistScanActivity backend-off switch block: expected 1, got {n}")
-activity = replace_once(
+activity = regex_once(
     activity,
-    "if (settings.autoScanEnabled && productionBackendConfigured()) {\n            AutoScanScheduler.reconcile(this, allowForegroundStart = true)\n        }",
-    "if (settings.autoScanEnabled) {\n            AutoScanScheduler.reconcile(this, allowForegroundStart = true)\n        }",
-    "onResume auto-scan reconcile",
+    r"if\s*\(\s*settings\.autoScanEnabled\s*&&\s*productionBackendConfigured\(\)\s*\)",
+    "if (settings.autoScanEnabled)",
+    "onResume auto-scan reconcile condition",
 )
-activity = replace_once(
+activity = regex_once(
     activity,
-    '!productionBackendConfigured() -> "Bekliyor • Production Backend gerekli"',
+    r'!productionBackendConfigured\(\)\s*->\s*"Bekliyor • Production Backend gerekli"',
     '!productionBackendConfigured() -> "Açık • ${tf.label} • VERİ SERVİSİ BEKLENİYOR"',
     "auto-scan waiting label",
 )
-reconcile_marker = """            AutoScanScheduler.reconcile(this, allowForegroundStart = true)\n            refreshAutoScanUi()"""
-reconcile_replacement = """            AutoScanScheduler.reconcile(this, allowForegroundStart = true)\n            if (enabled && !productionBackendConfigured()) {\n                status.text = \"VERİ SERVİSİ BEKLENİYOR\"\n                heroSubtitle.text = \"${selected.label} otomatik tarama AÇIK • Production Backend bekleniyor.\"\n            }\n            refreshAutoScanUi()"""
-# Only change the switch-listener occurrence; there is one indented exactly this way in the reconstructed source.
-activity = replace_once(activity, reconcile_marker, reconcile_replacement, "switch waiting status")
+activity = regex_once(
+    activity,
+    r"(?P<indent>\s+)AutoScanScheduler\.reconcile\(this, allowForegroundStart = true\)\s*\n(?P=indent)refreshAutoScanUi\(\)",
+    lambda m: (
+        f"{m.group('indent')}AutoScanScheduler.reconcile(this, allowForegroundStart = true)\n"
+        f"{m.group('indent')}if (enabled && !productionBackendConfigured()) {{\n"
+        f"{m.group('indent')}    status.text = \"VERİ SERVİSİ BEKLENİYOR\"\n"
+        f"{m.group('indent')}    heroSubtitle.text = \"${{selected.label}} otomatik tarama AÇIK • Production Backend bekleniyor.\"\n"
+        f"{m.group('indent')}}}\n"
+        f"{m.group('indent')}refreshAutoScanUi()"
+    ),
+    "switch waiting status",
+)
 write(activity_path, activity)
 
-# 2) The foreground service may start in WAITING state; it still must not fabricate data.
+# 2) Foreground service may start in WAITING state; the run loop still refuses fake data.
 service_path = "app/src/main/java/tr/borsatakip/v5/worker/AutoScanForegroundService.kt"
 service = read(service_path)
-service = replace_once(
+service = regex_once(
     service,
-    'if (!settings.autoScanEnabled || !settings.baseUrl.startsWith("https://") || settings.apiKey.isBlank()) return false',
+    r'if\s*\(\s*!settings\.autoScanEnabled\s*\|\|\s*!settings\.baseUrl\.startsWith\("https://"\)\s*\|\|\s*settings\.apiKey\.isBlank\(\)\s*\)\s*return false',
     'if (!settings.autoScanEnabled) return false',
     "foreground service start gate",
 )
@@ -75,7 +90,7 @@ trend_dst = main / "java/tr/borsatakip/v5/analysis/TrendUiPolicy.kt"
 trend_dst.parent.mkdir(parents=True, exist_ok=True)
 shutil.copyfile(payload / "TrendUiPolicy.kt", trend_dst)
 
-# 4) Scan result card: keep signal badge semantics, but card/accent strength colour follows technical trend.
+# 4) Scan result card: signal badge keeps signal semantics; card/strength colour follows trend.
 scan_path = "app/src/main/java/tr/borsatakip/v5/ui/ScanResultsAdapter.kt"
 scan = read(scan_path)
 scan = replace_once(
@@ -182,7 +197,7 @@ new_visual = """    private fun applyVisuals(
 scan = replace_once(scan, old_visual, new_visual, "ScanResultsAdapter trend visuals")
 write(scan_path, scan)
 
-# 5) Opportunity card: preserve signal-specific score styling, use trend for card/badge border/background.
+# 5) Opportunity card: signal-specific score styling remains; card/badge use trend accent.
 opp_path = "app/src/main/java/tr/borsatakip/v5/ui/OpportunityAdapter.kt"
 opp = read(opp_path)
 opp = replace_once(
