@@ -7,7 +7,7 @@ import java.io.File
 
 class B114AutoScanTimeframeTrendSourceTest {
     private fun mainRoot(): File {
-        val cwd = File(System.getProperty("user.dir"))
+        val cwd = File(requireNotNull(System.getProperty("user.dir")))
         return sequenceOf(
             File(cwd, "src/main"),
             File(cwd, "app/src/main"),
