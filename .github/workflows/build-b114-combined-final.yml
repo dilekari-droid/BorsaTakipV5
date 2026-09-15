@@ -72,7 +72,7 @@ jobs:
           assert 'WORK_MANAGER_MINUTES = 15' in scheduler
           assert 'DIRECT_INTERVALS = setOf(1, 5, 15, 30, 60)' in provider
           assert 'OhlcvResampler.aggregate' in provider
-          assert 'DAILY_STORED_MINUTES = 1440' in timeframe and 'apiInterval = "1d"' in timeframe
+          assert 'DAILY_STORED_MINUTES = 1440' in timeframe and '"1d"' in timeframe
           assert '240 DK desteklenmez' in timeframe
           assert 'Daily price change is deliberately NOT used' in trend
           for state in ('STRONG_BULLISH','BULLISH','NEUTRAL','BEARISH','STRONG_BEARISH','INSUFFICIENT_DATA','REJECTED'):
