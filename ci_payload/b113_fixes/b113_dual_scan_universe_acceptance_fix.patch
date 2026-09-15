@@ -1,0 +1,25 @@
+--- a/app/src/main/java/tr/borsatakip/v5/ui/BistScanActivity.kt
++++ b/app/src/main/java/tr/borsatakip/v5/ui/BistScanActivity.kt
+@@ -149,6 +149,7 @@
+                 try {
+                     var announcedTotal = 0
+                     var preflightSampleSymbol: String? = null
++                    var universeVerified = false
+ 
+                     // Manuel tarama her basışta gerçek tarama zincirini çalıştırır.
+                     // Hazır/cached realtime snapshot manuel taramanın yerine geçmez.
+@@ -166,10 +167,13 @@
+                         }
+                         announcedTotal = preflight.symbolCount
+                         preflightSampleSymbol = preflight.sampleSymbol
++                        // Tam-evren etiketi yüzde eşiğinden türetilmez. Yalnız BIST symbols
++                        // endpointinin başarılı, pozitif ve örnek sembollü sözleşmesi doğrulanınca kullanılır.
++                        universeVerified = preflight.symbolsOk && preflight.symbolCount > 0 && !preflight.sampleSymbol.isNullOrBlank()
+                         txt.text = "0 / $announcedTotal  •  %0"
+                         status.text = "STARTING"
+                         heroSubtitle.text = "$announcedTotal gerçek BIST sembolü doğrulandı • ${timeframe.label} veri kontrolü başlıyor."
+-                        debug.text = "Health ✓ • Authentication ✓ • Symbols ✓ (${preflight.symbolCount}) • Quote ✓ • History ✓ • seçili timeframe=${timeframe.apiInterval}"
++                        debug.text = "Health ✓ • Authentication ✓ • Symbols ✓ (${preflight.symbolCount}) • Quote ✓ • History ✓ • Evren doğrulandı=$universeVerified • seçili timeframe=${timeframe.apiInterval}"
+                     } else {
+                         status.text = "Gecikmeli analiz"
+                         heroSubtitle.text = "Yahoo günlük OHLCV ile teknik analiz yapılır; AL/SAT sinyali üretilmez."
