@@ -1,73 +1,91 @@
-diff --git a/app/src/main/java/tr/borsatakip/v5/analysis/OpportunityEngine.kt b/app/src/main/java/tr/borsatakip/v5/analysis/OpportunityEngine.kt
-index 92e739e..fd3e6f2 100644
 --- a/app/src/main/java/tr/borsatakip/v5/analysis/OpportunityEngine.kt
 +++ b/app/src/main/java/tr/borsatakip/v5/analysis/OpportunityEngine.kt
-@@ -32,13 +32,17 @@ object OpportunityEngine {
+@@ -32,16 +32,25 @@
      }
  
      fun score(stock: Stock, kapLabel: String = "Veri yok"): Opportunity? {
-+        // Malformed OHLCV must fail closed. Silently dropping a NaN/Infinity/zero-price bar can
-+        // turn corrupt market data into an apparently valid (or merely insufficient) opportunity.
-+        val malformedOhlcv = stock.candles.any { x ->
-+            !listOf(x.open, x.high, x.low, x.close, x.volume).all { it.isFinite() } ||
-+                x.open <= 0.0 || x.high <= 0.0 || x.low <= 0.0 || x.close <= 0.0 || x.volume < 0.0 ||
-+                x.low > x.high || x.open !in x.low..x.high || x.close !in x.low..x.high
-+        }
-+        if (malformedOhlcv) return null
-+
-         val c = stock.candles
+-        val c = stock.candles
 -            .filter { x ->
 -                x.timestamp > 0L &&
 -                    listOf(x.open, x.high, x.low, x.close, x.volume).all { it.isFinite() } &&
 -                    x.open > 0.0 && x.high > 0.0 && x.low > 0.0 && x.close > 0.0 &&
 -                    x.high >= max(x.open, x.close) && x.low <= min(x.open, x.close) && x.volume >= 0.0
 -            }
-+            .filter { it.timestamp > 0L }
++        val rawCandles = stock.candles
++        val hasMalformedCandle = rawCandles.any { x ->
++            x.timestamp <= 0L ||
++                listOf(x.open, x.high, x.low, x.close, x.volume).any { !it.isFinite() } ||
++                x.open <= 0.0 || x.high <= 0.0 || x.low <= 0.0 || x.close <= 0.0 ||
++                x.high < max(x.open, x.close) || x.low > min(x.open, x.close) || x.volume < 0.0
++        }
++        // Invalid OHLCV must never be silently removed and converted into a seemingly usable signal.
++        if (hasMalformedCandle) return null
++
++        val c = rawCandles
              .distinctBy { it.timestamp }
              .sortedBy { it.timestamp }
-         if (c.size < 220) return insufficientDataOpportunity(stock, c)
-diff --git a/app/src/main/java/tr/borsatakip/v5/data/ForwardOutcomeMatcher.kt b/app/src/main/java/tr/borsatakip/v5/data/ForwardOutcomeMatcher.kt
-index dfe2985..8f63cc9 100644
+-        if (c.size < 220) return insufficientDataOpportunity(stock, c)
++        if (c.size < 220) {
++            // A structured provider snapshot may still be shown explicitly as INSUFFICIENT_DATA.
++            // Bare/incomplete candle-only inputs are rejected because their quote/session identity is unverified.
++            val hasStructuredQuote = stock.quotePrice?.let { it.isFinite() && it > 0.0 } == true && stock.lastBarTime > 0L
++            return if (hasStructuredQuote) insufficientDataOpportunity(stock, c) else null
++        }
+ 
+         val price = stock.quotePrice?.takeIf { it.isFinite() && it > 0.0 } ?: c.last().close
+         val prev = stock.previousClose?.takeIf { it.isFinite() && it > 0.0 }
+--- a/app/src/main/java/tr/borsatakip/v5/analysis/OpportunityDiscoveryPresentation.kt
++++ b/app/src/main/java/tr/borsatakip/v5/analysis/OpportunityDiscoveryPresentation.kt
+@@ -98,12 +98,15 @@
+             val classification = when (x.decisionState) {
+                 tr.borsatakip.v5.model.DecisionState.INSUFFICIENT_DATA -> "YETERSİZ VERİ"
+                 tr.borsatakip.v5.model.DecisionState.REJECTED -> "REDDEDİLDİ"
+-                else -> when {
+-                    technicalAvailable && blended >= 82 && x.finalSignalScore >= 80 && x.direction.equals("LONG", true) && x.riskScore <= 40 -> "GÜÇLÜ AL ADAYI"
+-                    technicalAvailable && blended >= 70 && x.finalSignalScore >= 70 && x.direction.equals("LONG", true) && x.riskScore <= 55 -> "AL ADAYI"
+-                    technicalAvailable && blended >= 82 && x.finalSignalScore >= 80 && x.direction.equals("SHORT", true) && x.riskScore <= 40 -> "GÜÇLÜ SAT ADAYI"
+-                    technicalAvailable && blended >= 70 && x.finalSignalScore >= 70 && x.direction.equals("SHORT", true) && x.riskScore <= 55 -> "SAT ADAYI"
+-                    else -> "İZLE"
++                else -> {
++                    val verified = x.decisionState == tr.borsatakip.v5.model.DecisionState.VERIFIED_OPPORTUNITY
++                    when {
++                        technicalAvailable && blended >= 82 && x.finalSignalScore >= 80 && x.direction.equals("LONG", true) && x.riskScore <= 40 -> if (verified) "GÜÇLÜ AL" else "GÜÇLÜ AL ADAYI"
++                        technicalAvailable && blended >= 70 && x.finalSignalScore >= 70 && x.direction.equals("LONG", true) && x.riskScore <= 55 -> if (verified) "AL" else "AL ADAYI"
++                        technicalAvailable && blended >= 82 && x.finalSignalScore >= 80 && x.direction.equals("SHORT", true) && x.riskScore <= 40 -> if (verified) "GÜÇLÜ SAT" else "GÜÇLÜ SAT ADAYI"
++                        technicalAvailable && blended >= 70 && x.finalSignalScore >= 70 && x.direction.equals("SHORT", true) && x.riskScore <= 55 -> if (verified) "SAT" else "SAT ADAYI"
++                        else -> "İZLE"
++                    }
+                 }
+             }
+             val reason = when (x.decisionState) {
+--- a/app/src/main/java/tr/borsatakip/v5/ui/OpportunityActivity.kt
++++ b/app/src/main/java/tr/borsatakip/v5/ui/OpportunityActivity.kt
+@@ -233,8 +233,8 @@
+             val p = OpportunityDiscoveryPresentation.from(x)
+             when (selectedFilter) {
+                 DiscoveryFilter.ALL -> true
+-                DiscoveryFilter.STRONG_BUY -> p.classification == "GÜÇLÜ AL ADAYI" || p.classification == "AL ADAYI"
+-                DiscoveryFilter.STRONG_SELL -> p.classification == "GÜÇLÜ SAT ADAYI" || p.classification == "SAT ADAYI"
++                DiscoveryFilter.STRONG_BUY -> p.classification in setOf("GÜÇLÜ AL", "AL", "GÜÇLÜ AL ADAYI", "AL ADAYI")
++                DiscoveryFilter.STRONG_SELL -> p.classification in setOf("GÜÇLÜ SAT", "SAT", "GÜÇLÜ SAT ADAYI", "SAT ADAYI")
+                 DiscoveryFilter.WATCH -> p.classification == "İZLE"
+                 DiscoveryFilter.INSUFFICIENT -> p.classification == "YETERSİZ VERİ"
+                 DiscoveryFilter.REJECTED -> p.classification == "REDDEDİLDİ"
 --- a/app/src/main/java/tr/borsatakip/v5/data/ForwardOutcomeMatcher.kt
 +++ b/app/src/main/java/tr/borsatakip/v5/data/ForwardOutcomeMatcher.kt
-@@ -19,13 +19,31 @@ object ForwardOutcomeMatcher {
-             name !in alreadyPresent && signalGeneratedAt > 0L && now >= tradingTargetTime(signalGeneratedAt, horizon)
+@@ -16,7 +16,11 @@
+ 
+     fun dueHorizons(signalGeneratedAt: Long, now: Long, alreadyPresent: Set<String> = emptySet()): Map<String, Long> =
+         horizons.filter { (name, horizon) ->
+-            name !in alreadyPresent && signalGeneratedAt > 0L && now >= tradingTargetTime(signalGeneratedAt, horizon)
++            name !in alreadyPresent &&
++                signalGeneratedAt > 0L &&
++                horizon > 0L &&
++                signalGeneratedAt <= Long.MAX_VALUE - horizon &&
++                now >= signalGeneratedAt + horizon
          }
  
--    /** Advances a wall-clock horizon to the next BIST trading session when it lands outside 09:40-18:10. */
-+    /** Advances a wall-clock horizon to the nearest valid BIST trading instant (09:40-18:10). */
-     fun tradingTargetTime(signalGeneratedAt: Long, horizonMs: Long, zone: ZoneId = ZoneId.of("Europe/Istanbul")): Long {
-         if (signalGeneratedAt <= 0L) return 0L
-         var t = Instant.ofEpochMilli(signalGeneratedAt).atZone(zone).plusNanos(horizonMs * 1_000_000L)
--        while (!isTradingDay(t.dayOfWeek) || t.hour < 9 || (t.hour == 9 && t.minute < 40) || t.hour > 18 || (t.hour == 18 && t.minute > 10)) {
--            t = t.plusDays(1).withHour(9).withMinute(40).withSecond(0).withNano(0)
--            while (!isTradingDay(t.dayOfWeek)) t = t.plusDays(1)
-+
-+        while (true) {
-+            if (!isTradingDay(t.dayOfWeek)) {
-+                t = t.plusDays(1).withHour(9).withMinute(40).withSecond(0).withNano(0)
-+                continue
-+            }
-+
-+            val beforeOpen = t.hour < 9 || (t.hour == 9 && t.minute < 40)
-+            if (beforeOpen) {
-+                // A horizon landing before the opening bell belongs to the same trading day.
-+                t = t.withHour(9).withMinute(40).withSecond(0).withNano(0)
-+                break
-+            }
-+
-+            val afterClose = t.hour > 18 || (t.hour == 18 && t.minute > 10)
-+            if (afterClose) {
-+                t = t.plusDays(1).withHour(9).withMinute(40).withSecond(0).withNano(0)
-+                continue
-+            }
-+
-+            break
-         }
-         return t.toInstant().toEpochMilli()
-     }
-diff --git a/app/src/main/res/layout/activity_main.xml b/app/src/main/res/layout/activity_main.xml
-index 70d20fc..1bf872d 100644
+     /** Advances a wall-clock horizon to the next BIST trading session when it lands outside 09:40-18:10. */
 --- a/app/src/main/res/layout/activity_main.xml
 +++ b/app/src/main/res/layout/activity_main.xml
 @@ -76,7 +76,7 @@
@@ -75,37 +93,7 @@ index 70d20fc..1bf872d 100644
                          android:paddingEnd="10dp"
                          android:paddingBottom="5dp"
 -                        android:text="V5.1.49"
-+                        android:text="V"
++                        android:text="—"
                          android:textColor="@color/blue"
                          android:textSize="12sp"
                          android:textStyle="bold" />
-diff --git a/app/src/test/java/tr/borsatakip/v5/analysis/RealtimeShortPresentationTest.kt b/app/src/test/java/tr/borsatakip/v5/analysis/RealtimeShortPresentationTest.kt
-index 9c8149d..091b24d 100644
---- a/app/src/test/java/tr/borsatakip/v5/analysis/RealtimeShortPresentationTest.kt
-+++ b/app/src/test/java/tr/borsatakip/v5/analysis/RealtimeShortPresentationTest.kt
-@@ -60,7 +60,7 @@ class RealtimeShortPresentationTest {
-         )
- 
-         val p = OpportunityDiscoveryPresentation.from(x)
--        assertEquals("GÜÇLÜ SAT", p.classification)
-+        assertEquals("GÜÇLÜ SAT ADAYI", p.classification)
-         assertTrue(p.reason.contains("aşağı yönlü") || p.reason.contains("negatif momentum"))
-     }
- }
-diff --git a/app/src/test/java/tr/borsatakip/v5/analysis/TechnicalSafetyTest.kt b/app/src/test/java/tr/borsatakip/v5/analysis/TechnicalSafetyTest.kt
-index bb1c53b..b213435 100644
---- a/app/src/test/java/tr/borsatakip/v5/analysis/TechnicalSafetyTest.kt
-+++ b/app/src/test/java/tr/borsatakip/v5/analysis/TechnicalSafetyTest.kt
-@@ -24,8 +24,10 @@ class TechnicalSafetyTest {
-     @Test fun emptyCandles_doNotCrash() {
-         val t=TechnicalAnalyzer.analyze(emptyList()); assertNull(t.ema200); assertNull(t.rsi14)
-     }
--    @Test fun insufficientCandles_returnNoOpportunity() {
--        assertNull(OpportunityEngine.score(stockWith(List(20){candle(it,10.0+it)})))
-+    @Test fun insufficientCandles_returnExplicitInsufficientDecision() {
-+        val result = OpportunityEngine.score(stockWith(List(20){candle(it,10.0+it)}))
-+        assertEquals(tr.borsatakip.v5.model.SignalValidity.INSUFFICIENT, result?.signalValidity)
-+        assertEquals(tr.borsatakip.v5.model.DecisionState.INSUFFICIENT_DATA, result?.decisionState)
-     }
-     @Test fun nanCandle_isRejected() {
-         val candles=MutableList(220){candle(it,20.0+it*0.01)}; candles[100]=candles[100].copy(close=Double.NaN)
