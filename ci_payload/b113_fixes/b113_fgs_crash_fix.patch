@@ -1,0 +1,177 @@
+diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
+--- a/app/src/main/AndroidManifest.xml
++++ b/app/src/main/AndroidManifest.xml
+@@ -3,7 +3,7 @@
+     <uses-permission android:name="android.permission.INTERNET" />
+     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
++    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+ 
+     <application
+         android:name=".BorsaTakipApp"
+@@ -14,7 +14,11 @@
+         <service
+             android:name=".worker.RealtimeAlertService"
+             android:exported="false"
+-            android:foregroundServiceType="dataSync" />
++            android:foregroundServiceType="specialUse">
++            <property
++                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
++                android:value="User-enabled continuous realtime BIST market monitoring and opportunity alerts" />
++        </service>
+         <activity android:name=".ui.FullscreenChartActivity" />
+         <activity android:name=".ui.ScanResultsActivity" />
+         <activity android:name=".ui.NotificationsActivity" />
+diff --git a/app/src/main/java/tr/borsatakip/v5/ui/MainActivity.kt b/app/src/main/java/tr/borsatakip/v5/ui/MainActivity.kt
+--- a/app/src/main/java/tr/borsatakip/v5/ui/MainActivity.kt
++++ b/app/src/main/java/tr/borsatakip/v5/ui/MainActivity.kt
+@@ -71,6 +71,7 @@
+         resetMarketTiles()
+         refreshMarketTiles()
+         handleRealtimeAlertIntent(intent)
++        if (SettingsStore(this).notifications) RealtimeAlertService.start(this)
+     }
+ 
+     override fun onNewIntent(intent: Intent) {
+@@ -86,7 +87,6 @@
+         refreshMarketSummary()
+         renderTodayOpportunities()
+         refreshMarketTiles()
+-        if (SettingsStore(this).notifications) runCatching { RealtimeAlertService.start(this) }
+     }
+ 
+     override fun onPause() {
+diff --git a/app/src/main/java/tr/borsatakip/v5/worker/RealtimeAlertService.kt b/app/src/main/java/tr/borsatakip/v5/worker/RealtimeAlertService.kt
+--- a/app/src/main/java/tr/borsatakip/v5/worker/RealtimeAlertService.kt
++++ b/app/src/main/java/tr/borsatakip/v5/worker/RealtimeAlertService.kt
+@@ -9,9 +9,11 @@
+ import android.content.Context
+ import android.content.Intent
+ import android.content.pm.PackageManager
++import android.content.pm.ServiceInfo
+ import android.os.Build
+ import android.os.IBinder
+ import androidx.core.app.NotificationCompat
++import androidx.core.app.ServiceCompat
+ import androidx.core.content.ContextCompat
+ import kotlinx.coroutines.CoroutineScope
+ import kotlinx.coroutines.Dispatchers
+@@ -27,6 +29,7 @@
+ import tr.borsatakip.v5.model.SignalValidity
+ import tr.borsatakip.v5.ui.MainActivity
+ import kotlin.math.abs
++import java.util.concurrent.atomic.AtomicBoolean
+ 
+ /**
+  * User-visible foreground monitor for realtime BIST opportunities.
+@@ -43,26 +46,32 @@
+ 
+     override fun onCreate() {
+         super.onCreate()
++        // A service started with startForegroundService() must promote itself immediately.
++        // Keep all network/socket initialization strictly after this point.
++        createChannels()
++        startRequested.set(true)
++        promoteToForeground()
+         scannerSocket = RealtimeScannerSocket(this)
+-        createChannels()
+     }
+ 
+     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+         val settings = SettingsStore(this)
+         if (!settings.notifications || !settings.baseUrl.startsWith("https://") || settings.apiKey.isBlank()) {
+-            stopSelf()
++            startRequested.set(false)
++            stopForeground(STOP_FOREGROUND_REMOVE)
++            stopSelf(startId)
+             return START_NOT_STICKY
+         }
+         stopping = false
+-        startForeground(FOREGROUND_ID, monitorNotification("Canlı BIST fırsatları izleniyor • bağlantı kuruluyor"))
+         connect()
+         return START_STICKY
+     }
+ 
+     override fun onDestroy() {
+         stopping = true
++        startRequested.set(false)
+         reconnectJob?.cancel()
+-        scannerSocket.close()
++        if (::scannerSocket.isInitialized) scannerSocket.close()
+         scope.coroutineContext[Job]?.cancel()
+         super.onDestroy()
+     }
+@@ -70,10 +79,10 @@
+     override fun onBind(intent: Intent?): IBinder? = null
+ 
+     override fun onTimeout(startId: Int, fgsType: Int) {
+-        // Android 15 may time-limit dataSync foreground services. Stop cleanly rather than
+-        // pretending continuous monitoring is still active; WorkManager remains the backup.
++        // Defensive cleanup for any platform-enforced foreground-service timeout.
+         stopping = true
+-        scannerSocket.close()
++        startRequested.set(false)
++        if (::scannerSocket.isInitialized) scannerSocket.close()
+         stopForeground(STOP_FOREGROUND_REMOVE)
+         stopSelf(startId)
+     }
+@@ -169,6 +178,21 @@
+             .notify(ALERT_ID_BASE + abs(x.symbol.hashCode() % 20_000), notification)
+     }
+ 
++
++    private fun promoteToForeground() {
++        val serviceType = if (Build.VERSION.SDK_INT >= 34) {
++            ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
++        } else {
++            0
++        }
++        ServiceCompat.startForeground(
++            this,
++            FOREGROUND_ID,
++            monitorNotification("Canlı BIST fırsatları izleniyor • bağlantı kuruluyor"),
++            serviceType
++        )
++    }
++
+     private fun updateForeground(text: String) {
+         (getSystemService(NOTIFICATION_SERVICE) as NotificationManager)
+             .notify(FOREGROUND_ID, monitorNotification(text))
+@@ -209,14 +233,31 @@
+         private const val ALERT_MIN_SCORE = 80
+         private const val ALERT_COOLDOWN_MS = 15 * 60 * 1000L
+ 
+-        fun start(context: Context) {
+-            val intent = Intent(context, RealtimeAlertService::class.java)
+-            if (Build.VERSION.SDK_INT >= 26) ContextCompat.startForegroundService(context, intent)
+-            else context.startService(intent)
++        private val startRequested = AtomicBoolean(false)
++
++        fun start(context: Context): Boolean {
++            val appContext = context.applicationContext
++            val settings = SettingsStore(appContext)
++            if (!settings.notifications || !settings.baseUrl.startsWith("https://") || settings.apiKey.isBlank()) {
++                return false
++            }
++            if (!startRequested.compareAndSet(false, true)) return true
++
++            return runCatching {
++                val intent = Intent(appContext, RealtimeAlertService::class.java)
++                if (Build.VERSION.SDK_INT >= 26) ContextCompat.startForegroundService(appContext, intent)
++                else appContext.startService(intent)
++                true
++            }.getOrElse {
++                startRequested.set(false)
++                false
++            }
+         }
+ 
+         fun stop(context: Context) {
+-            context.stopService(Intent(context, RealtimeAlertService::class.java))
++            val appContext = context.applicationContext
++            val stopped = appContext.stopService(Intent(appContext, RealtimeAlertService::class.java))
++            if (!stopped) startRequested.set(false)
+         }
+     }
+ }
