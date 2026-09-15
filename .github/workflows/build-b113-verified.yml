@@ -31,6 +31,14 @@ jobs:
           echo "7046afbb99b19c2b7e682c9aceee87f3c73260027b687f97ca941ceea6a2a93e  /tmp/b113_android_exact.tar.xz" | sha256sum -c -
           tar -xJf /tmp/b113_android_exact.tar.xz -C /tmp/b113-src
 
+      - name: Export reconstructed source archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: B113-EXACT-SOURCE-ARCHIVE
+          path: /tmp/b113_android_exact.tar.xz
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Verify source identity
         shell: bash
         run: |
