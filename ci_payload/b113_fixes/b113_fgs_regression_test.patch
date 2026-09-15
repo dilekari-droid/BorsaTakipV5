@@ -1,0 +1,71 @@
+diff --git a/app/src/test/java/tr/borsatakip/v5/worker/RealtimeAlertServiceSourceContractTest.kt b/app/src/test/java/tr/borsatakip/v5/worker/RealtimeAlertServiceSourceContractTest.kt
+new file mode 100644
+index 0000000..8aeb700
+--- /dev/null
++++ b/app/src/test/java/tr/borsatakip/v5/worker/RealtimeAlertServiceSourceContractTest.kt
+@@ -0,0 +1,65 @@
++package tr.borsatakip.v5.worker
++
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertTrue
++import org.junit.Test
++import java.io.File
++
++/**
++ * Source-level regression guard for the foreground-service startup crash reported on device.
++ * These tests do not emulate Android; they ensure the critical lifecycle/manifest contract cannot
++ * silently regress in a normal JVM unit-test run.
++ */
++class RealtimeAlertServiceSourceContractTest {
++    private fun sourceRoot(): File {
++        val cwd = File(System.getProperty("user.dir"))
++        return sequenceOf(
++            File(cwd, "src/main"),
++            File(cwd, "app/src/main"),
++            cwd.parentFile?.let { File(it, "app/src/main") }
++        ).filterNotNull().firstOrNull { it.isDirectory }
++            ?: error("app/src/main bulunamadı. Çalışma dizini: ${cwd.absolutePath}")
++    }
++
++    @Test
++    fun foregroundPromotionHappensBeforeSocketInitialization() {
++        val service = File(sourceRoot(), "java/tr/borsatakip/v5/worker/RealtimeAlertService.kt").readText()
++        val onCreateStart = service.indexOf("override fun onCreate()")
++        val channel = service.indexOf("createChannels()", onCreateStart)
++        val promote = service.indexOf("promoteToForeground()", onCreateStart)
++        val socket = service.indexOf("scannerSocket = RealtimeScannerSocket(this)", onCreateStart)
++
++        assertTrue(onCreateStart >= 0)
++        assertTrue("Notification channel foreground promotion'dan önce oluşturulmalı", channel in (onCreateStart + 1) until promote)
++        assertTrue("Foreground promotion socket/network kurulumundan önce yapılmalı", promote in (channel + 1) until socket)
++        assertTrue(service.contains("ServiceCompat.startForeground("))
++    }
++
++    @Test
++    fun mainActivityDoesNotRestartServiceFromOnResume() {
++        val main = File(sourceRoot(), "java/tr/borsatakip/v5/ui/MainActivity.kt").readText()
++        val onCreate = main.substringAfter("override fun onCreate").substringBefore("override fun onNewIntent")
++        val onResume = main.substringAfter("override fun onResume").substringBefore("override fun onPause")
++
++        assertTrue(onCreate.contains("RealtimeAlertService.start(this)"))
++        assertFalse("onResume her dönüşte foreground service'i tekrar başlatmamalı", onResume.contains("RealtimeAlertService.start"))
++    }
++
++    @Test
++    fun duplicateStartIsGuarded() {
++        val service = File(sourceRoot(), "java/tr/borsatakip/v5/worker/RealtimeAlertService.kt").readText()
++        assertTrue(service.contains("AtomicBoolean(false)"))
++        assertTrue(service.contains("compareAndSet(false, true)"))
++        assertTrue(service.contains("startRequested.set(false)"))
++    }
++
++    @Test
++    fun manifestDeclaresMatchingSpecialUseForegroundService() {
++        val manifest = File(sourceRoot(), "AndroidManifest.xml").readText()
++        assertTrue(manifest.contains("android.permission.FOREGROUND_SERVICE"))
++        assertTrue(manifest.contains("android.permission.FOREGROUND_SERVICE_SPECIAL_USE"))
++        assertTrue(manifest.contains("android:foregroundServiceType=\"specialUse\""))
++        assertTrue(manifest.contains("android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"))
++        assertFalse("dataSync bu sürekli piyasa izleme servisi için kullanılmamalı", manifest.contains("android:foregroundServiceType=\"dataSync\""))
++    }
++}
