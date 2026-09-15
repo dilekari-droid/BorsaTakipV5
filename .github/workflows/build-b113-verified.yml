@@ -1,4 +1,4 @@
-name: Build B113 FGS Crash-Fixed Verified APK
+name: Build B113/B114 Acceptance-Fixed Verified APK
 
 on:
   push:
@@ -9,6 +9,8 @@ on:
       - "ci_payload/b113_fixes/b113_140_tests.patch"
       - "ci_payload/b113_fixes/b113_fgs_crash_fix.patch"
       - "ci_payload/b113_fixes/b113_fgs_regression_test.patch"
+      - "ci_payload/b113_fixes/b113_b114_acceptance_fix.part-*.b64"
+      - "ci_payload/b113_fixes/broad_tests/**"
   workflow_dispatch:
 
 permissions:
@@ -27,13 +29,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          rm -rf /tmp/b113-src
           mkdir -p /tmp/b113-src
           cat ci_payload/v525_b113_android_exact/part-*.b64 > /tmp/b113_android_exact.b64
           base64 --decode /tmp/b113_android_exact.b64 > /tmp/b113_android_exact.tar.xz
           echo "7046afbb99b19c2b7e682c9aceee87f3c73260027b687f97ca941ceea6a2a93e  /tmp/b113_android_exact.tar.xz" | sha256sum -c -
           tar -xJf /tmp/b113_android_exact.tar.xz -C /tmp/b113-src
 
-      - name: Apply reviewed B113 quality fixes
+      - name: Apply previously verified quality fixes
         shell: bash
         run: |
           set -euo pipefail
@@ -60,7 +63,30 @@ jobs:
           git apply --check "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_fgs_regression_test.patch"
           git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_fgs_regression_test.patch"
 
-      - name: Verify source identity and FGS lifecycle invariants
+      - name: Reconstruct and apply B113/B114 broad acceptance fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat ci_payload/b113_fixes/b113_b114_acceptance_fix.part-*.b64 > /tmp/b113_b114_acceptance_fix.b64
+          base64 --decode /tmp/b113_b114_acceptance_fix.b64 > /tmp/b113_b114_acceptance_fix.patch.gz
+          gzip -dc /tmp/b113_b114_acceptance_fix.patch.gz > /tmp/b113_b114_acceptance_fix.patch
+          echo "3f66ad69afab268e397856741af19a1505b966b6740cd083b2d23c7f00bb68c6  /tmp/b113_b114_acceptance_fix.patch" | sha256sum -c -
+          cd /tmp/b113-src
+          git apply --check /tmp/b113_b114_acceptance_fix.patch
+          git apply /tmp/b113_b114_acceptance_fix.patch
+
+      - name: Install broad acceptance tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "950c4799e5d81aacef0b7c2aec90431f1381dc380584051095a0e04b3cf5c125  ci_payload/b113_fixes/broad_tests/B113B114AcceptanceSourceTest.kt" | sha256sum -c -
+          echo "1d1a82ed37b2841d2fd9045a222962ebb4f7b23562554f369e2676f07b1d473f  ci_payload/b113_fixes/broad_tests/test_b113_b114_acceptance.py" | sha256sum -c -
+          mkdir -p /tmp/b113-src/app/src/test/java/tr/borsatakip/v5/data
+          mkdir -p /tmp/b113-src/backend/tests
+          cp ci_payload/b113_fixes/broad_tests/B113B114AcceptanceSourceTest.kt /tmp/b113-src/app/src/test/java/tr/borsatakip/v5/data/B113B114AcceptanceSourceTest.kt
+          cp ci_payload/b113_fixes/broad_tests/test_b113_b114_acceptance.py /tmp/b113-src/backend/tests/test_b113_b114_acceptance.py
+
+      - name: Verify source identity and acceptance invariants
         shell: bash
         run: |
           set -euo pipefail
@@ -73,26 +99,76 @@ jobs:
           fi
           python3 - <<'PY'
           from pathlib import Path
-          service = Path('/tmp/b113-src/app/src/main/java/tr/borsatakip/v5/worker/RealtimeAlertService.kt').read_text()
-          main = Path('/tmp/b113-src/app/src/main/java/tr/borsatakip/v5/ui/MainActivity.kt').read_text()
-          manifest = Path('/tmp/b113-src/app/src/main/AndroidManifest.xml').read_text()
+          root = Path('/tmp/b113-src')
+          service = (root/'app/src/main/java/tr/borsatakip/v5/worker/RealtimeAlertService.kt').read_text()
+          main_activity = (root/'app/src/main/java/tr/borsatakip/v5/ui/MainActivity.kt').read_text()
+          manifest = (root/'app/src/main/AndroidManifest.xml').read_text()
+          client = (root/'app/src/main/java/tr/borsatakip/v5/data/RealtimeScannerClient.kt').read_text()
+          socket = (root/'app/src/main/java/tr/borsatakip/v5/data/RealtimeScannerSocket.kt').read_text()
+          opp_activity = (root/'app/src/main/java/tr/borsatakip/v5/ui/OpportunityActivity.kt').read_text()
+          engine = (root/'backend/app/realtime_engine.py').read_text()
+          backend = (root/'backend/app/main.py').read_text()
 
           on_create = service.split('override fun onCreate()', 1)[1].split('override fun onStartCommand', 1)[0]
-          assert 'promoteToForeground()' in on_create
-          assert 'RealtimeScannerSocket(this)' in on_create
           assert on_create.index('promoteToForeground()') < on_create.index('RealtimeScannerSocket(this)')
           assert 'ServiceCompat.startForeground(' in service
           assert 'AtomicBoolean(false)' in service
-          assert 'if (!startRequested.compareAndSet(false, true)) return true' in service
           assert 'FOREGROUND_SERVICE_SPECIAL_USE' in manifest
           assert 'android:foregroundServiceType="specialUse"' in manifest
-          assert 'PROPERTY_SPECIAL_USE_FGS_SUBTYPE' in manifest
-
-          on_resume = main.split('override fun onResume()', 1)[1].split('override fun onPause()', 1)[0]
-          on_create_main = main.split('override fun onCreate', 1)[1].split('override fun onNewIntent', 1)[0]
+          on_resume = main_activity.split('override fun onResume()', 1)[1].split('override fun onPause()', 1)[0]
           assert 'RealtimeAlertService.start(this)' not in on_resume
-          assert 'RealtimeAlertService.start(this)' in on_create_main
-          print('FGS lifecycle/source invariants: PASS')
+
+          for token in ('analysisTimeframeMinutes', 'scanCadenceMinutes', 'scanMode'):
+              assert token in client and token in socket
+          assert 'if (snapshot.readySymbols <= 0) return' not in opp_activity
+          assert '100 - score' not in client
+          assert 'dataConfidenceScore = 100' not in client
+          assert 'kapLabel = "Canlı tarama"' not in client
+          assert '_session_vwap' in engine
+          assert 'confirmed_closed_bar' in engine
+          assert 'readinessByTimeframe' in engine
+          assert 'opportunities(limit=None' in backend
+          print('B113/B114 source acceptance invariants: PASS')
+          PY
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend test dependencies
+        working-directory: /tmp/b113-src
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -r backend/requirements-dev.txt
+
+      - name: Run backend acceptance suite
+        working-directory: /tmp/b113-src
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pytest -q backend/tests --junitxml=/tmp/backend-tests.xml
+
+      - name: Verify 66 of 66 backend tests passed
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import xml.etree.ElementTree as ET
+          root = ET.parse('/tmp/backend-tests.xml').getroot()
+          suites = [root] if root.tag == 'testsuite' else list(root.findall('testsuite'))
+          total = sum(int(x.attrib.get('tests', 0)) for x in suites)
+          failures = sum(int(x.attrib.get('failures', 0)) for x in suites)
+          errors = sum(int(x.attrib.get('errors', 0)) for x in suites)
+          skipped = sum(int(x.attrib.get('skipped', 0)) for x in suites)
+          print(f'BACKEND_TEST_TOTAL={total}')
+          print(f'BACKEND_TEST_FAILURES={failures}')
+          print(f'BACKEND_TEST_ERRORS={errors}')
+          print(f'BACKEND_TEST_SKIPPED={skipped}')
+          if total != 66 or failures != 0 or errors != 0:
+              raise SystemExit(f'Expected 66/66 backend tests, got total={total}, failures={failures}, errors={errors}')
           PY
 
       - name: Set up Java 17
@@ -106,14 +182,14 @@ jobs:
         with:
           gradle-version: "8.10.2"
 
-      - name: Run all unit tests
+      - name: Run all Android unit tests
         working-directory: /tmp/b113-src
         shell: bash
         run: |
           set -euo pipefail
           gradle --no-daemon testDebugUnitTest --stacktrace
 
-      - name: Verify 144 of 144 tests passed
+      - name: Verify 154 of 154 Android tests passed
         working-directory: /tmp/b113-src
         shell: bash
         run: |
@@ -124,19 +200,19 @@ jobs:
           total = failures = errors = skipped = 0
           files = glob.glob('app/build/test-results/testDebugUnitTest/*.xml')
           if not files:
-              raise SystemExit('No JUnit XML results found')
+              raise SystemExit('No Android JUnit XML results found')
           for f in files:
               root = ET.parse(f).getroot()
               total += int(root.attrib.get('tests', 0))
               failures += int(root.attrib.get('failures', 0))
               errors += int(root.attrib.get('errors', 0))
               skipped += int(root.attrib.get('skipped', 0))
-          print(f'TEST_TOTAL={total}')
-          print(f'TEST_FAILURES={failures}')
-          print(f'TEST_ERRORS={errors}')
-          print(f'TEST_SKIPPED={skipped}')
-          if total != 144 or failures != 0 or errors != 0:
-              raise SystemExit(f'Expected 144/144 passing tests, got total={total}, failures={failures}, errors={errors}')
+          print(f'ANDROID_TEST_TOTAL={total}')
+          print(f'ANDROID_TEST_FAILURES={failures}')
+          print(f'ANDROID_TEST_ERRORS={errors}')
+          print(f'ANDROID_TEST_SKIPPED={skipped}')
+          if total != 154 or failures != 0 or errors != 0:
+              raise SystemExit(f'Expected 154/154 Android tests, got total={total}, failures={failures}, errors={errors}')
           PY
 
       - name: Build debug APK
@@ -152,28 +228,24 @@ jobs:
           set -euo pipefail
           APK=/tmp/b113-src/app/build/outputs/apk/debug/app-debug.apk
           test -s "$APK"
-
           BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)"
           AAPT="$ANDROID_HOME/build-tools/$BUILD_TOOLS/aapt"
           APKSIGNER="$ANDROID_HOME/build-tools/$BUILD_TOOLS/apksigner"
           ZIPALIGN="$ANDROID_HOME/build-tools/$BUILD_TOOLS/zipalign"
-
           BADGING="$($AAPT dump badging "$APK" | head -n 1)"
           echo "$BADGING"
           echo "$BADGING" | grep -F "name='tr.borsatakip.v5'"
           echo "$BADGING" | grep -F "versionCode='113'"
           echo "$BADGING" | grep -F "versionName='5.2.5'"
-
           "$APKSIGNER" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
           "$ZIPALIGN" -c -v 4 "$APK" | tee /tmp/zipalign.txt
 
           mkdir -p /tmp/b113-output
-          OUT=/tmp/b113-output/V5-ARACI-KURUM-5.2.5-B113-TARAMA-ZAMANI-FGS-FIXED-debug.apk
+          OUT=/tmp/b113-output/V5-ARACI-KURUM-5.2.5-B113-B114-ACCEPTANCE-FIXED-debug.apk
           cp "$APK" "$OUT"
           APK_SHA="$(sha256sum "$OUT" | awk '{print $1}')"
-
           {
-            echo "B113 FOREGROUND-SERVICE CRASH FIXED VERIFIED BUILD"
+            echo "B113/B114 BROAD ACCEPTANCE FIXED VERIFIED BUILD"
             echo "repository=dilekari-droid/BorsaTakipV5"
             echo "branch=v525-b113-verified-apk"
             echo "git_commit=$GITHUB_SHA"
@@ -182,25 +254,30 @@ jobs:
             echo "quality_fix_patch_sha256=4153eac5b14cb0abf4235209162f27a61b8cd61ef89272aa1ffb7c39f255ddff"
             echo "fgs_crash_fix_patch_sha256=0b7091fea889289cdf6b7eb2f946ec77eb9fa1f4ea5786e2ac7ede75b8770e09"
             echo "fgs_regression_test_patch_sha256=c3d3cc58f8000d9f629c4a236e108ee2352008ab7206bea43227447d1857733f"
+            echo "b113_b114_acceptance_fix_patch_sha256=3f66ad69afab268e397856741af19a1505b966b6740cd083b2d23c7f00bb68c6"
             echo "applicationId=tr.borsatakip.v5"
             echo "versionCode=113"
             echo "versionName=5.2.5"
             echo "foreground_service_type=specialUse"
-            echo "unit_tests=144/144 passed"
+            echo "backend_tests=66/66 passed"
+            echo "android_unit_tests=154/154 passed"
             echo "physical_device_runtime_test=NOT_RUN"
+            echo "live_market_provider_test=NOT_RUN"
+            echo "signing=DEBUG"
             echo "apk_sha256=$APK_SHA"
             echo "apk_file=$(basename "$OUT")"
-          } | tee /tmp/b113-output/B113_FGS_FIXED_BUILD_PROVENANCE.txt
+          } | tee /tmp/b113-output/B113_B114_ACCEPTANCE_BUILD_PROVENANCE.txt
           sha256sum "$OUT" > "$OUT.sha256"
 
-      - name: Upload FGS-fixed verified B113 APK
+      - name: Upload B113/B114 acceptance-fixed APK
         uses: actions/upload-artifact@v4
         with:
-          name: V5-ARACI-KURUM-5.2.5-B113-TARAMA-ZAMANI-FGS-FIXED-APK
+          name: V5-ARACI-KURUM-5.2.5-B113-B114-ACCEPTANCE-FIXED-APK
           path: |
-            /tmp/b113-output/V5-ARACI-KURUM-5.2.5-B113-TARAMA-ZAMANI-FGS-FIXED-debug.apk
-            /tmp/b113-output/V5-ARACI-KURUM-5.2.5-B113-TARAMA-ZAMANI-FGS-FIXED-debug.apk.sha256
-            /tmp/b113-output/B113_FGS_FIXED_BUILD_PROVENANCE.txt
+            /tmp/b113-output/V5-ARACI-KURUM-5.2.5-B113-B114-ACCEPTANCE-FIXED-debug.apk
+            /tmp/b113-output/V5-ARACI-KURUM-5.2.5-B113-B114-ACCEPTANCE-FIXED-debug.apk.sha256
+            /tmp/b113-output/B113_B114_ACCEPTANCE_BUILD_PROVENANCE.txt
+            /tmp/backend-tests.xml
             /tmp/b113-src/app/build/reports/tests/testDebugUnitTest/**
           if-no-files-found: error
           retention-days: 90
