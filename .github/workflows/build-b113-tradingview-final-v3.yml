@@ -1,0 +1,137 @@
+name: Final B113 B114 TradingView APK v3
+on:
+  push:
+    branches: [v525-b113-verified-apk]
+    paths:
+      - '.github/workflows/build-b113-tradingview-final-v3.yml'
+      - 'ci_payload/b113_fixes/b113_tradingview_chart_button_v2.patch'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct source and apply verified fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/src && mkdir -p /tmp/src
+          cat ci_payload/v525_b113_android_exact/part-*.b64 | base64 --decode > /tmp/src.tar.xz
+          echo '7046afbb99b19c2b7e682c9aceee87f3c73260027b687f97ca941ceea6a2a93e  /tmp/src.tar.xz' | sha256sum -c -
+          tar -xJf /tmp/src.tar.xz -C /tmp/src
+          cd /tmp/src
+          git apply --check "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_140_tests.patch"
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_140_tests.patch"
+          git apply --check "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_fgs_crash_fix.patch"
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_fgs_crash_fix.patch"
+          git apply --check "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_fgs_regression_test.patch"
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_fgs_regression_test.patch"
+          cat "$GITHUB_WORKSPACE"/ci_payload/b113_fixes/b113_b114_acceptance_fix.part-*.b64 | base64 --decode > /tmp/accept.gz
+          gzip -dc /tmp/accept.gz > /tmp/accept.patch
+          echo '3f66ad69afab268e397856741af19a1505b966b6740cd083b2d23c7f00bb68c6  /tmp/accept.patch' | sha256sum -c -
+          git apply --check --exclude='backend/**' /tmp/accept.patch
+          git apply --exclude='backend/**' /tmp/accept.patch
+          mkdir -p app/src/test/java/tr/borsatakip/v5/data
+          cp "$GITHUB_WORKSPACE/ci_payload/b113_fixes/broad_tests/B113B114AcceptanceSourceTest.kt" app/src/test/java/tr/borsatakip/v5/data/B113B114AcceptanceSourceTest.kt
+          echo '9b2358c6db6b2dbfe9dc02133f7e2a3c465a5fc8461974f1fc91efb07fa4a61b  '"$GITHUB_WORKSPACE"'/ci_payload/b113_fixes/b113_tradingview_chart_button_v2.patch' | sha256sum -c -
+          git apply --check "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_tradingview_chart_button_v2.patch"
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_tradingview_chart_button_v2.patch"
+      - name: Verify TradingView navigation contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -F 'applicationId = "tr.borsatakip.v5"' /tmp/src/app/build.gradle.kts
+          grep -F 'versionCode = 113' /tmp/src/app/build.gradle.kts
+          grep -F 'versionName = "5.2.5"' /tmp/src/app/build.gradle.kts
+          python3 - <<'PY'
+          from pathlib import Path
+          root=Path('/tmp/src/app/src/main')
+          layout=(root/'res/layout/activity_stock_detail.xml').read_text()
+          activity=(root/'java/tr/borsatakip/v5/ui/StockDetailActivity.kt').read_text()
+          link=(root/'java/tr/borsatakip/v5/ui/TradingViewChartLink.kt').read_text()
+          subtitle=layout.index('@+id/subtitle')
+          button=layout.index('@+id/btnTradingViewChart')
+          live=layout.index('@+id/liveConnectionStatus')
+          assert subtitle < button < live
+          assert layout.count('@+id/btnTradingViewChart') == 1
+          assert 'TRADINGVIEW GRAFİĞİNİ AÇ' in layout
+          assert 'TradingViewChartLink.toBistSymbol(x.symbol)' in activity
+          assert 'this@StockDetailActivity.x.symbol' in activity
+          assert 'Intent(Intent.ACTION_VIEW, uri)' in activity
+          assert 'Intent.CATEGORY_BROWSABLE' in activity
+          assert 'CustomTabsIntent.Builder().build().launchUrl(this, uri)' in activity
+          assert 'return "BIST:$ticker"' in link
+          assert 'KIMMR' not in activity
+          print('TradingView navigation contract: PASS')
+          PY
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Run 158 Android tests
+        working-directory: /tmp/src
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon testDebugUnitTest --stacktrace
+          python3 - <<'PY'
+          import glob, xml.etree.ElementTree as ET
+          total=failures=errors=skipped=0
+          for p in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
+              r=ET.parse(p).getroot()
+              total += int(r.attrib.get('tests',0))
+              failures += int(r.attrib.get('failures',0))
+              errors += int(r.attrib.get('errors',0))
+              skipped += int(r.attrib.get('skipped',0))
+          print(f'TEST_TOTAL={total} TEST_FAILURES={failures} TEST_ERRORS={errors} TEST_SKIPPED={skipped}')
+          if total != 158 or failures != 0 or errors != 0 or skipped != 0:
+              raise SystemExit(f'Expected 158/158 clean pass; got total={total}, failures={failures}, errors={errors}, skipped={skipped}')
+          PY
+      - name: Build debug APK
+        working-directory: /tmp/src
+        run: gradle --no-daemon assembleDebug --stacktrace
+      - name: Verify and package APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=/tmp/src/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          BT="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)"
+          AAPT="$ANDROID_HOME/build-tools/$BT/aapt"
+          APKSIGNER="$ANDROID_HOME/build-tools/$BT/apksigner"
+          ZIPALIGN="$ANDROID_HOME/build-tools/$BT/zipalign"
+          BADGING="$($AAPT dump badging "$APK" | head -n1)"
+          echo "$BADGING"
+          echo "$BADGING" | grep -F "name='tr.borsatakip.v5'"
+          echo "$BADGING" | grep -F "versionCode='113'"
+          echo "$BADGING" | grep -F "versionName='5.2.5'"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
+          "$ZIPALIGN" -c -v 4 "$APK" | tee /tmp/zipalign.txt
+          mkdir -p /tmp/out
+          OUT=/tmp/out/V5-ARACI-KURUM-5.2.5-B113-B114-TRADINGVIEW-FIXED-debug.apk
+          cp "$APK" "$OUT"
+          SHA="$(sha256sum "$OUT" | awk '{print $1}')"
+          {
+            echo 'B113/B114 TRADINGVIEW BUTTON VERIFIED BUILD'
+            echo 'applicationId=tr.borsatakip.v5'
+            echo 'versionCode=113'
+            echo 'versionName=5.2.5'
+            echo 'android_tests=158/158 passed'
+            echo 'tradingview_button=TOP_DETAIL_DYNAMIC_BIST_SYMBOL'
+            echo 'routing=ANDROID_ACTION_VIEW_WITH_CUSTOM_TAB_FALLBACK'
+            echo 'physical_device_tradingview_open_test=NOT_RUN'
+            echo 'signing=DEBUG'
+            echo "apk_sha256=$SHA"
+          } > /tmp/out/PROVENANCE.txt
+          sha256sum "$OUT" > "$OUT.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: B113-B114-TRADINGVIEW-FIXED-APK-V3
+          path: /tmp/out/*
+          retention-days: 90
