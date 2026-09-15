@@ -1,0 +1,11 @@
+diff --git a/app/src/main/java/tr/borsatakip/v5/ui/StockDetailActivity.kt b/app/src/main/java/tr/borsatakip/v5/ui/StockDetailActivity.kt
+--- a/app/src/main/java/tr/borsatakip/v5/ui/StockDetailActivity.kt
++++ b/app/src/main/java/tr/borsatakip/v5/ui/StockDetailActivity.kt
+@@ -106,7 +106,7 @@ class StockDetailActivity : BaseActivity() {
+         findViewById<Button>(R.id.btnSignalScreen).setOnClickListener { startActivity(Intent(this, SignalHistoryActivity::class.java)) }
+         findViewById<View>(R.id.btnTradingViewChart).apply {
+-            contentDescription = "${x.symbol} TradingView grafiğini aç"
++            contentDescription = "${this@StockDetailActivity.x.symbol} TradingView grafiğini aç"
+             setOnClickListener { openTradingViewChart() }
+         }
+     }
