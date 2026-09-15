@@ -1,0 +1,121 @@
+name: Build V5.2.5 B112 Complete
+
+on:
+  push:
+    branches: [ v525-b112-complete-build, v525-b112-ci3 ]
+    paths:
+      - '.github/workflows/build-v525-b112-complete.yml'
+      - 'ci_payload/v525_b112_exact/**'
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Locate Android SDK
+        run: |
+          set -euo pipefail
+          SDKROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          test -n "$SDKROOT"
+          if command -v sdkmanager >/dev/null 2>&1; then
+            SDKMANAGER="$(command -v sdkmanager)"
+          elif [ -x "$SDKROOT/cmdline-tools/latest/bin/sdkmanager" ]; then
+            SDKMANAGER="$SDKROOT/cmdline-tools/latest/bin/sdkmanager"
+          else
+            SDKMANAGER="$(find "$SDKROOT" -type f -name sdkmanager | sort | tail -1)"
+          fi
+          test -x "$SDKMANAGER"
+          echo "SDKMANAGER=$SDKMANAGER" >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=$SDKROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDKROOT" >> "$GITHUB_ENV"
+
+      - name: Install Android SDK packages
+        run: |
+          set -euo pipefail
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Setup Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Recover B112 source payload
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64
+          import pathlib
+          import re
+          src = pathlib.Path('ci_payload/v525_b112_exact')
+          parts = sorted(src.glob('part-*'), key=lambda p: int(p.name.split('-')[-1]))
+          out = pathlib.Path('/tmp/b112-recovered.xz')
+          with out.open('wb') as fh:
+              for p in parts:
+                  text = p.read_text(encoding='utf-8', errors='ignore')
+                  cleaned = re.sub(r'[^A-Za-z0-9+/=]', '', text)
+                  core = cleaned.replace('=', '')
+                  padded = core + ('=' * ((4 - len(core) % 4) % 4))
+                  data = base64.b64decode(padded, validate=True)
+                  print(f'{p.name}: text={len(text)} cleaned={len(cleaned)} decoded={len(data)}')
+                  fh.write(data)
+          PY
+          sha256sum /tmp/b112-recovered.xz
+          rm -rf /tmp/v525b112
+          mkdir -p /tmp/v525b112
+          set +e
+          xz -dc --single-stream /tmp/b112-recovered.xz | tar -xf - -C /tmp/v525b112
+          rc=$?
+          set -e
+          if [ "$rc" -ne 0 ]; then
+            echo 'B112 XZ stream cannot be recovered.'
+            exit "$rc"
+          fi
+          printf 'sdk.dir=%s\n' "$ANDROID_SDK_ROOT" > /tmp/v525b112/local.properties
+
+      - name: Verify source version
+        run: |
+          set -euo pipefail
+          grep -F 'versionCode = 112' /tmp/v525b112/app/build.gradle.kts
+          grep -F 'versionName = "5.2.5"' /tmp/v525b112/app/build.gradle.kts
+
+      - name: Unit tests
+        run: gradle -p /tmp/v525b112 :app:testDebugUnitTest --stacktrace
+
+      - name: Build debug APK
+        run: gradle -p /tmp/v525b112 :app:assembleDebug --stacktrace
+
+      - name: Verify APK identity and integrity
+        run: |
+          set -euo pipefail
+          APK=/tmp/v525b112/app/build/outputs/apk/debug/app-debug.apk
+          test -f "$APK"
+          unzip -t "$APK" >/tmp/apk-unzip-test.txt
+          tail -n 1 /tmp/apk-unzip-test.txt
+          AAPT=$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)
+          "$AAPT" dump badging "$APK" > /tmp/badging.txt
+          grep -F "versionCode='112'" /tmp/badging.txt
+          grep -F "versionName='5.2.5'" /tmp/badging.txt
+          mkdir -p artifacts
+          cp "$APK" artifacts/V5-ARACI-KURUM-5.2.5-B112-RECOVERED-debug.apk
+          sha256sum artifacts/V5-ARACI-KURUM-5.2.5-B112-RECOVERED-debug.apk | tee artifacts/SHA256.txt
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: V5-ARACI-KURUM-5.2.5-B112-RECOVERED-APK
+          path: |
+            artifacts/V5-ARACI-KURUM-5.2.5-B112-RECOVERED-debug.apk
+            artifacts/SHA256.txt
+          if-no-files-found: error
