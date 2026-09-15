@@ -1,4 +1,4 @@
-name: Build B113 Fixed Verified APK
+name: Build B113 FGS Crash-Fixed Verified APK
 
 on:
   push:
@@ -7,6 +7,7 @@ on:
     paths:
       - ".github/workflows/build-b113-verified.yml"
       - "ci_payload/b113_fixes/b113_140_tests.patch"
+      - "ci_payload/b113_fixes/b113_fgs_crash_fix.patch"
   workflow_dispatch:
 
 permissions:
@@ -31,7 +32,7 @@ jobs:
           echo "7046afbb99b19c2b7e682c9aceee87f3c73260027b687f97ca941ceea6a2a93e  /tmp/b113_android_exact.tar.xz" | sha256sum -c -
           tar -xJf /tmp/b113_android_exact.tar.xz -C /tmp/b113-src
 
-      - name: Apply reviewed B113 test fixes
+      - name: Apply reviewed B113 quality fixes
         shell: bash
         run: |
           set -euo pipefail
@@ -40,7 +41,16 @@ jobs:
           git apply --check "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_140_tests.patch"
           git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_140_tests.patch"
 
-      - name: Verify source identity and version hygiene
+      - name: Apply foreground-service crash fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "0b7091fea889289cdf6b7eb2f946ec77eb9fa1f4ea5786e2ac7ede75b8770e09  ci_payload/b113_fixes/b113_fgs_crash_fix.patch" | sha256sum -c -
+          cd /tmp/b113-src
+          git apply --check "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_fgs_crash_fix.patch"
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_fgs_crash_fix.patch"
+
+      - name: Verify source identity and FGS lifecycle invariants
         shell: bash
         run: |
           set -euo pipefail
@@ -51,6 +61,29 @@ jobs:
             echo "Hardcoded legacy 5.1.x version literal found" >&2
             exit 1
           fi
+          python3 - <<'PY'
+          from pathlib import Path
+          service = Path('/tmp/b113-src/app/src/main/java/tr/borsatakip/v5/worker/RealtimeAlertService.kt').read_text()
+          main = Path('/tmp/b113-src/app/src/main/java/tr/borsatakip/v5/ui/MainActivity.kt').read_text()
+          manifest = Path('/tmp/b113-src/app/src/main/AndroidManifest.xml').read_text()
+
+          on_create = service.split('override fun onCreate()', 1)[1].split('override fun onStartCommand', 1)[0]
+          assert 'promoteToForeground()' in on_create
+          assert 'RealtimeScannerSocket(this)' in on_create
+          assert on_create.index('promoteToForeground()') < on_create.index('RealtimeScannerSocket(this)')
+          assert 'ServiceCompat.startForeground(' in service
+          assert 'AtomicBoolean(false)' in service
+          assert 'if (!startRequested.compareAndSet(false, true)) return true' in service
+          assert 'FOREGROUND_SERVICE_SPECIAL_USE' in manifest
+          assert 'android:foregroundServiceType="specialUse"' in manifest
+          assert 'PROPERTY_SPECIAL_USE_FGS_SUBTYPE' in manifest
+
+          on_resume = main.split('override fun onResume()', 1)[1].split('override fun onPause()', 1)[0]
+          on_create_main = main.split('override fun onCreate', 1)[1].split('override fun onNewIntent', 1)[0]
+          assert 'RealtimeAlertService.start(this)' not in on_resume
+          assert 'RealtimeAlertService.start(this)' in on_create_main
+          print('FGS lifecycle/source invariants: PASS')
+          PY
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -125,35 +158,38 @@ jobs:
           "$ZIPALIGN" -c -v 4 "$APK" | tee /tmp/zipalign.txt
 
           mkdir -p /tmp/b113-output
-          OUT=/tmp/b113-output/V5-ARACI-KURUM-5.2.5-B113-TARAMA-ZAMANI-FIXED-debug.apk
+          OUT=/tmp/b113-output/V5-ARACI-KURUM-5.2.5-B113-TARAMA-ZAMANI-FGS-FIXED-debug.apk
           cp "$APK" "$OUT"
           APK_SHA="$(sha256sum "$OUT" | awk '{print $1}')"
 
           {
-            echo "B113 FIXED VERIFIED BUILD"
+            echo "B113 FOREGROUND-SERVICE CRASH FIXED VERIFIED BUILD"
             echo "repository=dilekari-droid/BorsaTakipV5"
             echo "branch=v525-b113-verified-apk"
             echo "git_commit=$GITHUB_SHA"
             echo "original_source_zip_sha256=ebcf0eb32d5ba8e5968647e9e956be40e49765caeecaeb3d466f3235e897e46e"
             echo "original_android_source_archive_sha256=7046afbb99b19c2b7e682c9aceee87f3c73260027b687f97ca941ceea6a2a93e"
-            echo "fix_patch_sha256=4153eac5b14cb0abf4235209162f27a61b8cd61ef89272aa1ffb7c39f255ddff"
+            echo "quality_fix_patch_sha256=4153eac5b14cb0abf4235209162f27a61b8cd61ef89272aa1ffb7c39f255ddff"
+            echo "fgs_crash_fix_patch_sha256=0b7091fea889289cdf6b7eb2f946ec77eb9fa1f4ea5786e2ac7ede75b8770e09"
             echo "applicationId=tr.borsatakip.v5"
             echo "versionCode=113"
             echo "versionName=5.2.5"
+            echo "foreground_service_type=specialUse"
             echo "unit_tests=140/140 passed"
+            echo "physical_device_runtime_test=NOT_RUN"
             echo "apk_sha256=$APK_SHA"
             echo "apk_file=$(basename "$OUT")"
-          } | tee /tmp/b113-output/B113_FIXED_BUILD_PROVENANCE.txt
+          } | tee /tmp/b113-output/B113_FGS_FIXED_BUILD_PROVENANCE.txt
           sha256sum "$OUT" > "$OUT.sha256"
 
-      - name: Upload fixed verified B113 APK
+      - name: Upload FGS-fixed verified B113 APK
         uses: actions/upload-artifact@v4
         with:
-          name: V5-ARACI-KURUM-5.2.5-B113-TARAMA-ZAMANI-FIXED-APK
+          name: V5-ARACI-KURUM-5.2.5-B113-TARAMA-ZAMANI-FGS-FIXED-APK
           path: |
-            /tmp/b113-output/V5-ARACI-KURUM-5.2.5-B113-TARAMA-ZAMANI-FIXED-debug.apk
-            /tmp/b113-output/V5-ARACI-KURUM-5.2.5-B113-TARAMA-ZAMANI-FIXED-debug.apk.sha256
-            /tmp/b113-output/B113_FIXED_BUILD_PROVENANCE.txt
+            /tmp/b113-output/V5-ARACI-KURUM-5.2.5-B113-TARAMA-ZAMANI-FGS-FIXED-debug.apk
+            /tmp/b113-output/V5-ARACI-KURUM-5.2.5-B113-TARAMA-ZAMANI-FGS-FIXED-debug.apk.sha256
+            /tmp/b113-output/B113_FGS_FIXED_BUILD_PROVENANCE.txt
             /tmp/b113-src/app/build/reports/tests/testDebugUnitTest/**
           if-no-files-found: error
           retention-days: 90
