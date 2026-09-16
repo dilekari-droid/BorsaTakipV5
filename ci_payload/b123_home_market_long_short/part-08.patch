@@ -1,0 +1,80 @@
++                android:background="@drawable/bg_card"
++                android:padding="14dp"
++                android:textColor="@color/text_primary"
++                android:textSize="14sp" />
++
++            <Button
++                android:id="@+id/marketDetailRefresh"
++                android:layout_width="match_parent"
++                android:layout_height="52dp"
++                android:layout_marginTop="16dp"
++                android:text="VERİYİ YENİLE" />
++
++            <Button
++                android:id="@+id/marketDetailSettings"
++                android:layout_width="match_parent"
++                android:layout_height="52dp"
++                android:layout_marginTop="8dp"
++                android:text="VERİ SAĞLAYICIYI AYARLA"
++                android:visibility="gone" />
++        </LinearLayout>
++    </ScrollView>
++
++    <include layout="@layout/include_bottom_nav" />
++</LinearLayout>
+diff --git a/app/src/test/java/tr/borsatakip/v5/data/B117EngineIntegritySourceTest.kt b/app/src/test/java/tr/borsatakip/v5/data/B117EngineIntegritySourceTest.kt
+index d3138ed..e3eaed1 100644
+--- a/app/src/test/java/tr/borsatakip/v5/data/B117EngineIntegritySourceTest.kt
++++ b/app/src/test/java/tr/borsatakip/v5/data/B117EngineIntegritySourceTest.kt
+@@ -18,6 +18,6 @@ class B117EngineIntegritySourceTest {
+ 
+     @Test fun versionCodeTracksCurrentIntegrityBuild() {
+         val s = File("build.gradle.kts").readText()
+-        assertTrue(s.contains("versionCode = 122"))
++        assertTrue(s.contains("versionCode = 123"))
+     }
+ }
+diff --git a/app/src/test/java/tr/borsatakip/v5/data/B123HomeTabsAndMarketDetailsTest.kt b/app/src/test/java/tr/borsatakip/v5/data/B123HomeTabsAndMarketDetailsTest.kt
+new file mode 100644
+index 0000000..cfcef46
+--- /dev/null
++++ b/app/src/test/java/tr/borsatakip/v5/data/B123HomeTabsAndMarketDetailsTest.kt
+@@ -0,0 +1,38 @@
++package tr.borsatakip.v5.data
++
++import org.junit.Assert.assertTrue
++import org.junit.Test
++import java.io.File
++
++class B123HomeTabsAndMarketDetailsTest {
++    private fun read(path: String) = File(path).readText()
++
++    @Test fun homeContainsLongShortTabs() {
++        val xml = read("src/main/res/layout/activity_main.xml")
++        assertTrue(xml.contains("@+id/todayLongTab"))
++        assertTrue(xml.contains("@+id/todayShortTab"))
++    }
++
++    @Test fun homeFiltersExistingResultsByDirection() {
++        val s = read("src/main/java/tr/borsatakip/v5/ui/MainActivity.kt")
++        assertTrue(s.contains("TodayMode.LONG -> AppSession.lastOpportunities.filter"))
++        assertTrue(s.contains("TodayMode.SHORT -> AppSession.lastOpportunities.filter"))
++    }
++
++    @Test fun everyMarketTileOpensDedicatedDetail() {
++        val s = read("src/main/java/tr/borsatakip/v5/ui/MainActivity.kt")
++        listOf("marketBist100Card", "marketBist30Card", "marketUsdCard", "marketGoldCard", "marketViopCard")
++            .forEach { assertTrue(s.contains(it)) }
++        assertTrue(s.contains("MarketInstrumentDetailActivity"))
++    }
++
++    @Test fun bist30DetailUsesMultipleValidatedSymbols() {
++        val s = read("src/main/java/tr/borsatakip/v5/ui/MarketInstrumentDetailActivity.kt")
++        assertTrue(s.contains("listOf(\"XU030.IS\", \"^XU030\", \"XU030\")"))
++    }
++
++    @Test fun marketValuesCanShrinkWithoutEllipsis() {
++        val xml = read("src/main/res/layout/activity_main.xml")
++        assertTrue(xml.contains("android:autoSizeMinTextSize=\"6sp\""))
++    }
++}
