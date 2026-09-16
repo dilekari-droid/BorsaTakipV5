@@ -34,20 +34,27 @@ jobs:
         run: |
           set -euo pipefail
           cp ci_payload/b123_market_cards_detail/b123.patch.gz /tmp/b123.patch.gz
+          cp ci_payload/b123_market_cards_detail/b123_legacy_test_migration.patch /tmp/b123-legacy-test.patch
           echo '845bf2a8368953d8e9144445e59fa429ee44686662b1baf053269cbd345b0cf3  /tmp/b123.patch.gz' | sha256sum -c -
+          echo '928ca47e852929f93059c5fad680b2ee75bb26477fb58b468003f0a995748318  /tmp/b123-legacy-test.patch' | sha256sum -c -
           gzip -dc /tmp/b123.patch.gz > /tmp/b123.patch
           echo '89a31eb5e629d38496c05ff2701537e4b18744192e74ad89e6f75cc0ca37e4bb  /tmp/b123.patch' | sha256sum -c -
           cd /tmp/src
           git apply --check /tmp/b123.patch
           git apply /tmp/b123.patch
+          git apply --check /tmp/b123-legacy-test.patch
+          git apply /tmp/b123-legacy-test.patch
           grep -F 'versionCode = 123' app/build.gradle.kts
           grep -F 'MarketSnapshotLoader(this)' app/src/main/java/tr/borsatakip/v5/ui/MainActivity.kt
           grep -F 'class MarketDetailActivity' app/src/main/java/tr/borsatakip/v5/ui/MarketDetailActivity.kt
           grep -F 'listOf("XU030.IS", "^XU030", "XU030")' app/src/main/java/tr/borsatakip/v5/data/MarketInstrumentRegistry.kt
           grep -F '@+id/marketBist30Card' app/src/main/res/layout/activity_main.xml
           grep -F 'class B123MarketCardsInteractionTest' app/src/test/java/tr/borsatakip/v5/data/B123MarketCardsInteractionTest.kt
+          grep -F 'MarketInstrumentRegistry.kt' app/src/test/java/tr/borsatakip/v5/data/B121ProviderAndMarketTilesTest.kt
           cp /tmp/b123.patch /tmp/out/B123-MARKET-CARDS-DETAIL.patch
+          cp /tmp/b123-legacy-test.patch /tmp/out/B123-LEGACY-MARKET-TEST-MIGRATION.patch
           sha256sum /tmp/b123.patch > /tmp/out/B123-MARKET-CARDS-DETAIL.patch.sha256
+          sha256sum /tmp/b123-legacy-test.patch > /tmp/out/B123-LEGACY-MARKET-TEST-MIGRATION.patch.sha256
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -106,6 +113,7 @@ jobs:
             echo 'B123 INTERACTIVE MARKET CARDS VERIFIED BUILD'
             echo 'applicationId=tr.borsatakip.v5'; echo 'versionCode=123'; echo 'versionName=5.2.5'
             echo 'b123_patch_sha256=89a31eb5e629d38496c05ff2701537e4b18744192e74ad89e6f75cc0ca37e4bb'
+            echo 'b123_legacy_market_test_migration_sha256=928ca47e852929f93059c5fad680b2ee75bb26477fb58b468003f0a995748318'
             echo 'market_cards_clickable=BIST100,BIST30,USDTRY,GOLD,VIOP30'
             echo 'market_detail_refresh=ON_TAP_AND_MANUAL_REFRESH'
             echo 'bist30_provider_tickers=XU030.IS,^XU030,XU030'
