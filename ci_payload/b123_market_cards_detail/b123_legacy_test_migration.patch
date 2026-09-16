@@ -1,0 +1,41 @@
+diff --git a/app/src/test/java/tr/borsatakip/v5/data/B121ProviderAndMarketTilesTest.kt b/app/src/test/java/tr/borsatakip/v5/data/B121ProviderAndMarketTilesTest.kt
+index 489617f..04c68cb 100644
+--- a/app/src/test/java/tr/borsatakip/v5/data/B121ProviderAndMarketTilesTest.kt
++++ b/app/src/test/java/tr/borsatakip/v5/data/B121ProviderAndMarketTilesTest.kt
+@@ -33,21 +33,25 @@ class B121ProviderAndMarketTilesTest {
+     }
+ 
+     @Test fun marketStripRequestsAllNonViopTilesWithoutHttpsEarlyReturn() {
+-        val s = source("src/main/java/tr/borsatakip/v5/ui/MainActivity.kt")
+-        val method = s.substringAfter("private fun refreshMarketTiles()").substringBefore("private fun bindStockTile")
+-        assertTrue(method.contains("XU100.IS"))
+-        assertTrue(method.contains("XU030.IS"))
+-        assertTrue(method.contains("TRY=X"))
+-        assertTrue(method.contains("XAUUSD=X"))
+-        assertTrue(method.contains("GC=F"))
+-        assertFalse(method.contains("if (!settings.baseUrl.startsWith(\"https://\")) return@launch"))
++        val registry = source("src/main/java/tr/borsatakip/v5/data/MarketInstrumentRegistry.kt")
++        val main = source("src/main/java/tr/borsatakip/v5/ui/MainActivity.kt")
++        assertTrue(registry.contains("XU100.IS"))
++        assertTrue(registry.contains("XU030.IS"))
++        assertTrue(registry.contains("TRY=X"))
++        assertTrue(registry.contains("XAUUSD=X"))
++        assertTrue(registry.contains("GC=F"))
++        assertTrue(main.contains("MarketSnapshotLoader(this)"))
++        val stockPath = registry.substringAfter("private suspend fun loadStock").substringBefore("private suspend fun loadViop")
++        assertFalse(stockPath.contains("if (!settings.baseUrl.startsWith(\"https://\"))"))
+     }
+ 
+     @Test fun viop30StillRequiresRealBackendQuote() {
+-        val s = source("src/main/java/tr/borsatakip/v5/ui/MainActivity.kt")
+-        assertTrue(s.contains("backend.loadViopQuote(contract.symbol).getOrNull()"))
+-        assertTrue(s.contains("it.underlying.equals(\"XU030\", true)"))
++        val s = source("src/main/java/tr/borsatakip/v5/data/MarketInstrumentRegistry.kt")
++        assertTrue(s.contains("backend.loadViopQuote(contract.symbol).getOrElse"))
++        assertTrue(s.contains("u in setOf(\"XU030\", \"XU30\", \"BIST30\")"))
++        assertTrue(s.contains("settings.baseUrl.startsWith(\"https://\")"))
+         assertFalse(s.contains("VIOP30_FAKE"))
++        assertFalse(s.substringAfter("private suspend fun loadViop").contains("fetchExternalQuote"))
+     }
+ 
+     @Test fun marketValuesAreSingleLineAndAutosized() {
