@@ -1,0 +1,200 @@
+name: B118 Temporal Price Integrity Verified Build
+on:
+  push:
+    branches: [v525-b118-temporal-price-integrity]
+    paths:
+      - '.github/workflows/build-b118-temporal-price-integrity.yml'
+      - 'ci_payload/b118_temporal_price_integrity/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reconstruct exact B116 baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/src /tmp/out && mkdir -p /tmp/src /tmp/out
+          cat ci_payload/v525_b113_android_exact/part-*.b64 | base64 --decode > /tmp/src.tar.xz
+          echo '7046afbb99b19c2b7e682c9aceee87f3c73260027b687f97ca941ceea6a2a93e  /tmp/src.tar.xz' | sha256sum -c -
+          tar -xJf /tmp/src.tar.xz -C /tmp/src
+          cd /tmp/src
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_140_tests.patch"
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_fgs_crash_fix.patch"
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_fgs_regression_test.patch"
+          cat "$GITHUB_WORKSPACE"/ci_payload/b113_fixes/b113_b114_acceptance_fix.part-*.b64 | base64 --decode | gzip -dc > /tmp/accept.patch
+          git apply --exclude='backend/**' /tmp/accept.patch
+          mkdir -p app/src/test/java/tr/borsatakip/v5/data
+          cp "$GITHUB_WORKSPACE/ci_payload/b113_fixes/broad_tests/B113B114AcceptanceSourceTest.kt" app/src/test/java/tr/borsatakip/v5/data/B113B114AcceptanceSourceTest.kt
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_tradingview_chart_button_v2.patch"
+          cat "$GITHUB_WORKSPACE"/ci_payload/b113_fixes/dual_scan/part-*.b64 | base64 --decode | gzip -dc > /tmp/dual.patch
+          git apply /tmp/dual.patch
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_dual_scan_universe_acceptance_fix.patch"
+          cat "$GITHUB_WORKSPACE"/ci_payload/b113_fixes/auto_backend_scan/part-*.b64 | base64 --decode | gzip -dc > /tmp/auto.patch
+          git apply /tmp/auto.patch
+          cat "$GITHUB_WORKSPACE"/ci_payload/b113_fixes/auto_backend_scan/missing-*.b64 | base64 --decode | gzip -dc > /tmp/missing.patch
+          git apply /tmp/missing.patch
+          base64 --decode "$GITHUB_WORKSPACE/ci_payload/b113_fixes/production_readiness/b113_production_readiness_runtime_fix_full.patch.gz.b64" | gzip -dc > /tmp/prod.patch
+          git apply /tmp/prod.patch
+          python3 "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b114_final/apply_b114_final.py" /tmp/src
+          python3 "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b114_final/post_b114_condition_fix.py" /tmp/src
+          python3 "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b115_intraday_fallback/apply_b115_intraday_fallback.py" /tmp/src
+          python3 "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b115_intraday_fallback/post_b115_test_contract.py" /tmp/src
+          cp "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b115_intraday_fallback/B115IntradayFallbackSourceTest.kt" app/src/test/java/tr/borsatakip/v5/data/B115IntradayFallbackSourceTest.kt
+          python3 "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b116_opportunity_fallback/apply_b116_opportunity_fallback.py" /tmp/src
+          cp "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b116_opportunity_fallback/B116OpportunityFallbackSourceTest.kt" app/src/test/java/tr/borsatakip/v5/data/B116OpportunityFallbackSourceTest.kt
+
+      - name: Apply verified B117 integrity patches
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat \
+            ci_payload/b117_engine_integrity/part-aa.b64 \
+            ci_payload/b117_engine_integrity/part-ab.b64 \
+            ci_payload/b117_engine_integrity/part-ac.b64 \
+            ci_payload/b117_engine_integrity/part-ad.b64 \
+            ci_payload/b117_engine_integrity/part-ae0.b64 \
+            ci_payload/b117_engine_integrity/part-ae1-0.b64 \
+            ci_payload/b117_engine_integrity/part-ae1-1.b64 \
+            ci_payload/b117_engine_integrity/part-ae1-2.b64 \
+            ci_payload/b117_engine_integrity/part-ae1-3.b64 \
+            ci_payload/b117_engine_integrity/part-af.b64 \
+            ci_payload/b117_engine_integrity/part-ag.b64 \
+            | base64 --decode > /tmp/b117.patch
+          echo '4c328b14f0704d48472452d27b4e4c822b0d3fa6b90d5738ee4fd9381aae4c5d  /tmp/b117.patch' | sha256sum -c -
+          echo '53ba6caa7b19812776088a78f9595c912847644a03c546a57ff72474acd30c08  ci_payload/b117_engine_integrity/b117_compatibility_followup.patch' | sha256sum -c -
+          echo '726174316919c2cdba37c0742c4dddaba97d2cab9da806f57705643a4d3e75e7  ci_payload/b117_engine_integrity/b117_test_contract_fix.patch' | sha256sum -c -
+          echo '496fd3d915d25f3f5ab1fd07254a22c4fef8c990986f2fbc63c1631ab332663e  ci_payload/b117_engine_integrity/b117_test_contract_fix2.patch' | sha256sum -c -
+          cd /tmp/src
+          git apply /tmp/b117.patch
+          git apply "$GITHUB_WORKSPACE/ci_payload/b117_engine_integrity/b117_compatibility_followup.patch"
+          git apply "$GITHUB_WORKSPACE/ci_payload/b117_engine_integrity/b117_test_contract_fix.patch"
+          git apply "$GITHUB_WORKSPACE/ci_payload/b117_engine_integrity/b117_test_contract_fix2.patch"
+
+      - name: Apply B118 temporal and price integrity patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 --decode ci_payload/b118_temporal_price_integrity/b118.patch.gz.b64 > /tmp/b118.patch.gz
+          echo '0d167550cfa5650ccb407fb18d75b27b7cd2f108a3456a82c961b18c9024372e  /tmp/b118.patch.gz' | sha256sum -c -
+          gzip -dc /tmp/b118.patch.gz > /tmp/b118.patch
+          echo '51c8dbb93006abc721429091e9f0a76d880e7706d0d3d18e9a0c50d1448ecb22  /tmp/b118.patch' | sha256sum -c -
+          cd /tmp/src
+          git apply --check /tmp/b118.patch
+          git apply /tmp/b118.patch
+          grep -F 'versionCode = 118' app/build.gradle.kts
+          grep -F 'val price = c.last().close' app/src/main/java/tr/borsatakip/v5/analysis/OpportunityEngine.kt
+          grep -F 'provider.fetchDailyHistory(opportunity.symbol, maximumRange = false)' app/src/main/java/tr/borsatakip/v5/scan/BistScanner.kt
+          grep -F 'range=5d&interval=1m' app/src/main/java/tr/borsatakip/v5/data/YahooFallbackProvider.kt
+          grep -F 'DecisionState.VERIFIED_OPPORTUNITY' app/src/main/java/tr/borsatakip/v5/ui/ScanResultsAdapter.kt
+          cp /tmp/b118.patch /tmp/out/B118-TEMPORAL-PRICE-INTEGRITY.patch
+          sha256sum /tmp/b118.patch > /tmp/out/B118-TEMPORAL-PRICE-INTEGRITY.patch.sha256
+          python3 - <<'PY'
+          from pathlib import Path
+          import zipfile
+          src = Path('/tmp/src')
+          out = Path('/tmp/out/V5-ARACI-KURUM-5.2.5-B118-TEMPORAL-PRICE-INTEGRITY-Kaynak-Kod.zip')
+          excluded = {'.git', '.gradle', 'build'}
+          with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED) as z:
+              for p in src.rglob('*'):
+                  if not p.is_file():
+                      continue
+                  rel = p.relative_to(src)
+                  if any(part in excluded for part in rel.parts):
+                      continue
+                  z.write(p, rel.as_posix())
+          PY
+          sha256sum /tmp/out/V5-ARACI-KURUM-5.2.5-B118-TEMPORAL-PRICE-INTEGRITY-Kaynak-Kod.zip > /tmp/out/V5-ARACI-KURUM-5.2.5-B118-TEMPORAL-PRICE-INTEGRITY-Kaynak-Kod.zip.sha256
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Require 239 of 239 Android tests
+        working-directory: /tmp/src
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon testDebugUnitTest --stacktrace
+          python3 - <<'PY' | tee /tmp/test-summary.txt
+          import glob, xml.etree.ElementTree as ET
+          total=failures=errors=skipped=0
+          for p in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
+              r=ET.parse(p).getroot()
+              total += int(r.attrib.get('tests',0))
+              failures += int(r.attrib.get('failures',0))
+              errors += int(r.attrib.get('errors',0))
+              skipped += int(r.attrib.get('skipped',0))
+          print(f'TEST_TOTAL={total} TEST_FAILURES={failures} TEST_ERRORS={errors} TEST_SKIPPED={skipped}')
+          if (total, failures, errors, skipped) != (239, 0, 0, 0):
+              raise SystemExit(f'Expected 239/239 clean pass; got total={total}, failures={failures}, errors={errors}, skipped={skipped}')
+          PY
+
+      - name: Build debug APK
+        working-directory: /tmp/src
+        run: gradle --no-daemon assembleDebug --stacktrace
+
+      - name: Verify and export APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=/tmp/src/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          BT="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)"
+          AAPT="$ANDROID_HOME/build-tools/$BT/aapt"
+          APKSIGNER="$ANDROID_HOME/build-tools/$BT/apksigner"
+          ZIPALIGN="$ANDROID_HOME/build-tools/$BT/zipalign"
+          BADGING="$($AAPT dump badging "$APK" | head -n1)"
+          echo "$BADGING" | tee /tmp/out/BADGING.txt
+          echo "$BADGING" | grep -F "name='tr.borsatakip.v5'"
+          echo "$BADGING" | grep -F "versionCode='118'"
+          echo "$BADGING" | grep -F "versionName='5.2.5'"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee /tmp/out/APKSIGNER.txt
+          "$APKSIGNER" verify --verbose "$APK" | grep -F 'Verified using v2 scheme (APK Signature Scheme v2): true'
+          "$ZIPALIGN" -c -v 4 "$APK" | tee /tmp/out/ZIPALIGN.txt
+          OUT=/tmp/out/V5-ARACI-KURUM-5.2.5-B118-TEMPORAL-PRICE-INTEGRITY-debug.apk
+          cp "$APK" "$OUT"
+          sha256sum "$OUT" | tee "$OUT.sha256"
+          cp /tmp/test-summary.txt /tmp/out/TEST-SUMMARY.txt
+          {
+            echo 'B118 TEMPORAL + PRICE INTEGRITY VERIFIED BUILD'
+            echo 'applicationId=tr.borsatakip.v5'
+            echo 'versionCode=118'
+            echo 'versionName=5.2.5'
+            echo "source_branch=$GITHUB_REF_NAME"
+            echo "source_commit=$GITHUB_SHA"
+            echo 'b118_patch_sha256=51c8dbb93006abc721429091e9f0a76d880e7706d0d3d18e9a0c50d1448ecb22'
+            echo 'favorite_layout=PREVIOUS_SIMPLE_CARD'
+            echo 'favorite_quote_path=FRESH_STOCK_FIRST'
+            echo 'yahoo_display_quote=ONE_MINUTE_DELAYED_FALLBACK'
+            echo 'confirmed_score_price=CLOSED_CANDLE_ONLY'
+            echo 'breakout_price_volume=CLOSED_SAME_CANDLE'
+            echo 'mtf_daily=REAL_DAILY_HISTORY'
+            echo 'mtf_candidate_scope=ALL_LOCAL_CANDIDATES'
+            echo 'aggregate_completeness=REQUIRED'
+            echo 'realtime_readiness_floor=LOCAL_POLICY_MINIMUM'
+            echo 'realtime_item_age=CLIENT_RECOMPUTED'
+            echo 'market_regime_confidence=TYPED_FIELD_ONLY'
+            echo 'strategy_training=VERIFIED_OPPORTUNITY_ONLY'
+            echo 'validity_label=DECISION_STATE_AWARE'
+            cat /tmp/test-summary.txt
+            echo 'production_live_e2e=NOT_RUN'
+            echo 'yahoo_live_e2e=NOT_RUN'
+            echo 'physical_device_test=NOT_RUN'
+            echo 'signing=DEBUG'
+          } > /tmp/out/PROVENANCE.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: B118-TEMPORAL-PRICE-INTEGRITY-VERIFIED
+          path: /tmp/out/*
+          retention-days: 90
