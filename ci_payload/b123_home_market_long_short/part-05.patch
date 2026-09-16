@@ -1,0 +1,64 @@
+                     android:layout_width="0dp"
+                     android:layout_height="match_parent"
+                     android:layout_weight="1"
+                     android:layout_marginHorizontal="3dp"
+                     android:background="@drawable/bg_market_tile"
+                     android:orientation="vertical"
+-                    android:padding="7dp">
++                    android:padding="7dp"
++                    android:clickable="true"
++                    android:focusable="true">
+                     <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="DOLAR" android:textColor="@color/text_secondary" android:textSize="9sp" android:textStyle="bold" />
+                     <TextView
+                         android:id="@+id/marketUsdValue"
+@@ -184,7 +193,7 @@
+                         android:maxLines="1"
+                         android:singleLine="true"
+                         android:autoSizeTextType="uniform"
+-                        android:autoSizeMinTextSize="8sp"
++                        android:autoSizeMinTextSize="6sp"
+                         android:autoSizeMaxTextSize="14sp"
+                         android:autoSizeStepGranularity="1sp"
+                         android:text="—"
+@@ -196,13 +205,16 @@
+                 </LinearLayout>
+ 
+                 <LinearLayout
++                    android:id="@+id/marketGoldCard"
+                     android:layout_width="0dp"
+                     android:layout_height="match_parent"
+                     android:layout_weight="1"
+                     android:layout_marginHorizontal="3dp"
+                     android:background="@drawable/bg_market_tile"
+                     android:orientation="vertical"
+-                    android:padding="7dp">
++                    android:padding="7dp"
++                    android:clickable="true"
++                    android:focusable="true">
+                     <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="ONS ALTIN" android:textColor="@color/text_secondary" android:textSize="9sp" android:textStyle="bold" />
+                     <TextView
+                         android:id="@+id/marketGoldValue"
+@@ -212,7 +224,7 @@
+                         android:maxLines="1"
+                         android:singleLine="true"
+                         android:autoSizeTextType="uniform"
+-                        android:autoSizeMinTextSize="8sp"
++                        android:autoSizeMinTextSize="6sp"
+                         android:autoSizeMaxTextSize="14sp"
+                         android:autoSizeStepGranularity="1sp"
+                         android:text="—"
+@@ -224,13 +236,16 @@
+                 </LinearLayout>
+ 
+                 <LinearLayout
++                    android:id="@+id/marketViopCard"
+                     android:layout_width="0dp"
+                     android:layout_height="match_parent"
+                     android:layout_weight="1"
+                     android:layout_marginStart="3dp"
+                     android:background="@drawable/bg_market_tile"
+                     android:orientation="vertical"
+-                    android:padding="7dp">
++                    android:padding="7dp"
++                    android:clickable="true"
++                    android:focusable="true">
