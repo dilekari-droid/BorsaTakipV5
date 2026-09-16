@@ -1,0 +1,22 @@
+--- a/app/src/test/java/tr/borsatakip/v5/analysis/B119StabilityPerformanceTest.kt
++++ b/app/src/test/java/tr/borsatakip/v5/analysis/B119StabilityPerformanceTest.kt
+@@ -33,7 +33,18 @@
+     }
+ 
+     @Test fun explicitFiveMinuteSourceBuildsFifteenMinuteBucket() {
+-        val base = (0..2).map { candle(it, 5) }
++        val aligned15m = aligned - (aligned % (15 * 60_000L))
++        val base = (0..2).map { i ->
++            val close = 100.0 + i
++            Candle(
++                timestamp = aligned15m + i * 5 * 60_000L,
++                open = close - 0.2,
++                high = close + 0.5,
++                low = close - 0.5,
++                close = close,
++                volume = 1000.0 + i
++            )
++        }
+         val out = OhlcvResampler.aggregate(base, 5, 15)
+         assertEquals(1, out.size)
+         assertEquals(base.sumOf { it.volume }, out.single().volume, 0.0001)
