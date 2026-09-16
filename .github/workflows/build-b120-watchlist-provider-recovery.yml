@@ -40,7 +40,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo '41ab23cd6aa484678fea92e9b9d47320dfde587abf6517ec092bc5b9c42ff7cf  ci_payload/b120_watchlist_provider_recovery/b120.patch.gz.b64' | sha256sum -c -
           base64 --decode ci_payload/b120_watchlist_provider_recovery/b120.patch.gz.b64 > /tmp/b120.patch.gz
           echo '3b6a172cc3f772c1eb5e88e9ddc6e22777c632964bb58d20c58027823c89054a  /tmp/b120.patch.gz' | sha256sum -c -
           gzip -dc /tmp/b120.patch.gz > /tmp/b120.patch
