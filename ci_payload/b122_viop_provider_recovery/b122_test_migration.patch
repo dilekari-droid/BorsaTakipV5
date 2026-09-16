@@ -1,0 +1,12 @@
+diff --git a/app/src/test/java/tr/borsatakip/v5/data/B117EngineIntegritySourceTest.kt b/app/src/test/java/tr/borsatakip/v5/data/B117EngineIntegritySourceTest.kt
+index 2e2d63d..d3138ed 100644
+--- a/app/src/test/java/tr/borsatakip/v5/data/B117EngineIntegritySourceTest.kt
++++ b/app/src/test/java/tr/borsatakip/v5/data/B117EngineIntegritySourceTest.kt
+@@ -18,6 +18,6 @@ class B117EngineIntegritySourceTest {
+ 
+     @Test fun versionCodeTracksCurrentIntegrityBuild() {
+         val s = File("build.gradle.kts").readText()
+-        assertTrue(s.contains("versionCode = 121"))
++        assertTrue(s.contains("versionCode = 122"))
+     }
+ }
