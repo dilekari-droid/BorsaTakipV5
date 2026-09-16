@@ -41,12 +41,14 @@ jobs:
         run: |
           set -euo pipefail
           cp ci_payload/b121_provider_market_recovery/b121.patch.gz /tmp/b121.patch.gz
-          echo 'b4e4f654cc64800f3056f856579a26513233f0aabbc7ec5933103f4372599d96  /tmp/b121.patch.gz' | sha256sum -c -
+          echo '739d98bcbdb0a42e9a6723808776f4ed0f4a6a0aa9e20ab5188c1d987d84534f  /tmp/b121.patch.gz' | sha256sum -c -
           gzip -dc /tmp/b121.patch.gz > /tmp/b121.patch
-          echo '3e6973692927a01c8528c26d86bb04c7d76aa3f9fcc0dd17b400b42d2c09a4fa  /tmp/b121.patch' | sha256sum -c -
+          echo '779a57c5236f35dfaf3f44b429a65ded0dc283eec36bf65e7e4d7ef5863e8433  /tmp/b121.patch' | sha256sum -c -
           cd /tmp/src
           git apply --check /tmp/b121.patch
           git apply /tmp/b121.patch
+          mkdir -p app/src/test/java/tr/borsatakip/v5/data
+          cp "$GITHUB_WORKSPACE/ci_payload/b121_provider_market_recovery/B121ProviderAndMarketTilesTest.kt" app/src/test/java/tr/borsatakip/v5/data/B121ProviderAndMarketTilesTest.kt
           grep -F 'versionCode = 121' app/build.gradle.kts
           grep -F 'Semaphore(4)' app/src/main/java/tr/borsatakip/v5/data/WatchlistDataResolver.kt
           grep -F 'fetchDisplayQuoteOnly' app/src/main/java/tr/borsatakip/v5/data/YahooFallbackProvider.kt
@@ -138,7 +140,7 @@ jobs:
             echo 'versionName=5.2.5'
             echo "source_branch=$GITHUB_REF_NAME"
             echo "source_commit=$GITHUB_SHA"
-            echo 'b121_patch_sha256=3e6973692927a01c8528c26d86bb04c7d76aa3f9fcc0dd17b400b42d2c09a4fa'
+            echo 'b121_patch_sha256=779a57c5236f35dfaf3f44b429a65ded0dc283eec36bf65e7e4d7ef5863e8433'
             echo 'b121_new_regression_tests=6'
             echo 'watchlist_quote_independent_from_daily_history=YES'
             echo 'watchlist_concurrency_limit=4'
