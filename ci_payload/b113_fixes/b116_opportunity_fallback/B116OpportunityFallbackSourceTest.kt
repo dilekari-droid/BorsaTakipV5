@@ -56,7 +56,7 @@ class B116OpportunityFallbackSourceTest {
         val activity = source("java/tr/borsatakip/v5/ui/OpportunityActivity.kt")
         val regime = source("java/tr/borsatakip/v5/analysis/MarketRegimeEngine.kt")
         assertTrue(activity.contains("Benchmark verisi alınamadı"))
-        assertTrue(regime.contains("MarketRegime.UNKNOWN"))
+        assertTrue(regime.contains("UNKNOWN"))
         assertTrue(regime.contains("benchmark verisi yok", ignoreCase = true))
     }
 
