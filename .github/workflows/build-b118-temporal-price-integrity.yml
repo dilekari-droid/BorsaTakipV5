@@ -80,7 +80,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          base64 --decode ci_payload/b118_temporal_price_integrity/b118.patch.gz.b64 > /tmp/b118.patch.gz
+          echo 'aaea1388f37fa5c103e0541fd4d0e9d74ac7036244aa782418a07f30a9964762  ci_payload/b118_temporal_price_integrity/chunk-00.b64' | sha256sum -c -
+          echo '59b0becda4601bc653d4229b9ac879868bc3f3730280cb5700b5ae1ff44f7325  ci_payload/b118_temporal_price_integrity/chunk-01.b64' | sha256sum -c -
+          echo '23942c8265e0348a1ebfda91caabf18809d60607e985fa6875991c8580675398  ci_payload/b118_temporal_price_integrity/chunk-02.b64' | sha256sum -c -
+          echo '9937c7d524963a44c61dfc98fcb38d35e5aadeffaa74bd62d209f9692f36187d  ci_payload/b118_temporal_price_integrity/chunk-03.b64' | sha256sum -c -
+          echo '8e5484e894453e16bd038a70577381b9f71ccae3911420c6e34448655ec71573  ci_payload/b118_temporal_price_integrity/chunk-04.b64' | sha256sum -c -
+          echo '561792d5e0c8094873623b1dea33744a89bb1a6644e4f962c6142d6c749edd53  ci_payload/b118_temporal_price_integrity/chunk-05.b64' | sha256sum -c -
+          cat ci_payload/b118_temporal_price_integrity/chunk-*.b64 > /tmp/b118.payload.b64
+          base64 --decode /tmp/b118.payload.b64 > /tmp/b118.patch.gz
           echo '0d167550cfa5650ccb407fb18d75b27b7cd2f108a3456a82c961b18c9024372e  /tmp/b118.patch.gz' | sha256sum -c -
           gzip -dc /tmp/b118.patch.gz > /tmp/b118.patch
           echo '51c8dbb93006abc721429091e9f0a76d880e7706d0d3d18e9a0c50d1448ecb22  /tmp/b118.patch' | sha256sum -c -
