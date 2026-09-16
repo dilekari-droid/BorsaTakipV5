@@ -1,0 +1,71 @@
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+index 9a80422..f7cb769 100644
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -12,7 +12,7 @@ android {
+         applicationId = "tr.borsatakip.v5"
+         minSdk = 26
+         targetSdk = 35
+-        versionCode = 122
++        versionCode = 123
+         versionName = "5.2.5"
+         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+     }
+diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
+index 2e85f5d..3fdbf78 100644
+--- a/app/src/main/AndroidManifest.xml
++++ b/app/src/main/AndroidManifest.xml
+@@ -37,6 +37,7 @@
+                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+             </intent-filter>
+         </receiver>
++        <activity android:name=".ui.MarketInstrumentDetailActivity" />
+         <activity android:name=".ui.FullscreenChartActivity" />
+         <activity android:name=".ui.ScanResultsActivity" />
+         <activity android:name=".ui.NotificationsActivity" />
+diff --git a/app/src/main/java/tr/borsatakip/v5/ui/MainActivity.kt b/app/src/main/java/tr/borsatakip/v5/ui/MainActivity.kt
+index 782a631..2d12b02 100644
+--- a/app/src/main/java/tr/borsatakip/v5/ui/MainActivity.kt
++++ b/app/src/main/java/tr/borsatakip/v5/ui/MainActivity.kt
+@@ -35,6 +35,8 @@ import java.util.Locale
+ import kotlin.math.roundToInt
+ 
+ class MainActivity : BaseActivity() {
++    private enum class TodayMode { ALL, LONG, SHORT }
++    private var todayMode: TodayMode = TodayMode.ALL
+     private val trLocale = Locale("tr", "TR")
+     private val clockHandler = Handler(Looper.getMainLooper())
+     private val clockTick = object : Runnable {
+@@ -66,6 +68,8 @@ class MainActivity : BaseActivity() {
+         findViewById<View>(R.id.btnHeaderSettings).setOnClickListener { startActivity(Intent(this, SettingsActivity::class.java)) }
+         findViewById<View>(R.id.btnMarketDetails).setOnClickListener { startActivity(Intent(this, SettingsActivity::class.java)) }
+         findViewById<View>(R.id.btnSeeAllOpportunities).setOnClickListener { startActivity(Intent(this, OpportunityActivity::class.java)) }
++        bindMarketTileClicks()
++        bindTodayTabs()
+ 
+         updateClock()
+         refreshMarketSummary()
+@@ -113,6 +117,44 @@ class MainActivity : BaseActivity() {
+         }
+     }
+ 
++    private fun bindMarketTileClicks() {
++        listOf(
++            R.id.marketBist100Card to "BIST100",
++            R.id.marketBist30Card to "BIST30",
++            R.id.marketUsdCard to "USDTRY",
++            R.id.marketGoldCard to "XAUUSD",
++            R.id.marketViopCard to "VIOP30"
++        ).forEach { (viewId, instrument) ->
++            findViewById<View>(viewId).setOnClickListener {
++                startActivity(Intent(this, MarketInstrumentDetailActivity::class.java).putExtra(MarketInstrumentDetailActivity.EXTRA_INSTRUMENT, instrument))
++            }
++        }
++    }
++
++    private fun bindTodayTabs() {
++        val all = findViewById<TextView>(R.id.todayAllTab)
++        val long = findViewById<TextView>(R.id.todayLongTab)
++        val short = findViewById<TextView>(R.id.todayShortTab)
++        all.setOnClickListener { todayMode = TodayMode.ALL; updateTodayTabStyles(); renderTodayOpportunities() }
++        long.setOnClickListener { todayMode = TodayMode.LONG; updateTodayTabStyles(); renderTodayOpportunities() }
