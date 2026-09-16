@@ -1,0 +1,243 @@
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+index 5d7ae12..9a80422 100644
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -12,7 +12,7 @@ android {
+         applicationId = "tr.borsatakip.v5"
+         minSdk = 26
+         targetSdk = 35
+-        versionCode = 121
++        versionCode = 122
+         versionName = "5.2.5"
+         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+     }
+diff --git a/app/src/main/java/tr/borsatakip/v5/ui/SettingsActivity.kt b/app/src/main/java/tr/borsatakip/v5/ui/SettingsActivity.kt
+index b4314df..415c96c 100644
+--- a/app/src/main/java/tr/borsatakip/v5/ui/SettingsActivity.kt
++++ b/app/src/main/java/tr/borsatakip/v5/ui/SettingsActivity.kt
+@@ -140,12 +140,12 @@ class SettingsActivity : BaseActivity() {
+             }
+         }
+ 
+-        findViewById<Button>(R.id.save).setOnClickListener {
++        fun persistBackendAndCommonSettings(): Boolean {
+             val url = base.text.toString().trim().removeSuffix("/")
+             val newKey = key.text.toString().trim()
+             if (url.isNotBlank() && !ProviderReadinessService.isValidHttps(url)) {
+                 Toast.makeText(this, "Geçersiz Production Backend adresi. Yalnız geçerli HTTPS URL kabul edilir.", Toast.LENGTH_LONG).show()
+-                return@setOnClickListener
++                return false
+             }
+             s.baseUrl = url
+             if (newKey.isNotBlank()) {
+@@ -173,16 +173,43 @@ class SettingsActivity : BaseActivity() {
+                 WorkScheduler.reconcile(this, s.notifications, s.refreshMinutes)
+                 if (s.notifications) RealtimeAlertService.start(this) else RealtimeAlertService.stop(this)
+             }
+-            if (s.autoScanEnabled) {
+-                AutoScanScheduler.reconcile(this, allowForegroundStart = true)
+-            } else {
+-                AutoScanScheduler.reconcile(this, allowForegroundStart = false)
+-            }
++            AutoScanScheduler.reconcile(this, allowForegroundStart = s.autoScanEnabled)
+             s.lastProviderState = if (s.baseUrl.isNotBlank() && s.apiKey.isNotBlank()) ProviderState.PROVIDER_CONFIGURED.name else ProviderState.PROVIDER_NOT_CONFIGURED.name
+             s.lastProviderFailureCode = ""
+             s.lastProviderMessage = ""
+-            Toast.makeText(this, if (s.baseUrl.isBlank() || s.apiKey.isBlank()) "Production Backend yapılandırılmamış. HTTPS adresi ve API erişim anahtarı girin." else "Ayarlar kaydedildi • bağlantı testi gerekli", Toast.LENGTH_LONG).show()
++            return true
++        }
++
++        fun autoTestAfterSave() {
++            val local = readiness.localConfigState()
++            if (local.state == ProviderState.PROVIDER_NOT_CONFIGURED) {
++                showStatus("VİOP bağlantısı kurulamadı\n${local.failureCode}\n${local.message}")
++                Toast.makeText(this, local.message, Toast.LENGTH_LONG).show()
++                return
++            }
++            testConnection.isEnabled = false
++            testConnection.text = "VİOP BAĞLANTISI TEST EDİLİYOR..."
++            lifecycleScope.launch {
++                val result = readiness.test()
++                showStatus(if (result.state == ProviderState.PROVIDER_READY) {
++                    "VİOP BAĞLANTISI HAZIR\nContracts ✓ (${result.viopContractCount}) • Quote ✓ • History ✓"
++                } else {
++                    "VİOP BAĞLANTISI BAŞARISIZ\n${result.failureCode}\n${result.message}"
++                })
++                testConnection.isEnabled = true
++                if (result.state == ProviderState.PROVIDER_READY && intent.getBooleanExtra(EXTRA_RETURN_TO_VIOP, false)) {
++                    Toast.makeText(this@SettingsActivity, "VİOP provider doğrulandı. VİOP ekranına dönülüyor.", Toast.LENGTH_SHORT).show()
++                    finish()
++                }
++            }
++        }
++
++        findViewById<Button>(R.id.save).setOnClickListener {
++            if (!persistBackendAndCommonSettings()) return@setOnClickListener
++            Toast.makeText(this, if (s.baseUrl.isBlank() || s.apiKey.isBlank()) "Production Backend yapılandırılmamış. HTTPS adresi ve API erişim anahtarı girin." else "Ayarlar kaydedildi • VİOP bağlantısı otomatik test ediliyor", Toast.LENGTH_LONG).show()
+             showStatus()
++            if (s.baseUrl.isNotBlank() && s.apiKey.isNotBlank()) autoTestAfterSave()
++            return@setOnClickListener
+         }
+ 
+         testConnection.setOnClickListener {
+@@ -268,5 +295,9 @@ class SettingsActivity : BaseActivity() {
+         }
+     }
+ 
+-    companion object { private const val TRADINGVIEW_URL = "https://www.tradingview.com/" }
++    companion object {
++        private const val TRADINGVIEW_URL = "https://www.tradingview.com/"
++        const val EXTRA_RETURN_TO_VIOP = "return_to_viop_after_provider_test"
++    }
++
+ }
+diff --git a/app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt b/app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt
+index dbdd773..af3498d 100644
+--- a/app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt
++++ b/app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt
+@@ -43,6 +43,8 @@ class ViopActivity : BaseActivity() {
+     private lateinit var scanButton: Button
+     private var previewContract: ViopContract? = null
+     private var previewQuote: ViopQuote? = null
++    private var providerAutoTestInFlight = false
++    private var lastProviderAutoTestAt = 0L
+ 
+     override fun onCreate(savedInstanceState: Bundle?) {
+         super.onCreate(savedInstanceState)
+@@ -56,7 +58,7 @@ class ViopActivity : BaseActivity() {
+         providerStatus = findViewById(R.id.providerStatus)
+         scanButton = findViewById(R.id.refresh)
+         list.layoutManager = LinearLayoutManager(this, RecyclerView.HORIZONTAL, false)
+-        findViewById<TextView>(R.id.openSettings).setOnClickListener { startActivity(Intent(this, SettingsActivity::class.java)) }
++        findViewById<TextView>(R.id.openSettings).setOnClickListener { openViopSettings() }
+         findViewById<Button>(R.id.openContracts).setOnClickListener { startActivity(Intent(this, ViopContractsActivity::class.java)) }
+         findViewById<Button>(R.id.openExpiries).setOnClickListener { startActivity(Intent(this, ViopContractsActivity::class.java)) }
+         findViewById<Button>(R.id.openAnalysis).setOnClickListener {
+@@ -69,13 +71,44 @@ class ViopActivity : BaseActivity() {
+         scanButton.setOnClickListener { startOrValidateScan() }
+         findViewById<Button>(R.id.addContract).visibility = if (BuildConfig.DEBUG && SettingsStore(this).experimentalProvidersEnabled) View.VISIBLE else View.GONE
+         refreshProviderState()
+-        if (readiness.localConfigState().state == ProviderState.PROVIDER_READY) loadDashboardPreview()
++        recoverProviderAndLoad()
+     }
+ 
+     override fun onResume() {
+         super.onResume()
+         refreshProviderState()
+-        if (::readiness.isInitialized && readiness.localConfigState().state == ProviderState.PROVIDER_READY && previewQuote == null) loadDashboardPreview()
++        if (::readiness.isInitialized) recoverProviderAndLoad()
++    }
++
++
++    private fun openViopSettings() {
++        startActivity(Intent(this, SettingsActivity::class.java).putExtra(SettingsActivity.EXTRA_RETURN_TO_VIOP, true))
++    }
++
++    private fun recoverProviderAndLoad() {
++        if (!::readiness.isInitialized || providerAutoTestInFlight) return
++        when (readiness.localConfigState().state) {
++            ProviderState.PROVIDER_READY -> if (previewQuote == null) loadDashboardPreview()
++            ProviderState.PROVIDER_CONFIGURED, ProviderState.PROVIDER_STALE_READY, ProviderState.PROVIDER_ERROR -> {
++                val now = System.currentTimeMillis()
++                if (now - lastProviderAutoTestAt < AUTO_TEST_COOLDOWN_MS) return
++                lastProviderAutoTestAt = now
++                providerAutoTestInFlight = true
++                status.text = "VİOP provider otomatik doğrulanıyor: HTTPS → Health → Authentication → Contracts → Quote → History"
++                lifecycleScope.launch {
++                    val result = readiness.test()
++                    providerAutoTestInFlight = false
++                    refreshProviderState()
++                    if (result.state == ProviderState.PROVIDER_READY) loadDashboardPreview()
++                    else status.text = "${result.failureCode} • ${result.message}"
++                }
++            }
++            ProviderState.PROVIDER_NOT_CONFIGURED -> {
++                clearPreview()
++                status.text = "VİOP için Production Backend eksik. Ayarlar simgesinden HTTPS backend adresi ve API erişim anahtarı girin; kaydedince bağlantı otomatik test edilir."
++            }
++            ProviderState.PROVIDER_TESTING -> Unit
++        }
+     }
+ 
+     private fun startOrValidateScan() {
+@@ -83,7 +116,7 @@ class ViopActivity : BaseActivity() {
+             else -> when (s.state) {
+                 ProviderState.PROVIDER_NOT_CONFIGURED -> {
+                     status.text = "VİOP VERİSİ BAĞLI DEĞİL • ${s.failureCode} • ${s.message}"
+-                    startActivity(Intent(this, SettingsActivity::class.java))
++                    openViopSettings()
+                 }
+                 ProviderState.PROVIDER_READY -> runOpportunityScan()
+                 ProviderState.PROVIDER_TESTING -> status.text = "Provider bağlantı testi devam ediyor..."
+@@ -265,4 +298,9 @@ class ViopActivity : BaseActivity() {
+     private fun formatCompact(v: Double) = when { v >= 1_000_000 -> "%.1f M".format(v / 1_000_000.0); v >= 1_000 -> "%.1f K".format(v / 1_000.0); else -> "%.0f".format(v) }
+     private fun timeOf(ms: Long) = if (ms <= 0) "—" else SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(ms))
+     private fun shortDate(ms: Long) = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(Date(ms))
++
++    companion object {
++        private const val AUTO_TEST_COOLDOWN_MS = 30_000L
++    }
++
+ }
+diff --git a/app/src/main/res/layout/activity_settings.xml b/app/src/main/res/layout/activity_settings.xml
+index 5dea509..ea73ac6 100644
+--- a/app/src/main/res/layout/activity_settings.xml
++++ b/app/src/main/res/layout/activity_settings.xml
+@@ -150,6 +150,15 @@
+                 android:text="@string/auto_text_ba320b6801"
+                 android:textColor="@color/text_primary" />
+ 
++            <TextView
++                android:layout_width="match_parent"
++                android:layout_height="wrap_content"
++                android:layout_marginTop="12dp"
++                android:background="@drawable/bg_card"
++                android:padding="12dp"
++                android:text="VİOP production için zorunlu uçlar: /v1/health • /v1/viop/contracts • /v1/viop/quote/{symbol} • /v1/viop/history/{symbol}. Kaydet sonrası bağlantı otomatik doğrulanır."
++                android:textColor="@color/text_secondary" />
++
+             <Button
+                 android:id="@+id/save"
+                 android:layout_width="match_parent"
+diff --git a/app/src/test/java/tr/borsatakip/v5/data/B122ViopProviderRecoveryTest.kt b/app/src/test/java/tr/borsatakip/v5/data/B122ViopProviderRecoveryTest.kt
+new file mode 100644
+index 0000000..c134dc8
+--- /dev/null
++++ b/app/src/test/java/tr/borsatakip/v5/data/B122ViopProviderRecoveryTest.kt
+@@ -0,0 +1,36 @@
++package tr.borsatakip.v5.data
++
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertTrue
++import org.junit.Test
++import java.io.File
++
++class B122ViopProviderRecoveryTest {
++    private fun read(path: String) = File(path).readText()
++
++    @Test fun viopActivityUsesAutomaticProviderRecovery() {
++        val s = read("src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt")
++        assertTrue(s.contains("recoverProviderAndLoad()"))
++        assertTrue(s.contains("AUTO_TEST_COOLDOWN_MS"))
++        assertTrue(s.contains("EXTRA_RETURN_TO_VIOP"))
++    }
++
++    @Test fun settingsSaveAutomaticallyTestsConfiguredBackend() {
++        val s = read("src/main/java/tr/borsatakip/v5/ui/SettingsActivity.kt")
++        assertTrue(s.contains("autoTestAfterSave()"))
++        assertTrue(s.contains("VİOP BAĞLANTISI HAZIR"))
++    }
++
++    @Test fun settingsDocumentsRequiredViopEndpoints() {
++        val s = read("src/main/res/layout/activity_settings.xml")
++        assertTrue(s.contains("/v1/viop/contracts"))
++        assertTrue(s.contains("/v1/viop/quote/{symbol}"))
++        assertTrue(s.contains("/v1/viop/history/{symbol}"))
++    }
++
++    @Test fun noFakeViopFallbackWasIntroduced() {
++        val s = read("src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt")
++        assertFalse(s.contains("YahooFallbackProvider"))
++        assertFalse(s.contains("fakeViop"))
++    }
++}
