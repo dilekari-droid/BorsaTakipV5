@@ -33,7 +33,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cp ci_payload/b123_home_market_long_short/b123.patch /tmp/b123.patch
+          cat ci_payload/b123_home_market_long_short/part-*.patch > /tmp/b123.patch
           echo '46af4262a8530fcef706affc2821ff1686563080e8841b98812bd226e7375863  /tmp/b123.patch' | sha256sum -c -
           cd /tmp/src
           git apply --check /tmp/b123.patch
