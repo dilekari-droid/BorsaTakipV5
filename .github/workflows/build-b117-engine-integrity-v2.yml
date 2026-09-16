@@ -1,0 +1,148 @@
+name: B117 Engine Integrity Verified Build v2
+on:
+  push:
+    branches: [v525-b117-engine-integrity]
+    paths:
+      - '.github/workflows/build-b117-engine-integrity-v2.yml'
+      - 'ci_payload/b117_engine_integrity/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reconstruct exact B116 baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/src /tmp/out && mkdir -p /tmp/src /tmp/out
+          cat ci_payload/v525_b113_android_exact/part-*.b64 | base64 --decode > /tmp/src.tar.xz
+          echo '7046afbb99b19c2b7e682c9aceee87f3c73260027b687f97ca941ceea6a2a93e  /tmp/src.tar.xz' | sha256sum -c -
+          tar -xJf /tmp/src.tar.xz -C /tmp/src
+          cd /tmp/src
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_140_tests.patch"
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_fgs_crash_fix.patch"
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_fgs_regression_test.patch"
+          cat "$GITHUB_WORKSPACE"/ci_payload/b113_fixes/b113_b114_acceptance_fix.part-*.b64 | base64 --decode | gzip -dc > /tmp/accept.patch
+          git apply --exclude='backend/**' /tmp/accept.patch
+          mkdir -p app/src/test/java/tr/borsatakip/v5/data
+          cp "$GITHUB_WORKSPACE/ci_payload/b113_fixes/broad_tests/B113B114AcceptanceSourceTest.kt" app/src/test/java/tr/borsatakip/v5/data/B113B114AcceptanceSourceTest.kt
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_tradingview_chart_button_v2.patch"
+          cat "$GITHUB_WORKSPACE"/ci_payload/b113_fixes/dual_scan/part-*.b64 | base64 --decode | gzip -dc > /tmp/dual.patch
+          git apply /tmp/dual.patch
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_dual_scan_universe_acceptance_fix.patch"
+          cat "$GITHUB_WORKSPACE"/ci_payload/b113_fixes/auto_backend_scan/part-*.b64 | base64 --decode | gzip -dc > /tmp/auto.patch
+          git apply /tmp/auto.patch
+          cat "$GITHUB_WORKSPACE"/ci_payload/b113_fixes/auto_backend_scan/missing-*.b64 | base64 --decode | gzip -dc > /tmp/missing.patch
+          git apply /tmp/missing.patch
+          base64 --decode "$GITHUB_WORKSPACE/ci_payload/b113_fixes/production_readiness/b113_production_readiness_runtime_fix_full.patch.gz.b64" | gzip -dc > /tmp/prod.patch
+          git apply /tmp/prod.patch
+          python3 "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b114_final/apply_b114_final.py" /tmp/src
+          python3 "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b114_final/post_b114_condition_fix.py" /tmp/src
+          python3 "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b115_intraday_fallback/apply_b115_intraday_fallback.py" /tmp/src
+          python3 "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b115_intraday_fallback/post_b115_test_contract.py" /tmp/src
+          cp "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b115_intraday_fallback/B115IntradayFallbackSourceTest.kt" app/src/test/java/tr/borsatakip/v5/data/B115IntradayFallbackSourceTest.kt
+          python3 "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b116_opportunity_fallback/apply_b116_opportunity_fallback.py" /tmp/src
+          cp "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b116_opportunity_fallback/B116OpportunityFallbackSourceTest.kt" app/src/test/java/tr/borsatakip/v5/data/B116OpportunityFallbackSourceTest.kt
+
+      - name: Apply verified B117 integrity patches
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat \
+            ci_payload/b117_engine_integrity/part-aa.b64 \
+            ci_payload/b117_engine_integrity/part-ab.b64 \
+            ci_payload/b117_engine_integrity/part-ac.b64 \
+            ci_payload/b117_engine_integrity/part-ad.b64 \
+            ci_payload/b117_engine_integrity/part-ae0.b64 \
+            ci_payload/b117_engine_integrity/part-ae1.b64 \
+            ci_payload/b117_engine_integrity/part-af.b64 \
+            ci_payload/b117_engine_integrity/part-ag.b64 \
+            | base64 --decode > /tmp/b117.patch
+          echo '4c328b14f0704d48472452d27b4e4c822b0d3fa6b90d5738ee4fd9381aae4c5d  /tmp/b117.patch' | sha256sum -c -
+          echo '53ba6caa7b19812776088a78f9595c912847644a03c546a57ff72474acd30c08  ci_payload/b117_engine_integrity/b117_compatibility_followup.patch' | sha256sum -c -
+          cd /tmp/src
+          git apply /tmp/b117.patch
+          git apply "$GITHUB_WORKSPACE/ci_payload/b117_engine_integrity/b117_compatibility_followup.patch"
+          grep -F 'versionCode = 117' app/build.gradle.kts
+          grep -F 'OpportunityRankingPolicy.sort(filteredItems)' app/src/main/java/tr/borsatakip/v5/ui/ScanResultsActivity.kt
+          grep -F 'CandleReadinessPolicy.evaluate(stock' app/src/main/java/tr/borsatakip/v5/data/RealTimeIntegrityPolicy.kt
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Run Android unit tests
+        working-directory: /tmp/src
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon testDebugUnitTest --stacktrace
+          python3 - <<'PY' | tee /tmp/test-summary.txt
+          import glob, xml.etree.ElementTree as ET
+          total=failures=errors=skipped=0
+          for p in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
+              r=ET.parse(p).getroot()
+              total += int(r.attrib.get('tests',0))
+              failures += int(r.attrib.get('failures',0))
+              errors += int(r.attrib.get('errors',0))
+              skipped += int(r.attrib.get('skipped',0))
+          print(f'TEST_TOTAL={total} TEST_FAILURES={failures} TEST_ERRORS={errors} TEST_SKIPPED={skipped}')
+          if total == 0 or failures or errors:
+              raise SystemExit(1)
+          PY
+
+      - name: Build debug APK
+        working-directory: /tmp/src
+        run: gradle --no-daemon assembleDebug --stacktrace
+
+      - name: Verify and export APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=/tmp/src/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          BT="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)"
+          AAPT="$ANDROID_HOME/build-tools/$BT/aapt"
+          APKSIGNER="$ANDROID_HOME/build-tools/$BT/apksigner"
+          ZIPALIGN="$ANDROID_HOME/build-tools/$BT/zipalign"
+          BADGING="$($AAPT dump badging "$APK" | head -n1)"
+          echo "$BADGING" | tee /tmp/out/BADGING.txt
+          echo "$BADGING" | grep -F "name='tr.borsatakip.v5'"
+          echo "$BADGING" | grep -F "versionCode='117'"
+          echo "$BADGING" | grep -F "versionName='5.2.5'"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee /tmp/out/APKSIGNER.txt
+          "$ZIPALIGN" -c -v 4 "$APK" | tee /tmp/out/ZIPALIGN.txt
+          OUT=/tmp/out/V5-ARACI-KURUM-5.2.5-B117-ENGINE-INTEGRITY-debug.apk
+          cp "$APK" "$OUT"
+          sha256sum "$OUT" | tee "$OUT.sha256"
+          cp /tmp/test-summary.txt /tmp/out/TEST-SUMMARY.txt
+          {
+            echo 'B117 ENGINE INTEGRITY VERIFIED BUILD'
+            echo 'applicationId=tr.borsatakip.v5'
+            echo 'versionCode=117'
+            echo 'versionName=5.2.5'
+            echo "source_branch=$GITHUB_REF_NAME"
+            echo "source_commit=$GITHUB_SHA"
+            echo 'main_patch_sha256=4c328b14f0704d48472452d27b4e4c822b0d3fa6b90d5738ee4fd9381aae4c5d'
+            echo 'compat_patch_sha256=53ba6caa7b19812776088a78f9595c912847644a03c546a57ff72474acd30c08'
+            cat /tmp/test-summary.txt
+            echo 'production_live_e2e=NOT_RUN'
+            echo 'yahoo_live_e2e=NOT_RUN'
+            echo 'physical_device_test=NOT_RUN'
+            echo 'signing=DEBUG'
+          } > /tmp/out/PROVENANCE.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: B117-ENGINE-INTEGRITY-APK-V2
+          path: /tmp/out/*
+          retention-days: 90
