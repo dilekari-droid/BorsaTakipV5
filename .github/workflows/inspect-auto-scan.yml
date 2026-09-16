@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Reconstruct final B114 source
+      - name: Reconstruct final B115 source
         shell: bash
         run: |
           set -euo pipefail
@@ -39,16 +39,14 @@ jobs:
           git apply /tmp/prod.patch
           python3 "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b114_final/apply_b114_final.py" /tmp/src
           python3 "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b114_final/post_b114_condition_fix.py" /tmp/src
-      - name: Print scan integrity files
+          python3 "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b115_intraday_fallback/apply_b115_intraday_fallback.py" /tmp/src
+          cp "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b115_intraday_fallback/B115IntradayFallbackSourceTest.kt" app/src/test/java/tr/borsatakip/v5/data/B115IntradayFallbackSourceTest.kt
+      - name: Print conflicting tests
         shell: bash
         run: |
           set -euo pipefail
           cd /tmp/src
-          for f in \
-            app/src/main/java/tr/borsatakip/v5/scan/BistScanner.kt \
-            app/src/main/java/tr/borsatakip/v5/data/RealTimeIntegrityPolicy.kt \
-            app/src/main/java/tr/borsatakip/v5/model/Models.kt \
-            app/src/main/java/tr/borsatakip/v5/data/YahooFallbackProvider.kt; do
+          for f in $(find app/src/test -type f \( -name 'B114AutoScanTimeframeTrendSourceTest.kt' -o -name 'AutomaticScanSourceContractTest.kt' \)); do
             echo "===== $f ====="
-            cat "$f"
+            nl -ba "$f"
           done
