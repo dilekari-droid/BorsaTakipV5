@@ -1,0 +1,422 @@
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+index 9a80422..f7cb769 100644
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -12,7 +12,7 @@ android {
+         applicationId = "tr.borsatakip.v5"
+         minSdk = 26
+         targetSdk = 35
+-        versionCode = 122
++        versionCode = 123
+         versionName = "5.2.5"
+         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+     }
+diff --git a/app/src/main/AndroidManifest.xml b/app/src/main/AndroidManifest.xml
+index 2e85f5d..3fdbf78 100644
+--- a/app/src/main/AndroidManifest.xml
++++ b/app/src/main/AndroidManifest.xml
+@@ -37,6 +37,7 @@
+                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+             </intent-filter>
+         </receiver>
++        <activity android:name=".ui.MarketInstrumentDetailActivity" />
+         <activity android:name=".ui.FullscreenChartActivity" />
+         <activity android:name=".ui.ScanResultsActivity" />
+         <activity android:name=".ui.NotificationsActivity" />
+diff --git a/app/src/main/java/tr/borsatakip/v5/ui/MainActivity.kt b/app/src/main/java/tr/borsatakip/v5/ui/MainActivity.kt
+index 782a631..2d12b02 100644
+--- a/app/src/main/java/tr/borsatakip/v5/ui/MainActivity.kt
++++ b/app/src/main/java/tr/borsatakip/v5/ui/MainActivity.kt
+@@ -35,6 +35,8 @@ import java.util.Locale
+ import kotlin.math.roundToInt
+ 
+ class MainActivity : BaseActivity() {
++    private enum class TodayMode { ALL, LONG, SHORT }
++    private var todayMode: TodayMode = TodayMode.ALL
+     private val trLocale = Locale("tr", "TR")
+     private val clockHandler = Handler(Looper.getMainLooper())
+     private val clockTick = object : Runnable {
+@@ -66,6 +68,8 @@ class MainActivity : BaseActivity() {
+         findViewById<View>(R.id.btnHeaderSettings).setOnClickListener { startActivity(Intent(this, SettingsActivity::class.java)) }
+         findViewById<View>(R.id.btnMarketDetails).setOnClickListener { startActivity(Intent(this, SettingsActivity::class.java)) }
+         findViewById<View>(R.id.btnSeeAllOpportunities).setOnClickListener { startActivity(Intent(this, OpportunityActivity::class.java)) }
++        bindMarketTileClicks()
++        bindTodayTabs()
+ 
+         updateClock()
+         refreshMarketSummary()
+@@ -113,6 +117,44 @@ class MainActivity : BaseActivity() {
+         }
+     }
+ 
++    private fun bindMarketTileClicks() {
++        listOf(
++            R.id.marketBist100Card to "BIST100",
++            R.id.marketBist30Card to "BIST30",
++            R.id.marketUsdCard to "USDTRY",
++            R.id.marketGoldCard to "XAUUSD",
++            R.id.marketViopCard to "VIOP30"
++        ).forEach { (viewId, instrument) ->
++            findViewById<View>(viewId).setOnClickListener {
++                startActivity(Intent(this, MarketInstrumentDetailActivity::class.java).putExtra(MarketInstrumentDetailActivity.EXTRA_INSTRUMENT, instrument))
++            }
++        }
++    }
++
++    private fun bindTodayTabs() {
++        val all = findViewById<TextView>(R.id.todayAllTab)
++        val long = findViewById<TextView>(R.id.todayLongTab)
++        val short = findViewById<TextView>(R.id.todayShortTab)
++        all.setOnClickListener { todayMode = TodayMode.ALL; updateTodayTabStyles(); renderTodayOpportunities() }
++        long.setOnClickListener { todayMode = TodayMode.LONG; updateTodayTabStyles(); renderTodayOpportunities() }
++        short.setOnClickListener { todayMode = TodayMode.SHORT; updateTodayTabStyles(); renderTodayOpportunities() }
++        updateTodayTabStyles()
++    }
++
++    private fun updateTodayTabStyles() {
++        listOf(
++            Triple(R.id.todayAllTab, TodayMode.ALL, R.color.blue),
++            Triple(R.id.todayLongTab, TodayMode.LONG, R.color.green),
++            Triple(R.id.todayShortTab, TodayMode.SHORT, R.color.red)
++        ).forEach { (id, mode, colorRes) ->
++            findViewById<TextView>(id).apply {
++                val selected = todayMode == mode
++                setTextColor(getColor(if (selected) colorRes else R.color.text_secondary))
++                background = getDrawable(if (selected) R.drawable.bg_chip_selected_blue else R.drawable.bg_chip_outline)
++            }
++        }
++    }
++
+     private fun updateClock() {
+         val df = SimpleDateFormat("dd MMM yyyy â€¢ HH:mm", trLocale)
+         findViewById<TextView>(R.id.txtHeaderDateTime).text = df.format(Date())
+@@ -246,10 +288,20 @@ class MainActivity : BaseActivity() {
+         val container = findViewById<LinearLayout>(R.id.todayOpportunityRows)
+         container.removeAllViews()
+ 
+-        val top = AppSession.lastOpportunities
++        val filtered = when (todayMode) {
++            TodayMode.ALL -> AppSession.lastOpportunities
++            TodayMode.LONG -> AppSession.lastOpportunities.filter { it.direction.equals("LONG", true) }
++            TodayMode.SHORT -> AppSession.lastOpportunities.filter { it.direction.equals("SHORT", true) }
++        }
++        val top = filtered
+             .sortedWith(compareByDescending<Opportunity> { it.rankingScore }.thenBy { it.riskScore })
+-            .take(4)
++            .take(8)
+         if (top.isEmpty()) {
++            empty.text = when (todayMode) {
++                TodayMode.ALL -> "HenÃ¼z gerÃ§ek tarama yapÄ±lmadÄ±."
++                TodayMode.LONG -> "Son taramada LONG yÃ¶nlÃ¼ hisse bulunmadÄ±."
++                TodayMode.SHORT -> "Son taramada SHORT yÃ¶nlÃ¼ hisse bulunmadÄ±."
++            }
+             empty.visibility = View.VISIBLE
+             horizontal.visibility = View.GONE
+             return
+diff --git a/app/src/main/java/tr/borsatakip/v5/ui/MarketInstrumentDetailActivity.kt b/app/src/main/java/tr/borsatakip/v5/ui/MarketInstrumentDetailActivity.kt
+new file mode 100644
+index 0000000..730ba2c
+--- /dev/null
++++ b/app/src/main/java/tr/borsatakip/v5/ui/MarketInstrumentDetailActivity.kt
+@@ -0,0 +1,157 @@
++package tr.borsatakip.v5.ui
++
++import android.content.Intent
++import android.os.Bundle
++import android.view.View
++import android.widget.Button
++import android.widget.TextView
++import androidx.lifecycle.lifecycleScope
++import kotlinx.coroutines.launch
++import tr.borsatakip.v5.R
++import tr.borsatakip.v5.data.BackendProvider
++import tr.borsatakip.v5.data.ProviderRouter
++import tr.borsatakip.v5.data.SettingsStore
++import tr.borsatakip.v5.data.YahooFallbackProvider
++import tr.borsatakip.v5.model.Stock
++import tr.borsatakip.v5.model.ViopQuote
++import java.text.NumberFormat
++import java.text.SimpleDateFormat
++import java.util.Date
++import java.util.Locale
++import kotlin.math.abs
++
++class MarketInstrumentDetailActivity : BaseActivity() {
++    private val trLocale = Locale("tr", "TR")
++    private lateinit var instrument: String
++
++    override fun onCreate(savedInstanceState: Bundle?) {
++        super.onCreate(savedInstanceState)
++        setContentView(R.layout.activity_market_instrument_detail)
++        setupBottomNav()
++        instrument = intent.getStringExtra(EXTRA_INSTRUMENT).orEmpty().uppercase(Locale.ROOT)
++        findViewById<Button>(R.id.marketDetailRefresh).setOnClickListener { load() }
++        findViewById<Button>(R.id.marketDetailSettings).setOnClickListener { startActivity(Intent(this, SettingsActivity::class.java)) }
++        load()
++    }
++
++    private fun load() {
++        setLoading()
++        lifecycleScope.launch {
++            when (instrument) {
++                "BIST100" -> loadStock("BIST 100", "XU100", listOf("XU100.IS", "^XU100"))
++                "BIST30" -> loadStock("BIST 30", "XU030", listOf("XU030.IS", "^XU030", "XU030"))
++                "USDTRY" -> loadExternal("DOLAR / TL", "USDTRY", listOf("TRY=X"))
++                "XAUUSD" -> loadExternal("ONS ALTIN", "XAUUSD", listOf("XAUUSD=X", "GC=F"))
++                "VIOP30" -> loadViop30()
++                else -> showError("Bilinmeyen piyasa kartÄ±")
++            }
++        }
++    }
++
++    private suspend fun loadStock(title: String, strictSymbol: String, delayedSymbols: List<String>) {
++        val strict = ProviderRouter(this, experimentalFallbackOverride = false)
++        val stock = runCatching { strict.fetchOne(strictSymbol) }.getOrNull()
++            ?: YahooFallbackProvider(this).fetchExternalQuote(strictSymbol, delayedSymbols).stock
++        if (stock == null) showError("$title verisi alÄ±namadÄ±.") else bindStock(title, stock)
++    }
++
++    private suspend fun loadExternal(title: String, label: String, symbols: List<String>) {
++        val result = YahooFallbackProvider(this).fetchExternalQuote(label, symbols)
++        val stock = result.stock
++        if (stock == null) showError("$title verisi alÄ±namadÄ±. ${result.error ?: ""}".trim()) else bindStock(title, stock)
++    }
++
++    private suspend fun loadViop30() {
++        val settings = SettingsStore(this)
++        if (!settings.baseUrl.startsWith("https://")Ù][™ÜË˜\RÙ^Kš\Ğ›[šÊ
+JHÂŠÈÚİÑ\œ›ÜŠ•±,ÔÌpéÚ[ˆ›ÙXİ[ÛˆÈ˜XÚÙ[™™HTH\šqgÚ[ZHÙ\™ZÛKˆ‹ÚİÔÙ][™ÜÈHYJBŠÈ™]\›‚ŠÈBŠÈ˜[˜XÚÙ[™H˜XÚÙ[™›İšY\Š\ÊBŠÈ˜[ÛÛ˜XİH˜XÚÙ[™›ØYš[Ü
+
+K™Ù]Ü“[
+
+K›Ü‘[\J
+BŠÈ™š[\ˆÈ][™\›Z[™Ë™\]X[Ê–LÌ‹YJHBŠÈœÛÜYHÈ]™^\HBŠÈ™š\œİÜ“[
+
+BŠÈYˆ
+ÛÛ˜XİOH[
+HÂŠÈÚİÑ\œ›ÜŠ–LÌ^X[˜ZÛ1,HZİYˆ±,Ôğí›qgÛY\ÚH[1,[˜[XY1,Kˆ‹ÚİÔÙ][™ÜÈHYJBŠÈ™]\›‚ŠÈBŠÈ˜[][İHH˜XÚÙ[™›ØYš[Ü][İJÛÛ˜XİœŞ[X›Û
+K™Ù]Ü“[
+
+BŠÈYˆ
+][İHOH[
+HÚİÑ\œ›ÜŠ‰ØÛÛ˜XİœŞ[X›ÛHpéÚ[ˆ±,Ôš^X]1,H[[˜[XY1,Kˆ‹ÚİÔÙ][™ÜÈHYJBŠÈ[ÙHš[™š[Ü
+•±,ÔÌ8 (ˆ	ØÛÛ˜XİœŞ[X›ÛH‹][İJBŠÈBŠÂŠÈš]˜]H[ˆÙ]ØY[™Ê
+HÂŠÈš[™šY]ĞRY^šY]ÏŠ‹šY›X\šÙ]]Z[]JK^H]Q›ÜŠ[œİ[Y[
+BŠÈš[™šY]ĞRY^šY]ÏŠ‹šY›X\šÙ]]Z[˜[YJK^H¸ %‚ŠÈš[™šY]ĞRY^šY]ÏŠ‹šY›X\šÙ]]Z[Ú[™ÙJK^H•™\šH[1,[±,^[Ü‹‹‹ˆ‚ŠÈš[™šY]ĞRY^šY]ÏŠ‹šY›X\šÙ]]Z[Y]JK^H’Ø^[˜ZÈñ'Ü[[±,^[Üˆ‚ŠÈš[™šY]ĞRY^šY]ÏŠ‹šY›X\šÙ]]Z[İ]ÊK^Hˆ‚ŠÈš[™šY]ĞRY]ÛŠ‹šY›X\šÙ]]Z[Ù][™ÜÊKš\ÚXš[]HHšY]Ë‘ÓÓ‘BŠÈBŠÂŠÈš]˜]H[ˆš[™İØÚÊ]Nˆİš[™ËİØÚÎˆİØÚÊHÂŠÈ˜[šXÙHHİØÚËœ][İTšXÙHÎˆİØÚË˜Ø[™\Ë›\İÜ“[
+
+OË˜ÛÜÙHÎˆ[ˆÈÚİÑ\œ›ÜŠ‰]Hš^X]1,H›ñgÈ0í›™0ïˆŠNÈ™]\›ˆBŠÈ˜[™]š[İ\ÈHİØÚËœ™]š[İ\ĞÛÜÙHÎˆİØÚË˜Ø[™\Ë™›Ü\İ
+JK›\İÜ“[
+
+OË˜ÛÜÙBŠÈ˜[Ú[™ÙHH™]š[İ\ÏËZÙRYˆÈ]ˆŒOË›]È
+
+šXÙHH]
+HÈ]
+H
+ˆLŒBŠÈš[™ÛÛ[[ÛŠ]KšXÙKÚ[™ÙKİØÚËœÛİ\˜ÙKİØÚË™]U[Y\İ[\İØÚËš\Ô™X[[YKİØÚË™[^TÙXÛÛ™ÊBŠÈš[™šY]ĞRY^šY]ÏŠ‹šY›X\šÙ]]Z[İ]ÊK^HZ[İš[™ÈÂŠÈ\[™
+°å›˜ÙZÚHØ\[±,qgÎˆ	Ü™]š[İ\ÏË›]
+™›]
+HÎˆ¸ %ŸWˆŠBŠÈ\[™
+[1,qgÎˆ	ÜİØÚË˜šYË›]
+™›]
+HÎˆ¸ %—H8 (ˆØ]1,qgÎˆ	ÜİØÚË˜\ÚÏË›]
+™›]
+HÎˆ¸ %—WˆŠBŠÈ\[™
+”\˜Hš\š[ZNˆ	ÜİØÚË˜İ\œ™[˜ŞHÎˆ¸ $ÈŸH8 (ˆ^X\ØNˆ	ÜİØÚË›X\šÙ]WˆŠBŠÈ\[™
+’[\˜[ˆ	ÜİØÚËš[\˜[H8 (ˆ][HØ^q,\ñ,Nˆ	ÜİØÚË˜Ø[™\ËœÚ^™_HŠBŠÈBŠÈBŠÂŠÈš]˜]H[ˆš[™š[Ü
+]Nˆİš[™Ë][İNˆš[Ü][İJHÂŠÈš[™ÛÛ[[ÛŠ]K][İKœšXÙK][İK™Z[PÚ[™ÙTİ][İKœÛİ\˜ÙK][İK™^Ú[™ÙU[Y\İ[\][İKœ™X[[YK][İK™[^TÙXÛÛ™ÊBŠÈš[™šY]ĞRY^šY]ÏŠ‹šY›X\šÙ]]Z[İ]ÊK^HZ[İš[™ÈÂŠÈ\[™
+[1,qgÎˆ	Ü][İK˜šYË›]
+™›]
+HÎˆ¸ %ŸH8 (ˆØ]1,qgÎˆ	Ü][İK˜\ÚÏË›]
+™›]
+HÎˆ¸ %ŸWˆŠBŠÈ\[™
+’XÚ[Nˆ	Ü][İK›Û[YOË›]
+™›]
+HÎˆ¸ %ŸH8 (ˆpéñ,ZÈŞš\Ş[Ûˆ	Ü][İK›Ü[’[\™\İÎˆ¸ %ŸWˆŠBŠÈ\[™
+İ\œ™[Ù\ÜÚ[Ûˆ	ÚYˆ
+][İK˜İ\œ™[Ù\ÜÚ[Û’[˜ÛYY
+H‘U‘Uˆ[ÙH’VRTˆŸHŠBŠÈBŠÈBŠÂŠÈš]˜]H[ˆš[™ÛÛ[[ÛŠ]Nˆİš[™ËšXÙNˆİX›KÚ[™ÙNˆİX›OËÛİ\˜ÙNˆİš[™Ë[Y\İ[\ˆÛ™Ë™X[[YNˆ›ÛÛX[‹[^TÙXÛÛ™Îˆ[ÊHÂŠÈš[™šY]ĞRY^šY]ÏŠ‹šY›X\šÙ]]Z[]JK^H]BŠÈš[™šY]ĞRY^šY]ÏŠ‹šY›X\šÙ]]Z[˜[YJK^H›]
+šXÙJBŠÈ˜[Ú[™ÙUšY]ÈHš[™šY]ĞRY^šY]ÏŠ‹šY›X\šÙ]]Z[Ú[™ÙJBŠÈYˆ
+Ú[™ÙHOH[XÚ[™ÙKš\Ñš[š]J
+JHÂŠÈÚ[™ÙUšY]Ë^H‘q'ÚqgÚ[H8 %‚ŠÈÚ[™ÙUšY]ËœÙ]^ÛÛÜŠÙ]ÛÛÜŠ‹˜ÛÛÜ‹^ÜÙXÛÛ™\JJBŠÈH[ÙHÂŠÈ˜[\HÚ[™ÙHHŠÈÚ[™ÙUšY]Ë^H‰ÚYˆ
+\
+H¸¥¬ˆˆ[ÙH¸§gŸH	Ôİš[™Ë™›Ü›X]
+“ØØ[K‰KŒ™‰IH‹XœÊÚ[™ÙJJ_H‚ŠÈÚ[™ÙUšY]ËœÙ]^ÛÛÜŠÙ]ÛÛÜŠYˆ
+\
+H‹˜ÛÛÜ‹™Ü™Y[ˆ[ÙH‹˜ÛÛÜ‹œ™Y
+JBŠÈBŠÈ˜[[YHHYˆ
+[Y\İ[\ˆ
+HÚ[\Q]Q›Ü›X]
+™“SK^^^H›[NœÜÈ‹’[ØØ[JK™›Ü›X]
+]J[Y\İ[\
+JH[ÙH¸ %‚ŠÈš[™šY]ĞRY^šY]ÏŠ‹šY›X\šÙ]]Z[Y]JK^H’Ø^[˜ZÎˆ	Ûİ\˜ÙW•™\šH˜[X[±,Nˆ	[YW“[Ùˆ	ÚYˆ
+™X[[YJHĞS“Hˆ[ÙH‘ÑPñ,ÓQS1 / DOÄRULANMAMIÅŸ CANLI"}${delaySeconds?.let { " â€¢ gecikme ${it}s" } ?: ""}"
++        findViewById<Button>(R.id.marketDetailSettings).visibility = View.GONE
++    }
++
++    private fun showError(message: String, showSettings: Boolean = false) {
++        findViewById<TextView>(R.id.marketDetailChange).text = "VERÄ° YOK"
++        findViewById<TextView>(R.id.marketDetailChange).setTextColor(getColor(R.color.red))
++        findViewById<TextView>(R.id.marketDetailMeta).text = message
++        findViewById<TextView>(R.id.marketDetailStats).text = "Sahte veya tahmini piyasa deÄŸeri gÃ¶sterilmez."
++        findViewById<Button>(R.id.marketDetailSettings).visibility = if (showSettings) View.VISIBLE else View.GONE
+    }
++
++    private fun fmt(v: Double): String = NumberFormat.getNumberInstance(trLocale).apply {
++        minimumFractionDigits = 2
++        maximumFractionDigits = 2
+    }.format(v)
++
++    private fun titleFor(code: String) = when (code) {
++        "BIST100" -> "BIST 100"
++        "BIST30" -> "BIST 30"
++        "USDTRY" -> "DOLAR / TL"
++        "XAUUSD" -> "ONS ALTIN"
++        "VIOP30" -> "VÄ°OP 30"+        else -> "Piyasa DetayÄ±"+    }
++
++    companion object {
++        const val EXTRA_INSTRUMENT = "market_instrument"
++   }
++}
+diff --git a/app/src/main/res/layout/activity_main.xml b/app/src/main/res/layout/activity_main.xml
+index 69a6608..6cb8f5f 100644
+--- a/app/src/main/res/layout/activity_main.xml
++++ b/app/src/main/res/layout/activity_main.xml
+@@ -113,6 +113,7 @@
+                 android:weightSum="5">
+ 
+                <LinearLayout
++                    android:id="@+id/marketBist100Card"
+                     android:layout_width="0dp"
+                     android:layout_height="match_parent"
+                    android:layout_weight="1"
+@@ -121,6 +122,8 @@
+                     android:background="@drawable/bg_market_tile"
+                     android:orientation="vertical"
+                     android:padding="7dp"
+(+                    android:clickable="true"
++                    android:focusable="true">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="BIST 100" android:textColor="@color/text_secondary" android:textSize="9sp" android:textStyle="bold" />
+                    <TextView
+                        android:id="@+id/marketBist100Value"
+@@ -130,7 +133,7 @@
+                        android:maxLines="1"
+                        android:singleLine="true"
+                        android:autoSizeTextType="uniform"
+ -                        android:autoSizeMinTextSize="8sp"
+(+                        android:autoSizeMinTextSize="6sp"
+                        android:autoSizeMaxTextSize="14sp"
+                        android:autoSizeStepGranularity="1sp"
+                        android:text="â€”"
+@@ -142,6 +145,7 @@
+                     android:textSize="10sp" />
+                </LinearLayout>
++                    android:id="@+id/marketBist30Card"
+                     android:layout_width="0dp"
+                     android:layout_height="match_parent"
+                    android:layout_weight="1"
+@@ -150,6 +154,8 @@
+                     android:background="@drawable/bg_market_tile"
+                     android:orientation="vertical"
+                     android:padding="7dp"
+(+                     android:clickable="true"+                    android:focusable="true">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="BIST 30"" android:textColor="@color/text_secondary" android:textSize="9sp" android:textStyle="bold" />
+                    <TextView
+                        android:id="@+id/marketBist30Value"
+@@ -159,7 +165,7 @@
+                       android:maxLines="1"
+                        android:singleLine="true"
+                        android:autoSizeTextType="uniform"
+-                        android:autoSizeMinTextSize="8sp"
+(+                        android:autoSizeMinTextSize="6sp"
+                        android:autoSizeMaxTextSize="14sp"
+                        android:autoSizeStepGranularity="1sp"
+                        android:text="â€”"
+@@ -170,6 +176,7 @@
+                     android:textSize="10sp" />
+                </LinearLayout>
++                    android:id="@+id/marketUsdCard"
+                     android:layout_width="0dp"
+                     android:layout_height="match_parent"
+                    android:layout_weight="1"
+@@ -178,6 +185,8 @@
+                     android:background="@drawable/bg_market_tile"
+                     android:orientation="vertical"
+                     android:padding="7dp"
+(+                     android:clickable="true"+                    android:focusable="true">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="DOLAR" android:textColor="@color/text_secondary" android:textSize="9sp" android:textStyle="bold" />
+                    <TextView
+                        android:id="@+id/marketUsdValue"
+@@ -187,7 +196,7 @@
+                       android:maxLines="1"
+                        android:singleLine="true"
+                        android:autoSizeTextType="uniform"
+-                        android:autoSizeMinTextSize="8sp"
+(+                        android:autoSizeMinTextSize="6sp"
+                        android:autoSizeMaxTextSize="14sp"
+                        android:autoSizeStepGranularity="1sp"
+                        android:text="â€”"
+@@ -198,6 +207,7 @@
+                     android:textSize="10sp" />
+                </LinearLayout>
++                    android:id="@+id/marketGoldCard"
+                    android:layout_width="0dp"
+                     android:layout_height="match_parent"
+                    android:layout_weight="1"
+@@ -206,6 +216,8 @@
+                     android:background="@drawable/bg_market_tile"
+                     android:orientation="vertical"
+                     android:padding="7dp"
+(+                     android:clickable="true"+                    android:focusable="true">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="ONS ALTIN" android:textColor="@color/text_secondary" android:textSize="9sp" android:textStyle="bold" />
+                    <TextView
+                        android:id="@+id/marketGoldValue"
+@@ -215,7 +226,7 @@
+                        android:maxLines="1"
+                        android:singleLine="true"
+                        android:autoSizeTextType="uniform"
+-                        android:autoSizeMinTextSize="8sp"
+(+                        android:autoSizeMinTextSize="6sp"
+                        android:autoSizeMaxTextSize="14sp"
+                        android:autoSizeStepGranularity="1sp"
+                        android:text="â€”"
+@@ -226,6 +237,7 @@
+                     android:textSize="10sp" />
+                </LinearLayout>
++                    android:id="@+id/marketViopCard"
+                    android:layout_width="0dp"
+                     android:layout_height="match_parent"
+                    android:layout_weight="1"
+@@ -234,6 +246,8 @@
+                     android:background="@drawable/bg_market_tile"
+                     android:orientation="vertical"
+                     android:padding="7dp"
+(+                     android:clickable="true"+                    android:focusable="true">
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="VÄ°OP 30" android:textColor="@color/text_secondary" android:textSize="9sp" android:textStyle="bold" />
+                    <TextView
+                        android:id="@+id/marketViopValue"
+@@ -243,7 +257,7 @@
+                        android:maxLines="1"
+                        android:singleLine="true"
+                        android:autoSizeTextType="uniform"
+ -                        android:autoSizeMinTextSize="8sp"
+(+                        android:autoSizeMinTextSize="6sp"
+                        android:autoSizeMaxTextSize="14sp"
+                        android:autoSizeStepGranularity="1sp"
+                        android:text="â€”"
+@@ -438,6 +452,59 @@
+                    <TextView android:id="@+id/btnSeeAllOpportunities" android:layout_width="wrap_content" android:layout_height="40dp" android:gravity="center" android:text="TÃ¼mÃ¼nÃ¼ GÃ¶r  â€º" android:textColor="@color/blue" android:textSize="11sp" />
+                </LinearLayout>
+ 
++                <LinearLayout
++                    android:layout_width="match_parent"
++                    android:layout_height="wrap_content"
++                    android:layout_marginTop="6dp"+                    android:orientation="horizontal"
++                    android:paddingHorizontal="12dp">
++
++                    <TextView
++                        android:id="@+id/todayAllTab"
++                        android:layout_width="0dp"
++                        android:layout_height="36dp"
++                        android:layout_weight="1"
++                        android:background="@drawable/bg_chip_selected_blue"
++                        android:gravity="center"ECB1
