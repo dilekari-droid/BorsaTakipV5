@@ -1,0 +1,26 @@
+diff --git a/app/src/test/java/tr/borsatakip/v5/data/B117EngineIntegritySourceTest.kt b/app/src/test/java/tr/borsatakip/v5/data/B117EngineIntegritySourceTest.kt
+index a932ec3..0b16fe5 100644
+--- a/app/src/test/java/tr/borsatakip/v5/data/B117EngineIntegritySourceTest.kt
++++ b/app/src/test/java/tr/borsatakip/v5/data/B117EngineIntegritySourceTest.kt
+@@ -18,6 +18,6 @@ class B117EngineIntegritySourceTest {
+ 
+     @Test fun versionCodeTracksCurrentIntegrityBuild() {
+         val s = File("build.gradle.kts").readText()
+-        assertTrue(s.contains("versionCode = 119"))
++        assertTrue(s.contains("versionCode = 120"))
+     }
+ }
+diff --git a/app/src/test/java/tr/borsatakip/v5/data/B118SourceContractTest.kt b/app/src/test/java/tr/borsatakip/v5/data/B118SourceContractTest.kt
+index a8fda97..2b626c8 100644
+--- a/app/src/test/java/tr/borsatakip/v5/data/B118SourceContractTest.kt
++++ b/app/src/test/java/tr/borsatakip/v5/data/B118SourceContractTest.kt
+@@ -17,7 +17,8 @@ class B118SourceContractTest {
+ 
+     @Test fun favoritesDoNotOpenStaleOpportunityWithoutRefreshingQuote() {
+         val s = source("src/main/java/tr/borsatakip/v5/ui/FavoritesActivity.kt")
+-        assertTrue(s.contains("val stock = prefetched ?: runCatching { provider.fetchOne(symbol) }.getOrNull()"))
++        assertTrue(s.contains("val stock = prefetched ?: runCatching { resolver.fetchDisplayStock(symbol) }.getOrNull()"))
++        assertFalse(s.contains("provider.fetchOne(symbol)"))
+         assertTrue(s.contains("openOpportunity(existing, stock)"))
+         assertTrue(s.contains("displayPrice"))
+     }
