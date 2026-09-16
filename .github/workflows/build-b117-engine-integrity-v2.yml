@@ -68,9 +68,11 @@ jobs:
             | base64 --decode > /tmp/b117.patch
           echo '4c328b14f0704d48472452d27b4e4c822b0d3fa6b90d5738ee4fd9381aae4c5d  /tmp/b117.patch' | sha256sum -c -
           echo '53ba6caa7b19812776088a78f9595c912847644a03c546a57ff72474acd30c08  ci_payload/b117_engine_integrity/b117_compatibility_followup.patch' | sha256sum -c -
+          echo '761273ac433d646abea726df60731cd3e7fc2b12ab13fe55d7f723ccc4dec0db  ci_payload/b117_engine_integrity/b117_test_contract_fix.patch' | sha256sum -c -
           cd /tmp/src
           git apply /tmp/b117.patch
           git apply "$GITHUB_WORKSPACE/ci_payload/b117_engine_integrity/b117_compatibility_followup.patch"
+          git apply "$GITHUB_WORKSPACE/ci_payload/b117_engine_integrity/b117_test_contract_fix.patch"
           grep -F 'versionCode = 117' app/build.gradle.kts
           grep -F 'OpportunityRankingPolicy.sort(filteredItems)' app/src/main/java/tr/borsatakip/v5/ui/ScanResultsActivity.kt
           grep -F 'CandleReadinessPolicy.evaluate(stock' app/src/main/java/tr/borsatakip/v5/data/RealTimeIntegrityPolicy.kt
@@ -83,7 +85,7 @@ jobs:
         with:
           gradle-version: '8.10.2'
 
-      - name: Run Android unit tests
+      - name: Require 229 of 229 Android tests
         working-directory: /tmp/src
         shell: bash
         run: |
@@ -99,8 +101,8 @@ jobs:
               errors += int(r.attrib.get('errors',0))
               skipped += int(r.attrib.get('skipped',0))
           print(f'TEST_TOTAL={total} TEST_FAILURES={failures} TEST_ERRORS={errors} TEST_SKIPPED={skipped}')
-          if total == 0 or failures or errors:
-              raise SystemExit(1)
+          if (total, failures, errors, skipped) != (229, 0, 0, 0):
+              raise SystemExit(f'Expected 229/229 clean pass; got total={total}, failures={failures}, errors={errors}, skipped={skipped}')
           PY
 
       - name: Build debug APK
@@ -137,6 +139,7 @@ jobs:
             echo "source_commit=$GITHUB_SHA"
             echo 'main_patch_sha256=4c328b14f0704d48472452d27b4e4c822b0d3fa6b90d5738ee4fd9381aae4c5d'
             echo 'compat_patch_sha256=53ba6caa7b19812776088a78f9595c912847644a03c546a57ff72474acd30c08'
+            echo 'test_contract_fix_sha256=761273ac433d646abea726df60731cd3e7fc2b12ab13fe55d7f723ccc4dec0db'
             cat /tmp/test-summary.txt
             echo 'production_live_e2e=NOT_RUN'
             echo 'yahoo_live_e2e=NOT_RUN'
