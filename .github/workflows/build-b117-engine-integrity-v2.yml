@@ -69,10 +69,12 @@ jobs:
           echo '4c328b14f0704d48472452d27b4e4c822b0d3fa6b90d5738ee4fd9381aae4c5d  /tmp/b117.patch' | sha256sum -c -
           echo '53ba6caa7b19812776088a78f9595c912847644a03c546a57ff72474acd30c08  ci_payload/b117_engine_integrity/b117_compatibility_followup.patch' | sha256sum -c -
           echo '726174316919c2cdba37c0742c4dddaba97d2cab9da806f57705643a4d3e75e7  ci_payload/b117_engine_integrity/b117_test_contract_fix.patch' | sha256sum -c -
+          echo '496fd3d915d25f3f5ab1fd07254a22c4fef8c990986f2fbc63c1631ab332663e  ci_payload/b117_engine_integrity/b117_test_contract_fix2.patch' | sha256sum -c -
           cd /tmp/src
           git apply /tmp/b117.patch
           git apply "$GITHUB_WORKSPACE/ci_payload/b117_engine_integrity/b117_compatibility_followup.patch"
           git apply "$GITHUB_WORKSPACE/ci_payload/b117_engine_integrity/b117_test_contract_fix.patch"
+          git apply "$GITHUB_WORKSPACE/ci_payload/b117_engine_integrity/b117_test_contract_fix2.patch"
           grep -F 'versionCode = 117' app/build.gradle.kts
           grep -F 'OpportunityRankingPolicy.sort(filteredItems)' app/src/main/java/tr/borsatakip/v5/ui/ScanResultsActivity.kt
           grep -F 'CandleReadinessPolicy.evaluate(stock' app/src/main/java/tr/borsatakip/v5/data/RealTimeIntegrityPolicy.kt
@@ -140,6 +142,7 @@ jobs:
             echo 'main_patch_sha256=4c328b14f0704d48472452d27b4e4c822b0d3fa6b90d5738ee4fd9381aae4c5d'
             echo 'compat_patch_sha256=53ba6caa7b19812776088a78f9595c912847644a03c546a57ff72474acd30c08'
             echo 'test_contract_fix_sha256=726174316919c2cdba37c0742c4dddaba97d2cab9da806f57705643a4d3e75e7'
+            echo 'test_contract_fix2_sha256=496fd3d915d25f3f5ab1fd07254a22c4fef8c990986f2fbc63c1631ab332663e'
             cat /tmp/test-summary.txt
             echo 'production_live_e2e=NOT_RUN'
             echo 'yahoo_live_e2e=NOT_RUN'
