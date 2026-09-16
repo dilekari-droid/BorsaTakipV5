@@ -1,0 +1,52 @@
++        val previous = stock.previousClose ?: stock.candles.dropLast(1).lastOrNull()?.close
++        val change = previous?.takeIf { it > 0.0 }?.let { ((price - it) / it) * 100.0 }
++        bindCommon(title, price, change, stock.source, stock.dataTimestamp, stock.isRealtime, stock.delaySeconds)
++        findViewById<TextView>(R.id.marketDetailStats).text = buildString {
++            append("Önceki kapanış: ${previous?.let(::fmt) ?: "—"}\n")
++            append("Alış: ${stock.bid?.let(::fmt) ?: "—"}   •   Satış: ${stock.ask?.let(::fmt) ?: "—"}\n")
++            append("Para birimi: ${stock.currency ?: "—"}   •   Piyasa: ${stock.market}\n")
++            append("Interval: ${stock.interval}   •   Mum sayısı: ${stock.candles.size}")
++        }
++    }
++
++    private fun bindViop(title: String, quote: ViopQuote) {
++        bindCommon(title, quote.price, quote.dailyChangePct, quote.source, quote.exchangeTimestamp, quote.realtime, quote.delaySeconds)
++        findViewById<TextView>(R.id.marketDetailStats).text = buildString {
++            append("Alış: ${quote.bid?.let(::fmt) ?: "—"}   •   Satış: ${quote.ask?.let(::fmt) ?: "—"}\n")
++            append("Hacim: ${quote.volume?.let(::fmt) ?: "—"}   •   Açık pozisyon: ${quote.openInterest ?: "—"}\n")
++            append("Current session: ${if (quote.currentSessionIncluded) "EVET" else "HAYIR"}")
++        }
++    }
++
++    private fun bindCommon(title: String, price: Double, change: Double?, source: String, timestamp: Long, realtime: Boolean, delaySeconds: Int?) {
++        findViewById<TextView>(R.id.marketDetailTitle).text = title
++        findViewById<TextView>(R.id.marketDetailValue).text = fmt(price)
++        val changeView = findViewById<TextView>(R.id.marketDetailChange)
++        if (change == null || !change.isFinite()) {
++            changeView.text = "Değişim —"
++            changeView.setTextColor(getColor(R.color.text_secondary))
++        } else {
++            val up = change >= 0
++            changeView.text = "${if (up) "▲" else "▼"} ${String.format(trLocale, "%.2f%%", abs(change))}"
++            changeView.setTextColor(getColor(if (up) R.color.green else R.color.red))
++        }
++        val time = if (timestamp > 0) SimpleDateFormat("dd.MM.yyyy HH:mm:ss", trLocale).format(Date(timestamp)) else "—"
++        findViewById<TextView>(R.id.marketDetailMeta).text = "Kaynak: $source\nVeri zamanı: $time\nMod: ${if (realtime) "CANLI" else "GECİKMELİ / DOĞRULANMAMIŞ CANLI"}${delaySeconds?.let { " • gecikme ${it}s" } ?: ""}"
++        findViewById<Button>(R.id.marketDetailSettings).visibility = View.GONE
++    }
++
++    private fun showError(message: String, showSettings: Boolean = false) {
++        findViewById<TextView>(R.id.marketDetailChange).text = "VERİ YOK"
++        findViewById<TextView>(R.id.marketDetailChange).setTextColor(getColor(R.color.red))
++        findViewById<TextView>(R.id.marketDetailMeta).text = message
++        findViewById<TextView>(R.id.marketDetailStats).text = "Sahte veya tahmini piyasa değeri gösterilmez."
++        findViewById<Button>(R.id.marketDetailSettings).visibility = if (showSettings) View.VISIBLE else View.GONE
++    }
++
++    private fun fmt(v: Double): String = NumberFormat.getNumberInstance(trLocale).apply {
++        minimumFractionDigits = 2
++        maximumFractionDigits = 2
++    }.format(v)
++
++    private fun titleFor(code: String) = when (code) {
++        "BIST100" -> "BIST 100"
