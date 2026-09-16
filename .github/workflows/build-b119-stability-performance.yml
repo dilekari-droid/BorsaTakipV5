@@ -97,6 +97,7 @@ jobs:
           echo '0c4fd5781d507af508c4bb49c39aafc1af679e03afa6688e38a5822a8889f2d1  ci_payload/b119_stability_performance/chunk-00.b64' | sha256sum -c -
           echo '41ea5001cdf54971ed36d9c5ffa83586549d6dc0ac6e68cf30992834d28c4c0b  ci_payload/b119_stability_performance/chunk-01.b64' | sha256sum -c -
           echo '6c8a95eeff1bd51bfac87b82047f38188e45a70a33c663c1cc36d581e3766e6c  ci_payload/b119_stability_performance/chunk-02.b64' | sha256sum -c -
+          echo 'af94e74b41e45e1c3377ac3a86a708ab9b30b0b254410f18e2e62f20f8cad516  ci_payload/b119_stability_performance/b119_test_fixture_fix.patch' | sha256sum -c -
           cat ci_payload/b119_stability_performance/chunk-*.b64 > /tmp/b119.payload.b64
           base64 --decode /tmp/b119.payload.b64 > /tmp/b119.patch.gz
           echo '4eca1c34d80559e52d87fc9d7d353cf46f5b1c3b65f3bd6b3d9dd3249444bec0  /tmp/b119.patch.gz' | sha256sum -c -
@@ -105,12 +106,15 @@ jobs:
           cd /tmp/src
           git apply --check /tmp/b119.patch
           git apply /tmp/b119.patch
+          git apply "$GITHUB_WORKSPACE/ci_payload/b119_stability_performance/b119_test_fixture_fix.patch"
           grep -F 'versionCode = 119' app/build.gradle.kts
           ! grep -R -F 'MAX_MTF_CANDIDATES' app/src/main/java/tr/borsatakip/v5/analysis/ViopScanner.kt
           grep -F 'DecisionPricePolicy.historyBarPrice' app/src/main/java/tr/borsatakip/v5/analysis/ViopScanner.kt
           grep -F 'sourceIntervalMinutes' app/src/main/java/tr/borsatakip/v5/analysis/ChartTimeframe.kt
           cp /tmp/b119.patch /tmp/out/B119-STABILITY-PERFORMANCE-VERIFICATION.patch
           sha256sum /tmp/b119.patch > /tmp/out/B119-STABILITY-PERFORMANCE-VERIFICATION.patch.sha256
+          cp "$GITHUB_WORKSPACE/ci_payload/b119_stability_performance/b119_test_fixture_fix.patch" /tmp/out/B119-TEST-FIXTURE-FIX.patch
+          sha256sum "$GITHUB_WORKSPACE/ci_payload/b119_stability_performance/b119_test_fixture_fix.patch" > /tmp/out/B119-TEST-FIXTURE-FIX.patch.sha256
 
       - uses: actions/setup-java@v4
         with:
@@ -193,6 +197,7 @@ jobs:
             echo "source_branch=$GITHUB_REF_NAME"
             echo "source_commit=$GITHUB_SHA"
             echo 'b119_patch_sha256=a8bc317fc3a346e8622a57c5255b788cbbcf01f9fd52cf480e76071827f3f545'
+            echo 'b119_test_fixture_fix_sha256=af94e74b41e45e1c3377ac3a86a708ab9b30b0b254410f18e2e62f20f8cad516'
             echo 'viop_mtf_candidate_cap=REMOVED'
             echo 'resampler_source_interval=EXPLICIT'
             echo 'mtf_cache=FRESH_ONLY_PROVIDER_SYMBOL_TIMEFRAME'
