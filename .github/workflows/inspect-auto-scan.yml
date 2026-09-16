@@ -11,12 +11,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Reconstruct source
+      - name: Reconstruct final B114 source
         shell: bash
         run: |
           set -euo pipefail
           rm -rf /tmp/src && mkdir -p /tmp/src
           cat ci_payload/v525_b113_android_exact/part-*.b64 | base64 --decode > /tmp/src.tar.xz
+          echo '7046afbb99b19c2b7e682c9aceee87f3c73260027b687f97ca941ceea6a2a93e  /tmp/src.tar.xz' | sha256sum -c -
           tar -xJf /tmp/src.tar.xz -C /tmp/src
           cd /tmp/src
           git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_140_tests.patch"
@@ -36,16 +37,20 @@ jobs:
           git apply /tmp/missing.patch
           base64 --decode "$GITHUB_WORKSPACE/ci_payload/b113_fixes/production_readiness/b113_production_readiness_runtime_fix_full.patch.gz.b64" | gzip -dc > /tmp/prod.patch
           git apply /tmp/prod.patch
-      - name: Print auto scan activation sources
+          python3 "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b114_final/apply_b114_final.py" /tmp/src
+          python3 "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b114_final/post_b114_condition_fix.py" /tmp/src
+      - name: Print service-unavailable paths
         shell: bash
         run: |
           set -euo pipefail
           cd /tmp/src
-          echo '=== BistScanActivity switch/reconcile ==='
-          grep -n -C 18 -E 'switchAutoScan|autoScanEnabled|AutoScanScheduler|experimentalOnly|VERİ SERVİSİ' app/src/main/java/tr/borsatakip/v5/ui/BistScanActivity.kt || true
-          echo '=== AutoScanScheduler ==='
-          cat app/src/main/java/tr/borsatakip/v5/worker/AutoScanScheduler.kt
-          echo '=== SettingsStore auto scan ==='
-          grep -n -C 8 -E 'autoScanEnabled|scanCadenceMinutes|analysisTimeframeMinutes' app/src/main/java/tr/borsatakip/v5/data/SettingsStore.kt || true
-          echo '=== Foreground service ==='
-          cat app/src/main/java/tr/borsatakip/v5/worker/AutoScanForegroundService.kt
+          echo '=== ALL SERVICE/UNAVAILABLE/PROVIDER GATES ==='
+          grep -RniE 'servis|SERVICE|service|kullanılam|unavailable|VERİ SERVİSİ|Production Backend|productionBackendConfigured|baseUrl|apiKey|IntervalMarketDataProvider|MarketDataProvider' app/src/main/java/tr/borsatakip/v5 | head -n 700 || true
+          echo '=== BistScanActivity ==='
+          grep -n -C 24 -E 'scan|Scan|servis|service|productionBackendConfigured|provider|timeframe|selected' app/src/main/java/tr/borsatakip/v5/ui/BistScanActivity.kt | head -n 700 || true
+          echo '=== IntervalMarketDataProvider ==='
+          cat app/src/main/java/tr/borsatakip/v5/data/IntervalMarketDataProvider.kt || true
+          echo '=== ScanTimeframe ==='
+          cat app/src/main/java/tr/borsatakip/v5/data/ScanTimeframe.kt || true
+          echo '=== Worker files ==='
+          for f in app/src/main/java/tr/borsatakip/v5/worker/*.kt; do echo "--- $f"; grep -n -C 20 -E 'scan|provider|service|baseUrl|apiKey|timeframe|analysisTimeframe|Unavailable|kullan' "$f" || true; done
