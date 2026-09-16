@@ -1,10 +1,11 @@
-name: Final B114 AutoScan Timeframe Trend APK
+name: Final B114 Intraday Service Fixed APK
 on:
   push:
     branches: [v525-b113-verified-apk]
     paths:
       - '.github/workflows/build-b114-combined-final.yml'
       - 'ci_payload/b113_fixes/b114_final/**'
+      - 'ci_payload/b113_fixes/b115_intraday_fallback/**'
   workflow_dispatch:
 permissions:
   contents: read
@@ -15,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Reconstruct verified B113/B114 baseline and apply final fix
+      - name: Reconstruct verified B113/B114 baseline and apply intraday service fix
         shell: bash
         run: |
           set -euo pipefail
@@ -45,8 +46,10 @@ jobs:
 
           python3 "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b114_final/apply_b114_final.py" /tmp/src
           python3 "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b114_final/post_b114_condition_fix.py" /tmp/src
+          python3 "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b115_intraday_fallback/apply_b115_intraday_fallback.py" /tmp/src
+          cp "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b115_intraday_fallback/B115IntradayFallbackSourceTest.kt" app/src/test/java/tr/borsatakip/v5/data/B115IntradayFallbackSourceTest.kt
 
-      - name: Verify B114 source contract
+      - name: Verify B114 B115 source contract
         shell: bash
         run: |
           set -euo pipefail
@@ -56,19 +59,17 @@ jobs:
           java=root/'java/tr/borsatakip/v5'
           activity=(java/'ui/BistScanActivity.kt').read_text()
           service=(java/'worker/AutoScanForegroundService.kt').read_text()
+          runner=(java/'worker/AutomaticScanRunner.kt').read_text()
           scheduler=(java/'worker/AutoScanScheduler.kt').read_text()
           timeframe=(java/'data/ScanTimeframe.kt').read_text()
           provider=(java/'data/IntervalMarketDataProvider.kt').read_text()
+          yahoo=(java/'data/YahooFallbackProvider.kt').read_text()
           trend=(java/'analysis/TrendUiPolicy.kt').read_text()
           scan=(java/'ui/ScanResultsAdapter.kt').read_text()
           opp=(java/'ui/OpportunityAdapter.kt').read_text()
-          assert 'if (enabled && !productionBackendConfigured())' not in activity
+
+          # Existing B114 contracts.
           assert 'settings.autoScanEnabled = enabled' in activity
-          assert 'VERİ SERVİSİ BEKLENİYOR' in activity
-          assert 'if (settings.autoScanEnabled) {' in activity
-          start=service.split('fun start(context: Context): Boolean',1)[1].split('fun stop(context: Context)',1)[0]
-          assert 'if (!settings.autoScanEnabled) return false' in start
-          assert 'baseUrl.startsWith' not in start and 'apiKey.isBlank' not in start
           assert 'WORK_MANAGER_MINUTES = 15' in scheduler
           assert 'DIRECT_INTERVALS = setOf(1, 5, 15, 30, 60)' in provider
           assert 'OhlcvResampler.aggregate' in provider
@@ -79,7 +80,36 @@ jobs:
               assert state in trend
           assert 'TrendUiPolicy.resolve(item)' in scan and 'TREND:' in scan
           assert 'TrendUiPolicy.resolve(x)' in opp and 'trendAccent' in opp
-          print('B114 source contract: PASS')
+
+          # B115 root-cause fix: no Production Backend hard-stop for delayed intraday.
+          assert 'VERİ SERVİSİ KULLANILAMIYOR • Production Backend bağlantısı gerekli' not in activity
+          assert 'val productionReady = productionBackendConfigured()' in activity
+          assert 'experimentalFallbackOverride = !productionReady' in activity
+          assert 'val scanProvider = IntervalMarketDataProvider(baseProvider, analysisTimeframeMinutes)' in activity
+          assert 'Yahoo Finance • YEDEK/GECİKMELİ' in activity
+          assert 'if (productionReady) BistScanMode.REALTIME_ONLY else BistScanMode.DELAYED_ANALYSIS' in activity
+
+          assert 'otomatik taraması için Production Backend ve API anahtarı gerekli' not in runner
+          assert 'experimentalFallbackOverride = !productionReady' in runner
+          assert 'if (productionReady) LastSuccessfulScanStore(app).save(run, final.results)' in runner
+          assert 'Yahoo YEDEK/GECİKMELİ' in runner
+
+          loop=service.split('private suspend fun runLoop()',1)[1].split('override fun onDestroy()',1)[0]
+          assert 'BACKEND_NOT_CONFIGURED' not in loop
+          assert 'AutomaticScanRunner.runOnce(this)' in loop
+          assert 'Yahoo YEDEK/GECİKMELİ' in loop
+
+          assert 'delegate.id == "yahoo_fallback"' in provider
+          assert 'scanDelayedIntraday(onProgress)' in provider
+          assert 'isRealtime = false' in provider
+          assert 'currentSessionIncluded = false' in provider
+          assert 'dataTimestamp = last.timestamp' in provider
+          assert 'quotePrice = last.close' in provider
+          assert 'ONE_MINUTE_HISTORY_CHUNK_MS' in yahoo
+          assert 'boundedHistoryWindows' in yahoo
+          assert 'interval == "1m"' in yahoo
+          assert 'distinctBy { it.timestamp }' in yahoo
+          print('B114/B115 source contract: PASS')
           PY
 
       - uses: actions/setup-java@v4
@@ -90,7 +120,7 @@ jobs:
         with:
           gradle-version: '8.10.2'
 
-      - name: Require 202 of 202 Android tests
+      - name: Require 210 of 210 Android tests
         working-directory: /tmp/src
         shell: bash
         run: |
@@ -106,8 +136,8 @@ jobs:
               errors += int(r.attrib.get('errors',0))
               skipped += int(r.attrib.get('skipped',0))
           print(f'TEST_TOTAL={total} TEST_FAILURES={failures} TEST_ERRORS={errors} TEST_SKIPPED={skipped}')
-          if (total, failures, errors, skipped) != (202, 0, 0, 0):
-              raise SystemExit(f'Expected 202/202 clean pass; got total={total}, failures={failures}, errors={errors}, skipped={skipped}')
+          if (total, failures, errors, skipped) != (210, 0, 0, 0):
+              raise SystemExit(f'Expected 210/210 clean pass; got total={total}, failures={failures}, errors={errors}, skipped={skipped}')
           PY
 
       - name: Build debug APK
@@ -133,7 +163,7 @@ jobs:
           "$ZIPALIGN" -c -v 4 "$APK" | tee /tmp/zipalign.txt
 
           mkdir -p /tmp/out
-          OUT=/tmp/out/V5-ARACI-KURUM-5.2.5-B114-AUTOSCAN-TIMEFRAME-TREND-FIXED-debug.apk
+          OUT=/tmp/out/V5-ARACI-KURUM-5.2.5-B114-INTRADAY-SERVICE-FIXED-debug.apk
           cp "$APK" "$OUT"
           SHA="$(sha256sum "$OUT" | awk '{print $1}')"
           sha256sum "$OUT" > "$OUT.sha256"
@@ -141,23 +171,25 @@ jobs:
           cp /tmp/zipalign.txt /tmp/out/ZIPALIGN.txt
           cp /tmp/badging.txt /tmp/out/BADGING.txt
           {
-            echo 'B114 AUTOSCAN + TIMEFRAME + TREND COLOUR VERIFIED BUILD'
+            echo 'B114 INTRADAY SERVICE FALLBACK VERIFIED BUILD'
             echo 'applicationId=tr.borsatakip.v5'
             echo 'versionCode=113'
             echo 'versionName=5.2.5'
-            echo 'android_tests=202/202 passed'
-            echo 'auto_scan_switch=persistent_on_even_when_backend_waiting'
-            echo 'auto_scan_backend_waiting=NO_FAKE_RESULTS'
-            echo 'sub15_scheduler=FOREGROUND_SERVICE'
-            echo '15plus_scheduler=WORKMANAGER'
-            echo 'timeframe_1m=DIRECT_PROVIDER_PATH'
-            echo 'timeframe_3m=REAL_1M_AGGREGATION_PATH'
-            echo 'timeframe_5m=DIRECT_PROVIDER_PATH'
-            echo 'timeframe_15m=DIRECT_PROVIDER_PATH'
-            echo 'timeframe_60m=DIRECT_PROVIDER_PATH'
-            echo 'daily=REAL_1D_NOT_240M'
+            echo 'android_tests=210/210 passed'
+            echo 'manual_intraday_without_backend=YAHOO_DELAYED_FALLBACK'
+            echo 'auto_intraday_without_backend=YAHOO_DELAYED_FALLBACK'
+            echo 'foreground_backend_gate=REMOVED'
+            echo 'timeframe_1m=YAHOO_1M_DIRECT_DELAYED_CHUNKED'
+            echo 'timeframe_3m=YAHOO_1M_AGGREGATED_TO_3M_DELAYED'
+            echo 'timeframe_5m=YAHOO_5M_DIRECT_DELAYED'
+            echo 'timeframe_15m=YAHOO_15M_DIRECT_DELAYED'
+            echo 'fallback_realtime_claim=NEVER'
+            echo 'fallback_signal_history=NOT_WRITTEN'
+            echo 'verified_last_successful_store=PRODUCTION_ONLY'
+            echo 'fake_ohlcv=NONE'
             echo 'trend_colour=SELECTED_TIMEFRAME_TECHNICAL_SNAPSHOT_NOT_DAILY_CHANGE'
-            echo 'production_live_e2e=NOT_RUN_REQUIRES_REAL_BACKEND_AND_CREDENTIALS'
+            echo 'production_live_e2e=NOT_RUN'
+            echo 'yahoo_live_e2e=NOT_RUN'
             echo 'physical_device_test=NOT_RUN'
             echo 'signing=DEBUG'
             echo "apk_sha256=$SHA"
@@ -165,6 +197,6 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: B114-AUTOSCAN-TIMEFRAME-TREND-FIXED-APK
+          name: B114-INTRADAY-SERVICE-FIXED-APK
           path: /tmp/out/*
           retention-days: 90
