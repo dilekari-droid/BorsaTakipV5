@@ -39,16 +39,16 @@ jobs:
           git apply /tmp/prod.patch
           python3 "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b114_final/apply_b114_final.py" /tmp/src
           python3 "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b114_final/post_b114_condition_fix.py" /tmp/src
-      - name: Print execution files
+      - name: Print scan integrity files
         shell: bash
         run: |
           set -euo pipefail
           cd /tmp/src
           for f in \
-            app/src/main/java/tr/borsatakip/v5/data/IntervalMarketDataProvider.kt \
-            app/src/main/java/tr/borsatakip/v5/ui/BistScanActivity.kt \
-            app/src/main/java/tr/borsatakip/v5/worker/AutomaticScanRunner.kt \
-            app/src/main/java/tr/borsatakip/v5/worker/AutoScanForegroundService.kt; do
+            app/src/main/java/tr/borsatakip/v5/scan/BistScanner.kt \
+            app/src/main/java/tr/borsatakip/v5/data/RealTimeIntegrityPolicy.kt \
+            app/src/main/java/tr/borsatakip/v5/model/Models.kt \
+            app/src/main/java/tr/borsatakip/v5/data/YahooFallbackProvider.kt; do
             echo "===== $f ====="
             cat "$f"
           done
