@@ -44,9 +44,11 @@ jobs:
           echo '3b6a172cc3f772c1eb5e88e9ddc6e22777c632964bb58d20c58027823c89054a  /tmp/b120.patch.gz' | sha256sum -c -
           gzip -dc /tmp/b120.patch.gz > /tmp/b120.patch
           echo '2966040614911933e0bffdadb1346617e8ddf0439a411f46d99ac7085777d329  /tmp/b120.patch' | sha256sum -c -
+          echo '3fde9e6803ae7a6b82e8142ba220b85566a567f485584732775c8059cc2e487c  ci_payload/b120_watchlist_provider_recovery/b120_test_contract_migration.patch' | sha256sum -c -
           cd /tmp/src
           git apply --check /tmp/b120.patch
           git apply /tmp/b120.patch
+          git apply "$GITHUB_WORKSPACE/ci_payload/b120_watchlist_provider_recovery/b120_test_contract_migration.patch"
           grep -F 'versionCode = 120' app/build.gradle.kts
           grep -F 'class WatchlistDataResolver' app/src/main/java/tr/borsatakip/v5/data/WatchlistDataResolver.kt
           grep -F 'BistSymbolMatcher.matches' app/src/main/java/tr/borsatakip/v5/ui/FavoritesActivity.kt
@@ -54,6 +56,8 @@ jobs:
           grep -F 'loadViopQuote' app/src/main/java/tr/borsatakip/v5/ui/ViopDetailActivity.kt
           cp /tmp/b120.patch /tmp/out/B120-WATCHLIST-PROVIDER-RECOVERY.patch
           sha256sum /tmp/b120.patch > /tmp/out/B120-WATCHLIST-PROVIDER-RECOVERY.patch.sha256
+          cp "$GITHUB_WORKSPACE/ci_payload/b120_watchlist_provider_recovery/b120_test_contract_migration.patch" /tmp/out/B120-TEST-CONTRACT-MIGRATION.patch
+          sha256sum "$GITHUB_WORKSPACE/ci_payload/b120_watchlist_provider_recovery/b120_test_contract_migration.patch" > /tmp/out/B120-TEST-CONTRACT-MIGRATION.patch.sha256
 
       - uses: actions/setup-java@v4
         with:
@@ -136,6 +140,7 @@ jobs:
             echo "source_branch=$GITHUB_REF_NAME"
             echo "source_commit=$GITHUB_SHA"
             echo 'b120_patch_sha256=2966040614911933e0bffdadb1346617e8ddf0439a411f46d99ac7085777d329'
+            echo 'b120_test_contract_migration_sha256=3fde9e6803ae7a6b82e8142ba220b85566a567f485584732775c8059cc2e487c'
             echo 'bist_watchlist_display_provider=PRODUCTION_THEN_DELAYED_YAHOO'
             echo 'bist_scan_provider_policy=UNCHANGED'
             echo 'bist_symbol_bootstrap=SEARCH_ONLY_NOT_SCAN_UNIVERSE'
