@@ -1,0 +1,212 @@
+name: B119 Stability Performance Verification
+on:
+  push:
+    branches: [v525-b119-stability-performance-verification]
+    paths:
+      - '.github/workflows/build-b119-stability-performance.yml'
+      - 'ci_payload/b119_stability_performance/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 80
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reconstruct exact B116 baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/src /tmp/out && mkdir -p /tmp/src /tmp/out
+          cat ci_payload/v525_b113_android_exact/part-*.b64 | base64 --decode > /tmp/src.tar.xz
+          echo '7046afbb99b19c2b7e682c9aceee87f3c73260027b687f97ca941ceea6a2a93e  /tmp/src.tar.xz' | sha256sum -c -
+          tar -xJf /tmp/src.tar.xz -C /tmp/src
+          cd /tmp/src
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_140_tests.patch"
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_fgs_crash_fix.patch"
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_fgs_regression_test.patch"
+          cat "$GITHUB_WORKSPACE"/ci_payload/b113_fixes/b113_b114_acceptance_fix.part-*.b64 | base64 --decode | gzip -dc > /tmp/accept.patch
+          git apply --exclude='backend/**' /tmp/accept.patch
+          mkdir -p app/src/test/java/tr/borsatakip/v5/data
+          cp "$GITHUB_WORKSPACE/ci_payload/b113_fixes/broad_tests/B113B114AcceptanceSourceTest.kt" app/src/test/java/tr/borsatakip/v5/data/B113B114AcceptanceSourceTest.kt
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_tradingview_chart_button_v2.patch"
+          cat "$GITHUB_WORKSPACE"/ci_payload/b113_fixes/dual_scan/part-*.b64 | base64 --decode | gzip -dc > /tmp/dual.patch
+          git apply /tmp/dual.patch
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_dual_scan_universe_acceptance_fix.patch"
+          cat "$GITHUB_WORKSPACE"/ci_payload/b113_fixes/auto_backend_scan/part-*.b64 | base64 --decode | gzip -dc > /tmp/auto.patch
+          git apply /tmp/auto.patch
+          cat "$GITHUB_WORKSPACE"/ci_payload/b113_fixes/auto_backend_scan/missing-*.b64 | base64 --decode | gzip -dc > /tmp/missing.patch
+          git apply /tmp/missing.patch
+          base64 --decode "$GITHUB_WORKSPACE/ci_payload/b113_fixes/production_readiness/b113_production_readiness_runtime_fix_full.patch.gz.b64" | gzip -dc > /tmp/prod.patch
+          git apply /tmp/prod.patch
+          python3 "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b114_final/apply_b114_final.py" /tmp/src
+          python3 "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b114_final/post_b114_condition_fix.py" /tmp/src
+          python3 "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b115_intraday_fallback/apply_b115_intraday_fallback.py" /tmp/src
+          python3 "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b115_intraday_fallback/post_b115_test_contract.py" /tmp/src
+          cp "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b115_intraday_fallback/B115IntradayFallbackSourceTest.kt" app/src/test/java/tr/borsatakip/v5/data/B115IntradayFallbackSourceTest.kt
+          python3 "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b116_opportunity_fallback/apply_b116_opportunity_fallback.py" /tmp/src
+          cp "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b116_opportunity_fallback/B116OpportunityFallbackSourceTest.kt" app/src/test/java/tr/borsatakip/v5/data/B116OpportunityFallbackSourceTest.kt
+
+      - name: Apply verified B117 integrity patches
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat \
+            ci_payload/b117_engine_integrity/part-aa.b64 \
+            ci_payload/b117_engine_integrity/part-ab.b64 \
+            ci_payload/b117_engine_integrity/part-ac.b64 \
+            ci_payload/b117_engine_integrity/part-ad.b64 \
+            ci_payload/b117_engine_integrity/part-ae0.b64 \
+            ci_payload/b117_engine_integrity/part-ae1-0.b64 \
+            ci_payload/b117_engine_integrity/part-ae1-1.b64 \
+            ci_payload/b117_engine_integrity/part-ae1-2.b64 \
+            ci_payload/b117_engine_integrity/part-ae1-3.b64 \
+            ci_payload/b117_engine_integrity/part-af.b64 \
+            ci_payload/b117_engine_integrity/part-ag.b64 \
+            | base64 --decode > /tmp/b117.patch
+          echo '4c328b14f0704d48472452d27b4e4c822b0d3fa6b90d5738ee4fd9381aae4c5d  /tmp/b117.patch' | sha256sum -c -
+          echo '53ba6caa7b19812776088a78f9595c912847644a03c546a57ff72474acd30c08  ci_payload/b117_engine_integrity/b117_compatibility_followup.patch' | sha256sum -c -
+          echo '726174316919c2cdba37c0742c4dddaba97d2cab9da806f57705643a4d3e75e7  ci_payload/b117_engine_integrity/b117_test_contract_fix.patch' | sha256sum -c -
+          echo '496fd3d915d25f3f5ab1fd07254a22c4fef8c990986f2fbc63c1631ab332663e  ci_payload/b117_engine_integrity/b117_test_contract_fix2.patch' | sha256sum -c -
+          cd /tmp/src
+          git apply /tmp/b117.patch
+          git apply "$GITHUB_WORKSPACE/ci_payload/b117_engine_integrity/b117_compatibility_followup.patch"
+          git apply "$GITHUB_WORKSPACE/ci_payload/b117_engine_integrity/b117_test_contract_fix.patch"
+          git apply "$GITHUB_WORKSPACE/ci_payload/b117_engine_integrity/b117_test_contract_fix2.patch"
+
+      - name: Apply B118 final patch set
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat ci_payload/b118_temporal_price_integrity/chunk-*.b64 > /tmp/b118.payload.b64
+          base64 --decode /tmp/b118.payload.b64 > /tmp/b118.patch.gz
+          echo '0d167550cfa5650ccb407fb18d75b27b7cd2f108a3456a82c961b18c9024372e  /tmp/b118.patch.gz' | sha256sum -c -
+          gzip -dc /tmp/b118.patch.gz > /tmp/b118.patch
+          echo '51c8dbb93006abc721429091e9f0a76d880e7706d0d3d18e9a0c50d1448ecb22  /tmp/b118.patch' | sha256sum -c -
+          echo '327dab3a0ef3e8555a436a955f0cf3102cefeee8bf81629cb2630ad7fa206ea1  ci_payload/b118_temporal_price_integrity/b118_test_fixture_fix.patch' | sha256sum -c -
+          cd /tmp/src
+          git apply /tmp/b118.patch
+          git apply "$GITHUB_WORKSPACE/ci_payload/b118_temporal_price_integrity/b118_test_fixture_fix.patch"
+
+      - name: Apply B119 stability performance patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '0c4fd5781d507af508c4bb49c39aafc1af679e03afa6688e38a5822a8889f2d1  ci_payload/b119_stability_performance/chunk-00.b64' | sha256sum -c -
+          echo '41ea5001cdf54971ed36d9c5ffa83586549d6dc0ac6e68cf30992834d28c4c0b  ci_payload/b119_stability_performance/chunk-01.b64' | sha256sum -c -
+          echo '6c8a95eeff1bd51bfac87b82047f38188e45a70a33c663c1cc36d581e3766e6c  ci_payload/b119_stability_performance/chunk-02.b64' | sha256sum -c -
+          cat ci_payload/b119_stability_performance/chunk-*.b64 > /tmp/b119.payload.b64
+          base64 --decode /tmp/b119.payload.b64 > /tmp/b119.patch.gz
+          echo '4eca1c34d80559e52d87fc9d7d353cf46f5b1c3b65f3bd6b3d9dd3249444bec0  /tmp/b119.patch.gz' | sha256sum -c -
+          gzip -dc /tmp/b119.patch.gz > /tmp/b119.patch
+          echo 'a8bc317fc3a346e8622a57c5255b788cbbcf01f9fd52cf480e76071827f3f545  /tmp/b119.patch' | sha256sum -c -
+          cd /tmp/src
+          git apply --check /tmp/b119.patch
+          git apply /tmp/b119.patch
+          grep -F 'versionCode = 119' app/build.gradle.kts
+          ! grep -R -F 'MAX_MTF_CANDIDATES' app/src/main/java/tr/borsatakip/v5/analysis/ViopScanner.kt
+          grep -F 'DecisionPricePolicy.historyBarPrice' app/src/main/java/tr/borsatakip/v5/analysis/ViopScanner.kt
+          grep -F 'sourceIntervalMinutes' app/src/main/java/tr/borsatakip/v5/analysis/ChartTimeframe.kt
+          cp /tmp/b119.patch /tmp/out/B119-STABILITY-PERFORMANCE-VERIFICATION.patch
+          sha256sum /tmp/b119.patch > /tmp/out/B119-STABILITY-PERFORMANCE-VERIFICATION.patch.sha256
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Discover and require all Android unit tests
+        working-directory: /tmp/src
+        shell: bash
+        run: |
+          set -euo pipefail
+          DISCOVERED=$(grep -Rho '@Test' app/src/test --include='*.kt' | wc -l | tr -d ' ')
+          export DISCOVERED
+          echo "TEST_DISCOVERED=$DISCOVERED" | tee /tmp/test-summary.txt
+          gradle --no-daemon testDebugUnitTest --stacktrace
+          python3 - <<'PY' | tee -a /tmp/test-summary.txt
+          import glob, os, xml.etree.ElementTree as ET
+          discovered=int(os.environ['DISCOVERED'])
+          total=failures=errors=skipped=0
+          for p in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
+              r=ET.parse(p).getroot()
+              total += int(r.attrib.get('tests',0))
+              failures += int(r.attrib.get('failures',0))
+              errors += int(r.attrib.get('errors',0))
+              skipped += int(r.attrib.get('skipped',0))
+          passed=total-failures-errors-skipped
+          print(f'TEST_EXECUTED={total} TEST_PASSED={passed} TEST_FAILURES={failures} TEST_ERRORS={errors} TEST_SKIPPED={skipped}')
+          if total != discovered or failures or errors or skipped:
+              raise SystemExit(f'Test contract failed: discovered={discovered}, executed={total}, failures={failures}, errors={errors}, skipped={skipped}')
+          PY
+
+      - name: Build debug APK
+        working-directory: /tmp/src
+        run: gradle --no-daemon assembleDebug --stacktrace
+
+      - name: Verify and export B119
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=/tmp/src/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          BT="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)"
+          AAPT="$ANDROID_HOME/build-tools/$BT/aapt"
+          APKSIGNER="$ANDROID_HOME/build-tools/$BT/apksigner"
+          ZIPALIGN="$ANDROID_HOME/build-tools/$BT/zipalign"
+          BADGING="$($AAPT dump badging "$APK" | head -n1)"
+          echo "$BADGING" | tee /tmp/out/BADGING.txt
+          echo "$BADGING" | grep -F "name='tr.borsatakip.v5'"
+          echo "$BADGING" | grep -F "versionCode='119'"
+          echo "$BADGING" | grep -F "versionName='5.2.5'"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee /tmp/out/APKSIGNER.txt
+          "$APKSIGNER" verify --verbose "$APK" | grep -F 'Verified using v2 scheme (APK Signature Scheme v2): true'
+          "$ZIPALIGN" -c -v 4 "$APK" | tee /tmp/out/ZIPALIGN.txt
+          OUT=/tmp/out/V5-ARACI-KURUM-5.2.5-B119-STABILITY-PERFORMANCE-VERIFICATION-debug.apk
+          cp "$APK" "$OUT"
+          sha256sum "$OUT" | tee "$OUT.sha256"
+          python3 - <<'PY'
+          from pathlib import Path
+          import zipfile
+          src=Path('/tmp/src')
+          out=Path('/tmp/out/V5-ARACI-KURUM-5.2.5-B119-STABILITY-PERFORMANCE-VERIFICATION-Kaynak-Kod.zip')
+          excluded={'.git','.gradle','build'}
+          with zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED) as z:
+              for p in src.rglob('*'):
+                  if not p.is_file(): continue
+                  rel=p.relative_to(src)
+                  if any(part in excluded for part in rel.parts): continue
+                  z.write(p,rel.as_posix())
+          PY
+          sha256sum /tmp/out/V5-ARACI-KURUM-5.2.5-B119-STABILITY-PERFORMANCE-VERIFICATION-Kaynak-Kod.zip > /tmp/out/V5-ARACI-KURUM-5.2.5-B119-STABILITY-PERFORMANCE-VERIFICATION-Kaynak-Kod.zip.sha256
+          cp /tmp/test-summary.txt /tmp/out/TEST-SUMMARY.txt
+          {
+            echo 'B119 STABILITY + PERFORMANCE + VERIFICATION'
+            echo 'applicationId=tr.borsatakip.v5'
+            echo 'versionCode=119'
+            echo 'versionName=5.2.5'
+            echo "source_branch=$GITHUB_REF_NAME"
+            echo "source_commit=$GITHUB_SHA"
+            echo 'b119_patch_sha256=a8bc317fc3a346e8622a57c5255b788cbbcf01f9fd52cf480e76071827f3f545'
+            echo 'viop_mtf_candidate_cap=REMOVED'
+            echo 'resampler_source_interval=EXPLICIT'
+            echo 'mtf_cache=FRESH_ONLY_PROVIDER_SYMBOL_TIMEFRAME'
+            echo 'viop_decision_price=HISTORY_BAR_PRICE'
+            echo 'viop_live_price=DISPLAY_ONLY'
+            cat /tmp/test-summary.txt
+            echo 'production_live_e2e=NOT_RUN'
+            echo 'physical_device_test=NOT_RUN'
+            echo 'runtime_smoke_test=NOT_RUN'
+            echo 'release_signing=NOT_RUN_DEBUG_ONLY'
+          } > /tmp/out/PROVENANCE.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: B119-STABILITY-PERFORMANCE-VERIFICATION
+          path: /tmp/out/*
+          retention-days: 90
