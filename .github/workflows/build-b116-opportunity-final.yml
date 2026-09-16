@@ -1,0 +1,167 @@
+name: Final B116 Opportunity Symbols Fixed APK
+on:
+  push:
+    branches: [v525-b113-verified-apk]
+    paths:
+      - '.github/workflows/build-b116-opportunity-final.yml'
+      - 'ci_payload/b113_fixes/b116_opportunity_fallback/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reconstruct verified B115 baseline and apply B116 opportunity fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/src && mkdir -p /tmp/src
+          cat ci_payload/v525_b113_android_exact/part-*.b64 | base64 --decode > /tmp/src.tar.xz
+          echo '7046afbb99b19c2b7e682c9aceee87f3c73260027b687f97ca941ceea6a2a93e  /tmp/src.tar.xz' | sha256sum -c -
+          tar -xJf /tmp/src.tar.xz -C /tmp/src
+          cd /tmp/src
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_140_tests.patch"
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_fgs_crash_fix.patch"
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_fgs_regression_test.patch"
+          cat "$GITHUB_WORKSPACE"/ci_payload/b113_fixes/b113_b114_acceptance_fix.part-*.b64 | base64 --decode | gzip -dc > /tmp/accept.patch
+          git apply --exclude='backend/**' /tmp/accept.patch
+          mkdir -p app/src/test/java/tr/borsatakip/v5/data
+          cp "$GITHUB_WORKSPACE/ci_payload/b113_fixes/broad_tests/B113B114AcceptanceSourceTest.kt" app/src/test/java/tr/borsatakip/v5/data/B113B114AcceptanceSourceTest.kt
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_tradingview_chart_button_v2.patch"
+          cat "$GITHUB_WORKSPACE"/ci_payload/b113_fixes/dual_scan/part-*.b64 | base64 --decode | gzip -dc > /tmp/dual.patch
+          git apply /tmp/dual.patch
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_dual_scan_universe_acceptance_fix.patch"
+          cat "$GITHUB_WORKSPACE"/ci_payload/b113_fixes/auto_backend_scan/part-*.b64 | base64 --decode | gzip -dc > /tmp/auto.patch
+          git apply /tmp/auto.patch
+          cat "$GITHUB_WORKSPACE"/ci_payload/b113_fixes/auto_backend_scan/missing-*.b64 | base64 --decode | gzip -dc > /tmp/missing.patch
+          git apply /tmp/missing.patch
+          base64 --decode "$GITHUB_WORKSPACE/ci_payload/b113_fixes/production_readiness/b113_production_readiness_runtime_fix_full.patch.gz.b64" | gzip -dc > /tmp/prod.patch
+          git apply /tmp/prod.patch
+          python3 "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b114_final/apply_b114_final.py" /tmp/src
+          python3 "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b114_final/post_b114_condition_fix.py" /tmp/src
+          python3 "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b115_intraday_fallback/apply_b115_intraday_fallback.py" /tmp/src
+          python3 "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b115_intraday_fallback/post_b115_test_contract.py" /tmp/src
+          cp "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b115_intraday_fallback/B115IntradayFallbackSourceTest.kt" app/src/test/java/tr/borsatakip/v5/data/B115IntradayFallbackSourceTest.kt
+          python3 "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b116_opportunity_fallback/apply_b116_opportunity_fallback.py" /tmp/src
+          cp "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b116_opportunity_fallback/B116OpportunityFallbackSourceTest.kt" app/src/test/java/tr/borsatakip/v5/data/B116OpportunityFallbackSourceTest.kt
+
+      - name: Verify B116 opportunity source contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          java=Path('/tmp/src/app/src/main/java/tr/borsatakip/v5')
+          opp=(java/'ui/OpportunityActivity.kt').read_text()
+          router=(java/'data/ProviderRouter.kt').read_text()
+          yahoo=(java/'data/YahooFallbackProvider.kt').read_text()
+          interval=(java/'data/IntervalMarketDataProvider.kt').read_text()
+          regime=(java/'analysis/MarketRegimeEngine.kt').read_text()
+          assert 'experimentalFallbackOverride = false' not in opp
+          assert 'experimentalFallbackOverride = true' in opp
+          assert 'IntervalMarketDataProvider(' in opp
+          assert 'settings.analysisTimeframeMinutes' in opp
+          assert 'BistScanMode.DELAYED_ANALYSIS' in opp
+          assert 'Yahoo Finance • YEDEK/GECİKMELİ' in opp
+          assert 'historyStore.save(run, results)' not in opp
+          assert 'doğrulanmış sinyal geçmişine yazılmadı' in opp
+          assert 'if (!productionBackendConfigured(settings))' in opp
+          assert 'settings.baseUrl.startsWith("https://") && settings.apiKey.isNotBlank()' in opp
+          assert 'Benchmark verisi alınamadı' in opp
+          assert 'AppSession.lastScanState?.total?.takeIf { it > 0 }' in opp
+          assert 'fallback.listSymbols()' in router
+          assert 'override suspend fun listSymbols(): List<String> = loadExperimentalSymbols()' in yahoo
+          assert 'delegate.id == "yahoo_fallback"' in interval
+          assert 'isRealtime = false' in interval
+          assert 'MarketRegime.UNKNOWN' in regime
+          print('B116 opportunity source contract: PASS')
+          PY
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Require 219 of 219 Android tests
+        working-directory: /tmp/src
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon testDebugUnitTest --stacktrace
+          python3 - <<'PY'
+          import glob, xml.etree.ElementTree as ET
+          total=failures=errors=skipped=0
+          for p in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
+              r=ET.parse(p).getroot()
+              total += int(r.attrib.get('tests',0))
+              failures += int(r.attrib.get('failures',0))
+              errors += int(r.attrib.get('errors',0))
+              skipped += int(r.attrib.get('skipped',0))
+          print(f'TEST_TOTAL={total} TEST_FAILURES={failures} TEST_ERRORS={errors} TEST_SKIPPED={skipped}')
+          if (total, failures, errors, skipped) != (219, 0, 0, 0):
+              raise SystemExit(f'Expected 219/219 clean pass; got total={total}, failures={failures}, errors={errors}, skipped={skipped}')
+          PY
+
+      - name: Build debug APK
+        working-directory: /tmp/src
+        run: gradle --no-daemon assembleDebug --stacktrace
+
+      - name: Verify APK package signature alignment and provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=/tmp/src/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          BT="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)"
+          AAPT="$ANDROID_HOME/build-tools/$BT/aapt"
+          APKSIGNER="$ANDROID_HOME/build-tools/$BT/apksigner"
+          ZIPALIGN="$ANDROID_HOME/build-tools/$BT/zipalign"
+          BADGING="$($AAPT dump badging "$APK" | head -n1)"
+          echo "$BADGING" | tee /tmp/badging.txt
+          echo "$BADGING" | grep -F "name='tr.borsatakip.v5'"
+          echo "$BADGING" | grep -F "versionCode='113'"
+          echo "$BADGING" | grep -F "versionName='5.2.5'"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee /tmp/apksigner.txt
+          "$ZIPALIGN" -c -v 4 "$APK" | tee /tmp/zipalign.txt
+          mkdir -p /tmp/out
+          OUT=/tmp/out/V5-ARACI-KURUM-5.2.5-B116-OPPORTUNITY-SYMBOLS-FIXED-debug.apk
+          cp "$APK" "$OUT"
+          SHA="$(sha256sum "$OUT" | awk '{print $1}')"
+          sha256sum "$OUT" > "$OUT.sha256"
+          cp /tmp/apksigner.txt /tmp/out/APKSIGNER.txt
+          cp /tmp/zipalign.txt /tmp/out/ZIPALIGN.txt
+          cp /tmp/badging.txt /tmp/out/BADGING.txt
+          {
+            echo 'B116 OPPORTUNITY SYMBOLS FALLBACK VERIFIED BUILD'
+            echo 'applicationId=tr.borsatakip.v5'
+            echo 'versionCode=113'
+            echo 'versionName=5.2.5'
+            echo 'android_tests=219/219 passed'
+            echo 'opportunity_bist_symbols_without_backend=YAHOO_DELAYED_FALLBACK'
+            echo 'opportunity_timeframe=SELECTED_ANALYSIS_TIMEFRAME'
+            echo 'opportunity_fallback_mode=DELAYED_ANALYSIS'
+            echo 'opportunity_fallback_realtime_claim=NEVER'
+            echo 'opportunity_fallback_verified_history=NOT_WRITTEN'
+            echo 'opportunity_production_websocket=REQUIRES_HTTPS_AND_API_KEY'
+            echo 'benchmark_missing=EXPLICIT_UNKNOWN_NO_FAKE_REGIME'
+            echo 'watched_metric=CURRENT_SCAN_UNIVERSE_FIRST'
+            echo 'fake_ohlcv=NONE'
+            echo 'production_live_e2e=NOT_RUN'
+            echo 'yahoo_live_e2e=NOT_RUN'
+            echo 'physical_device_test=NOT_RUN'
+            echo 'signing=DEBUG'
+            echo "apk_sha256=$SHA"
+          } > /tmp/out/PROVENANCE.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: B116-OPPORTUNITY-SYMBOLS-FIXED-APK
+          path: /tmp/out/*
+          retention-days: 90
