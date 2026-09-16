@@ -1,0 +1,11 @@
+--- a/app/src/test/java/tr/borsatakip/v5/analysis/B118TemporalIntegrityTest.kt
++++ b/app/src/test/java/tr/borsatakip/v5/analysis/B118TemporalIntegrityTest.kt
+@@ -8,7 +8,7 @@
+ import tr.borsatakip.v5.model.Stock
+ 
+ class B118TemporalIntegrityTest {
+-    private fun candle(i: Int, ts0: Long = 1_700_000_000_000L): Candle {
++    private fun candle(i: Int, ts0: Long = 1_699_999_920_000L): Candle {
+         val close = 100.0 + i * 0.1
+         return Candle(
+             timestamp = ts0 + i * 60_000L,
