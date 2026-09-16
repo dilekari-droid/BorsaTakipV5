@@ -1,0 +1,159 @@
+name: B120 Watchlist Provider Recovery
+on:
+  push:
+    branches: [v525-b120-watchlist-provider-recovery]
+    paths:
+      - '.github/workflows/build-b120-watchlist-provider-recovery.yml'
+      - 'ci_payload/b120_watchlist_provider_recovery/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 80
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore verified B119 source baseline
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/src /tmp/out /tmp/b119 && mkdir -p /tmp/src /tmp/out /tmp/b119
+          curl -fL --retry 3 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/dilekari-droid/BorsaTakipV5/actions/artifacts/10452224113/zip" \
+            -o /tmp/b119-artifact.zip
+          unzip -q /tmp/b119-artifact.zip -d /tmp/b119
+          SRCZIP=$(find /tmp/b119 -type f -name '*B119*Kaynak-Kod.zip' | head -n1)
+          test -n "$SRCZIP" -a -s "$SRCZIP"
+          echo '725075266a9312b6549eed1590c4dec168e84871516ac1c65f8021bb10c291cf  '"$SRCZIP" | sha256sum -c -
+          unzip -q "$SRCZIP" -d /tmp/src
+          grep -F 'versionCode = 119' /tmp/src/app/build.gradle.kts
+
+      - name: Apply B120 watchlist provider recovery patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '41ab23cd6aa484678fea92e9b9d47320dfde587abf6517ec092bc5b9c42ff7cf  ci_payload/b120_watchlist_provider_recovery/b120.patch.gz.b64' | sha256sum -c -
+          base64 --decode ci_payload/b120_watchlist_provider_recovery/b120.patch.gz.b64 > /tmp/b120.patch.gz
+          echo '3b6a172cc3f772c1eb5e88e9ddc6e22777c632964bb58d20c58027823c89054a  /tmp/b120.patch.gz' | sha256sum -c -
+          gzip -dc /tmp/b120.patch.gz > /tmp/b120.patch
+          echo '2966040614911933e0bffdadb1346617e8ddf0439a411f46d99ac7085777d329  /tmp/b120.patch' | sha256sum -c -
+          cd /tmp/src
+          git apply --check /tmp/b120.patch
+          git apply /tmp/b120.patch
+          grep -F 'versionCode = 120' app/build.gradle.kts
+          grep -F 'class WatchlistDataResolver' app/src/main/java/tr/borsatakip/v5/data/WatchlistDataResolver.kt
+          grep -F 'BistSymbolMatcher.matches' app/src/main/java/tr/borsatakip/v5/ui/FavoritesActivity.kt
+          grep -F 'seedAutomaticWatchlistsIfEmpty' app/src/main/java/tr/borsatakip/v5/ui/ViopContractsActivity.kt
+          grep -F 'loadViopQuote' app/src/main/java/tr/borsatakip/v5/ui/ViopDetailActivity.kt
+          cp /tmp/b120.patch /tmp/out/B120-WATCHLIST-PROVIDER-RECOVERY.patch
+          sha256sum /tmp/b120.patch > /tmp/out/B120-WATCHLIST-PROVIDER-RECOVERY.patch.sha256
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Discover and require all Android unit tests
+        working-directory: /tmp/src
+        shell: bash
+        run: |
+          set -euo pipefail
+          DISCOVERED=$(grep -Rho '@Test' app/src/test --include='*.kt' | wc -l | tr -d ' ')
+          export DISCOVERED
+          echo "TEST_DISCOVERED=$DISCOVERED" | tee /tmp/test-summary.txt
+          gradle --no-daemon testDebugUnitTest --stacktrace
+          python3 - <<'PY' | tee -a /tmp/test-summary.txt
+          import glob, os, xml.etree.ElementTree as ET
+          discovered=int(os.environ['DISCOVERED'])
+          total=failures=errors=skipped=0
+          for p in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
+              r=ET.parse(p).getroot()
+              total += int(r.attrib.get('tests',0))
+              failures += int(r.attrib.get('failures',0))
+              errors += int(r.attrib.get('errors',0))
+              skipped += int(r.attrib.get('skipped',0))
+          passed=total-failures-errors-skipped
+          print(f'TEST_EXECUTED={total} TEST_PASSED={passed} TEST_FAILURES={failures} TEST_ERRORS={errors} TEST_SKIPPED={skipped}')
+          if total != discovered or failures or errors or skipped:
+              raise SystemExit(f'Test contract failed: discovered={discovered}, executed={total}, failures={failures}, errors={errors}, skipped={skipped}')
+          PY
+
+      - name: Build debug APK
+        working-directory: /tmp/src
+        run: gradle --no-daemon assembleDebug --stacktrace
+
+      - name: Verify and export B120
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=/tmp/src/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          BT="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)"
+          AAPT="$ANDROID_HOME/build-tools/$BT/aapt"
+          APKSIGNER="$ANDROID_HOME/build-tools/$BT/apksigner"
+          ZIPALIGN="$ANDROID_HOME/build-tools/$BT/zipalign"
+          BADGING="$($AAPT dump badging "$APK" | head -n1)"
+          echo "$BADGING" | tee /tmp/out/BADGING.txt
+          echo "$BADGING" | grep -F "name='tr.borsatakip.v5'"
+          echo "$BADGING" | grep -F "versionCode='120'"
+          echo "$BADGING" | grep -F "versionName='5.2.5'"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee /tmp/out/APKSIGNER.txt
+          "$APKSIGNER" verify --verbose "$APK" | grep -F 'Verified using v2 scheme (APK Signature Scheme v2): true'
+          "$ZIPALIGN" -c -v 4 "$APK" | tee /tmp/out/ZIPALIGN.txt
+          OUT=/tmp/out/V5-ARACI-KURUM-5.2.5-B120-WATCHLIST-PROVIDER-RECOVERY-debug.apk
+          cp "$APK" "$OUT"
+          sha256sum "$OUT" | tee "$OUT.sha256"
+          python3 - <<'PY'
+          from pathlib import Path
+          import zipfile
+          src=Path('/tmp/src')
+          out=Path('/tmp/out/V5-ARACI-KURUM-5.2.5-B120-WATCHLIST-PROVIDER-RECOVERY-Kaynak-Kod.zip')
+          excluded={'.git','.gradle','build'}
+          with zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED) as z:
+              for p in src.rglob('*'):
+                  if not p.is_file(): continue
+                  rel=p.relative_to(src)
+                  if any(part in excluded for part in rel.parts): continue
+                  z.write(p,rel.as_posix())
+          PY
+          sha256sum /tmp/out/V5-ARACI-KURUM-5.2.5-B120-WATCHLIST-PROVIDER-RECOVERY-Kaynak-Kod.zip > /tmp/out/V5-ARACI-KURUM-5.2.5-B120-WATCHLIST-PROVIDER-RECOVERY-Kaynak-Kod.zip.sha256
+          cp /tmp/test-summary.txt /tmp/out/TEST-SUMMARY.txt
+          {
+            echo 'B120 WATCHLIST + PROVIDER RECOVERY VERIFIED BUILD'
+            echo 'applicationId=tr.borsatakip.v5'
+            echo 'versionCode=120'
+            echo 'versionName=5.2.5'
+            echo "source_branch=$GITHUB_REF_NAME"
+            echo "source_commit=$GITHUB_SHA"
+            echo 'b120_patch_sha256=2966040614911933e0bffdadb1346617e8ddf0439a411f46d99ac7085777d329'
+            echo 'bist_watchlist_display_provider=PRODUCTION_THEN_DELAYED_YAHOO'
+            echo 'bist_scan_provider_policy=UNCHANGED'
+            echo 'bist_symbol_bootstrap=SEARCH_ONLY_NOT_SCAN_UNIVERSE'
+            echo 'bist_typo_matching=LEVENSHTEIN_MAX_2'
+            echo 'bist_empty_watchlist_recovery=FAVORITES_ONLY'
+            echo 'viop_watchlist_auto_seed=CATALOG_OR_PRODUCTION_CONTRACTS'
+            echo 'viop_detail_quote_refresh=PRODUCTION_BACKEND_ONLY'
+            echo 'viop_fake_quote=NONE'
+            cat /tmp/test-summary.txt
+            echo 'production_live_e2e=NOT_RUN'
+            echo 'yahoo_live_e2e=NOT_RUN'
+            echo 'physical_device_test=NOT_RUN'
+            echo 'signing=DEBUG'
+          } > /tmp/out/PROVENANCE.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: B120-WATCHLIST-PROVIDER-RECOVERY
+          path: /tmp/out/*
+          retention-days: 90
