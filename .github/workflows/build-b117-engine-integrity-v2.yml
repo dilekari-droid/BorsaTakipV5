@@ -59,7 +59,10 @@ jobs:
             ci_payload/b117_engine_integrity/part-ac.b64 \
             ci_payload/b117_engine_integrity/part-ad.b64 \
             ci_payload/b117_engine_integrity/part-ae0.b64 \
-            ci_payload/b117_engine_integrity/part-ae1.b64 \
+            ci_payload/b117_engine_integrity/part-ae1-0.b64 \
+            ci_payload/b117_engine_integrity/part-ae1-1.b64 \
+            ci_payload/b117_engine_integrity/part-ae1-2.b64 \
+            ci_payload/b117_engine_integrity/part-ae1-3.b64 \
             ci_payload/b117_engine_integrity/part-af.b64 \
             ci_payload/b117_engine_integrity/part-ag.b64 \
             | base64 --decode > /tmp/b117.patch
