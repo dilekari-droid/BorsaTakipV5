@@ -1,0 +1,57 @@
+name: Export canonical B116 source for B117
+on:
+  push:
+    branches: [v525-b117-engine-integrity]
+    paths:
+      - '.github/workflows/export-b116-canonical-source-b117.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct exact B116 canonical source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/src /tmp/export && mkdir -p /tmp/src /tmp/export
+          cat ci_payload/v525_b113_android_exact/part-*.b64 | base64 --decode > /tmp/src.tar.xz
+          echo '7046afbb99b19c2b7e682c9aceee87f3c73260027b687f97ca941ceea6a2a93e  /tmp/src.tar.xz' | sha256sum -c -
+          tar -xJf /tmp/src.tar.xz -C /tmp/src
+          cd /tmp/src
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_140_tests.patch"
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_fgs_crash_fix.patch"
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_fgs_regression_test.patch"
+          cat "$GITHUB_WORKSPACE"/ci_payload/b113_fixes/b113_b114_acceptance_fix.part-*.b64 | base64 --decode | gzip -dc > /tmp/accept.patch
+          git apply --exclude='backend/**' /tmp/accept.patch
+          mkdir -p app/src/test/java/tr/borsatakip/v5/data
+          cp "$GITHUB_WORKSPACE/ci_payload/b113_fixes/broad_tests/B113B114AcceptanceSourceTest.kt" app/src/test/java/tr/borsatakip/v5/data/B113B114AcceptanceSourceTest.kt
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_tradingview_chart_button_v2.patch"
+          cat "$GITHUB_WORKSPACE"/ci_payload/b113_fixes/dual_scan/part-*.b64 | base64 --decode | gzip -dc > /tmp/dual.patch
+          git apply /tmp/dual.patch
+          git apply "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b113_dual_scan_universe_acceptance_fix.patch"
+          cat "$GITHUB_WORKSPACE"/ci_payload/b113_fixes/auto_backend_scan/part-*.b64 | base64 --decode | gzip -dc > /tmp/auto.patch
+          git apply /tmp/auto.patch
+          cat "$GITHUB_WORKSPACE"/ci_payload/b113_fixes/auto_backend_scan/missing-*.b64 | base64 --decode | gzip -dc > /tmp/missing.patch
+          git apply /tmp/missing.patch
+          base64 --decode "$GITHUB_WORKSPACE/ci_payload/b113_fixes/production_readiness/b113_production_readiness_runtime_fix_full.patch.gz.b64" | gzip -dc > /tmp/prod.patch
+          git apply /tmp/prod.patch
+          python3 "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b114_final/apply_b114_final.py" /tmp/src
+          python3 "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b114_final/post_b114_condition_fix.py" /tmp/src
+          python3 "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b115_intraday_fallback/apply_b115_intraday_fallback.py" /tmp/src
+          python3 "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b115_intraday_fallback/post_b115_test_contract.py" /tmp/src
+          cp "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b115_intraday_fallback/B115IntradayFallbackSourceTest.kt" app/src/test/java/tr/borsatakip/v5/data/B115IntradayFallbackSourceTest.kt
+          python3 "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b116_opportunity_fallback/apply_b116_opportunity_fallback.py" /tmp/src
+          cp "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b116_opportunity_fallback/B116OpportunityFallbackSourceTest.kt" app/src/test/java/tr/borsatakip/v5/data/B116OpportunityFallbackSourceTest.kt
+          printf 'source_branch=%s\nsource_commit=%s\nbaseline=B116\n' "$GITHUB_REF_NAME" "$GITHUB_SHA" > B116_CANONICAL_SOURCE_PROVENANCE.txt
+          cd /tmp/src
+          zip -qr /tmp/export/V5-ARACI-KURUM-5.2.5-B116-CANONICAL-SOURCE.zip . -x 'app/build/*' '.gradle/*'
+          sha256sum /tmp/export/V5-ARACI-KURUM-5.2.5-B116-CANONICAL-SOURCE.zip > /tmp/export/V5-ARACI-KURUM-5.2.5-B116-CANONICAL-SOURCE.zip.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: B116-CANONICAL-SOURCE-FOR-B117
+          path: /tmp/export/*
+          retention-days: 30
