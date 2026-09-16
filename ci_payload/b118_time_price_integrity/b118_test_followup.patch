@@ -1,0 +1,188 @@
+diff --git a/app/src/test/java/tr/borsatakip/v5/analysis/B118TemporalIntegrityTest.kt b/app/src/test/java/tr/borsatakip/v5/analysis/B118TemporalIntegrityTest.kt
+new file mode 100644
+index 0000000..075ee37
+--- /dev/null
++++ b/app/src/test/java/tr/borsatakip/v5/analysis/B118TemporalIntegrityTest.kt
+@@ -0,0 +1,82 @@
++package tr.borsatakip.v5.analysis
++
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertNotNull
++import org.junit.Assert.assertTrue
++import org.junit.Test
++import tr.borsatakip.v5.model.Candle
++import tr.borsatakip.v5.model.Stock
++
++class B118TemporalIntegrityTest {
++    @Test fun incompleteThreeMinuteBucketIsRejected() {
++        val t = 1_800_000_000_000L - (1_800_000_000_000L % 180_000L)
++        val input = listOf(c(t, 100.0), c(t + 120_000L, 102.0))
++        assertTrue(OhlcvResampler.aggregate(input, 3).isEmpty())
++    }
++
++    @Test fun completeThreeMinuteBucketIsAccepted() {
++        val t = 1_800_000_000_000L - (1_800_000_000_000L % 180_000L)
++        val input = listOf(c(t, 100.0), c(t + 60_000L, 101.0), c(t + 120_000L, 102.0))
++        val out = OhlcvResampler.aggregate(input, 3)
++        assertEquals(1, out.size)
++        assertEquals(100.0, out.single().open, 0.0)
++        assertEquals(102.0, out.single().close, 0.0)
++        assertEquals(3_000.0, out.single().volume, 0.0)
++    }
++
++    @Test fun supportResistanceExcludeSignalCandle() {
++        val base = 1_700_000_000_000L
++        val candles = (0 until 30).map { i ->
++            Candle(base + i * 60_000L, 100.0, 110.0, 90.0, 100.0, 1_000.0)
++        }.toMutableList()
++        candles[candles.lastIndex] = Candle(base + 29 * 60_000L, 100.0, 101.0, 50.0, 95.0, 1_000.0)
++        val technical = TechnicalAnalyzer.analyze(candles)
++        assertEquals(90.0, technical.support!!, 0.0)
++        assertEquals(110.0, technical.resistance!!, 0.0)
++    }
++
++    @Test fun confirmedOpportunityUsesClosedBarPriceNotQuotePrice() {
++        val base = 1_650_000_000_000L
++        val candles = (0 until 220).map { i ->
++            val px = 80.0 + i * 0.05
++            Candle(base + i * 86_400_000L, px, px + 0.8, px - 0.8, px, 1_000.0 + i)
++        }
++        val stock = Stock(
++            symbol = "TEST",
++            companyName = "Test",
++            candles = candles,
++            source = "Yahoo Finance • YEDEK/GECİKMELİ",
++            dataTimestamp = candles.last().timestamp,
++            isRealtime = false,
++            quotePrice = 999.0,
++            interval = "1d",
++            lastBarClosed = true,
++            previousClose = candles[candles.lastIndex - 1].close
++        )
++        val opportunity = OpportunityEngine.score(stock)
++        assertNotNull(opportunity)
++        assertEquals(candles.last().close, opportunity!!.price, 0.0)
++    }
++
++    @Test fun canonicalRankingUsesAllDocumentedFactors() {
++        val score = OpportunityRankingPolicy.compose(
++            technicalScore = 80,
++            dataConfidence = 80,
++            riskScore = 20,
++            rr = 3.0,
++            volumeRatio = 2.0,
++            freshnessScore = 100
++        )
++        // 36 + 20 + 8 + 10 + 5 + 5 = 84
++        assertEquals(84, score)
++    }
++
++    private fun c(timestamp: Long, close: Double) = Candle(
++        timestamp = timestamp,
++        open = close,
++        high = close + 0.5,
++        low = close - 0.5,
++        close = close,
++        volume = 1_000.0
++    )
++}
+diff --git a/app/src/test/java/tr/borsatakip/v5/data/B117EngineIntegritySourceTest.kt b/app/src/test/java/tr/borsatakip/v5/data/B117EngineIntegritySourceTest.kt
+index 5d69012..a6d6a54 100644
+--- a/app/src/test/java/tr/borsatakip/v5/data/B117EngineIntegritySourceTest.kt
++++ b/app/src/test/java/tr/borsatakip/v5/data/B117EngineIntegritySourceTest.kt
+@@ -16,8 +16,8 @@ class B117EngineIntegritySourceTest {
+         assertTrue(s.contains("val failed = scanState.skipped.coerceAtLeast(scanState.failedSymbols.size)"))
+     }
+ 
+-    @Test fun versionCodeTracksB117() {
++    @Test fun versionCodeTracksCurrentBuild() {
+         val s = File("build.gradle.kts").readText()
+-        assertTrue(s.contains("versionCode = 117"))
++        assertTrue(s.contains("versionCode = 118"))
+     }
+ }
+diff --git a/app/src/test/java/tr/borsatakip/v5/data/B118PriceIntegritySourceTest.kt b/app/src/test/java/tr/borsatakip/v5/data/B118PriceIntegritySourceTest.kt
+new file mode 100644
+index 0000000..496e1a8
+--- /dev/null
++++ b/app/src/test/java/tr/borsatakip/v5/data/B118PriceIntegritySourceTest.kt
+@@ -0,0 +1,79 @@
++package tr.borsatakip.v5.data
++
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertTrue
++import org.junit.Test
++import java.io.File
++
++class B118PriceIntegritySourceTest {
++    private fun mainRoot(): File {
++        val cwd = File(requireNotNull(System.getProperty("user.dir")))
++        return sequenceOf(
++            File(cwd, "src/main"),
++            File(cwd, "app/src/main"),
++            cwd.parentFile?.let { File(it, "app/src/main") }
++        ).filterNotNull().firstOrNull { it.isDirectory }
++            ?: error("app/src/main bulunamadı: ${cwd.absolutePath}")
++    }
++
++    private fun source(path: String): String = File(mainRoot(), path).readText()
++
++    @Test fun yahooFavoriteQuoteUsesIntradayMetadataButNeverClaimsRealtime() {
++        val src = source("java/tr/borsatakip/v5/data/YahooFallbackProvider.kt")
++        assertTrue(src.contains("fetchLatestDelayedQuote"))
++        assertTrue(src.contains("range=1d&interval=1m"))
++        assertTrue(src.contains("regularMarketPrice"))
++        assertTrue(src.contains("previousClose"))
++        assertTrue(src.contains("isRealtime = false"))
++    }
++
++    @Test fun favoritesOpenPathNoLongerPrefersOldAppSessionSnapshot() {
++        val src = source("java/tr/borsatakip/v5/ui/FavoritesActivity.kt")
++        assertFalse(src.contains("if (existing != null) {\n            openOpportunity(existing)\n            return"))
++        assertTrue(src.contains("displayQuotePrice"))
++        assertTrue(src.contains("eski tarama fiyatı gösterilmedi"))
++    }
++
++    @Test fun stockDetailRefreshesDisplayQuoteIndependentlyFromDecisionSnapshot() {
++        val src = source("java/tr/borsatakip/v5/ui/StockDetailActivity.kt")
++        assertTrue(src.contains("refreshDisplayedQuote()"))
++        assertTrue(src.contains("ProviderRouter(this@StockDetailActivity).fetchOne(x.symbol)"))
++        assertTrue(src.contains("YEDEK/GECİKMELİ FİYAT"))
++        assertTrue(src.contains("Teknik karar tarama anına aittir"))
++    }
++
++    @Test fun realtimeContractRequiresAtLeastCanonicalClosedBarReadiness() {
++        val src = source("java/tr/borsatakip/v5/data/RealtimeScannerClient.kt")
++        assertTrue(src.contains("minReadyBars >= CandleReadinessPolicy.requiredClosedBars()"))
++        assertTrue(src.contains("measuredAge"))
++        assertTrue(src.contains("ITEM_AGE_TOLERANCE_MS"))
++        assertTrue(src.contains("marketRegimeConfidence"))
++        assertFalse(src.contains("marketRegimeConfidence = if"))
++    }
++
++    @Test fun mtfUsesTrueDailyHistoryAndNoTopTwelvePreselection() {
++        val bist = source("java/tr/borsatakip/v5/scan/BistScanner.kt")
++        val viop = source("java/tr/borsatakip/v5/analysis/ViopScanner.kt")
++        assertTrue(bist.contains("fetchDailyHistory(opportunity.symbol, maximumRange = false)"))
++        assertFalse(bist.contains("MAX_MTF_CANDIDATES"))
++        assertFalse(viop.contains("MAX_MTF_CANDIDATES"))
++        assertTrue(viop.contains("MTF_CONCURRENCY"))
++    }
++
++    @Test fun adaptiveStrategyTrainingExcludesWatchOnlyRecords() {
++        val src = source("java/tr/borsatakip/v5/data/SignalHistoryStore.kt")
++        assertTrue(src.contains("DecisionState.VERIFIED_OPPORTUNITY.name"))
++        assertTrue(src.contains("WATCH records remain in history"))
++    }
++
++    @Test fun favoriteCardReturnedToSimplePreviousStructure() {
++        val xml = source("res/layout/item_favorite.xml")
++        assertTrue(xml.contains("favoriteSymbol"))
++        assertTrue(xml.contains("favoriteCompany"))
++        assertTrue(xml.contains("favoriteDetails"))
++        assertTrue(xml.contains("favoriteRemove"))
++        assertFalse(xml.contains("favoriteBid"))
++        assertFalse(xml.contains("favoriteAsk"))
++        assertFalse(xml.contains("favoriteSignal"))
++    }
++}
