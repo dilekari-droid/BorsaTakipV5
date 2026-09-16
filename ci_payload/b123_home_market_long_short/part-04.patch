@@ -1,0 +1,74 @@
++        "BIST30" -> "BIST 30"
++        "USDTRY" -> "DOLAR / TL"
++        "XAUUSD" -> "ONS ALTIN"
++        "VIOP30" -> "VİOP 30"
++        else -> "Piyasa Detayı"
++    }
++
++    companion object {
++        const val EXTRA_INSTRUMENT = "market_instrument"
++    }
++}
+diff --git a/app/src/main/res/layout/activity_main.xml b/app/src/main/res/layout/activity_main.xml
+index 2e6b4e4..bc43c86 100644
+--- a/app/src/main/res/layout/activity_main.xml
++++ b/app/src/main/res/layout/activity_main.xml
+@@ -112,13 +112,16 @@
+                 android:weightSum="5">
+ 
+                 <LinearLayout
++                    android:id="@+id/marketBist100Card"
+                     android:layout_width="0dp"
+                     android:layout_height="match_parent"
+                     android:layout_weight="1"
+                     android:layout_marginEnd="3dp"
+                     android:background="@drawable/bg_market_tile"
+                     android:orientation="vertical"
+-                    android:padding="7dp">
++                    android:padding="7dp"
++                    android:clickable="true"
++                    android:focusable="true">
+                     <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="BIST 100" android:textColor="@color/text_secondary" android:textSize="9sp" android:textStyle="bold" />
+                     <TextView
+                         android:id="@+id/marketBist100Value"
+@@ -128,7 +131,7 @@
+                         android:maxLines="1"
+                         android:singleLine="true"
+                         android:autoSizeTextType="uniform"
+-                        android:autoSizeMinTextSize="8sp"
++                        android:autoSizeMinTextSize="6sp"
+                         android:autoSizeMaxTextSize="14sp"
+                         android:autoSizeStepGranularity="1sp"
+                         android:text="—"
+@@ -140,13 +143,16 @@
+                 </LinearLayout>
+ 
+                 <LinearLayout
++                    android:id="@+id/marketBist30Card"
+                     android:layout_width="0dp"
+                     android:layout_height="match_parent"
+                     android:layout_weight="1"
+                     android:layout_marginHorizontal="3dp"
+                     android:background="@drawable/bg_market_tile"
+                     android:orientation="vertical"
+-                    android:padding="7dp">
++                    android:padding="7dp"
++                    android:clickable="true"
++                    android:focusable="true">
+                     <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="BIST 30" android:textColor="@color/text_secondary" android:textSize="9sp" android:textStyle="bold" />
+                     <TextView
+                         android:id="@+id/marketBist30Value"
+@@ -156,7 +162,7 @@
+                         android:maxLines="1"
+                         android:singleLine="true"
+                         android:autoSizeTextType="uniform"
+-                        android:autoSizeMinTextSize="8sp"
++                        android:autoSizeMinTextSize="6sp"
+                         android:autoSizeMaxTextSize="14sp"
+                         android:autoSizeStepGranularity="1sp"
+                         android:text="—"
+@@ -168,13 +174,16 @@
+                 </LinearLayout>
+ 
+                 <LinearLayout
++                    android:id="@+id/marketUsdCard"
