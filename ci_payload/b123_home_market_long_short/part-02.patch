@@ -1,0 +1,65 @@
++        setupBottomNav()
++        instrument = intent.getStringExtra(EXTRA_INSTRUMENT).orEmpty().uppercase(Locale.ROOT)
++        findViewById<Button>(R.id.marketDetailRefresh).setOnClickListener { load() }
++        findViewById<Button>(R.id.marketDetailSettings).setOnClickListener { startActivity(Intent(this, SettingsActivity::class.java)) }
++        load()
++    }
++
++    private fun load() {
++        setLoading()
++        lifecycleScope.launch {
++            when (instrument) {
++                "BIST100" -> loadStock("BIST 100", "XU100", listOf("XU100.IS", "^XU100"))
++                "BIST30" -> loadStock("BIST 30", "XU030", listOf("XU030.IS", "^XU030", "XU030"))
++                "USDTRY" -> loadExternal("DOLAR / TL", "USDTRY", listOf("TRY=X"))
++                "XAUUSD" -> loadExternal("ONS ALTIN", "XAUUSD", listOf("XAUUSD=X", "GC=F"))
++                "VIOP30" -> loadViop30()
++                else -> showError("Bilinmeyen piyasa kartı")
++            }
++        }
++    }
++
++    private suspend fun loadStock(title: String, strictSymbol: String, delayedSymbols: List<String>) {
++        val strict = ProviderRouter(this, experimentalFallbackOverride = false)
++        val stock = runCatching { strict.fetchOne(strictSymbol) }.getOrNull()
++            ?: YahooFallbackProvider(this).fetchExternalQuote(strictSymbol, delayedSymbols).stock
++        if (stock == null) showError("$title verisi alınamadı.") else bindStock(title, stock)
++    }
++
++    private suspend fun loadExternal(title: String, label: String, symbols: List<String>) {
++        val result = YahooFallbackProvider(this).fetchExternalQuote(label, symbols)
++        val stock = result.stock
++        if (stock == null) showError("$title verisi alınamadı. ${result.error ?: ""}".trim()) else bindStock(title, stock)
++    }
++
++    private suspend fun loadViop30() {
++        val settings = SettingsStore(this)
++        if (!settings.baseUrl.startsWith("https://") || settings.apiKey.isBlank()) {
++            showError("VİOP30 için production HTTPS backend ve API erişimi gerekli.", showSettings = true)
++            return
++        }
++        val backend = BackendProvider(this)
++        val contract = backend.loadViop().getOrNull().orEmpty()
++            .filter { it.underlying.equals("XU030", true) }
++            .sortedBy { it.expiry }
++            .firstOrNull()
++        if (contract == null) {
++            showError("XU030 dayanaklı aktif VİOP sözleşmesi alınamadı.", showSettings = true)
++            return
++        }
++        val quote = backend.loadViopQuote(contract.symbol).getOrNull()
++        if (quote == null) showError("${contract.symbol} için VİOP fiyatı alınamadı.", showSettings = true)
++        else bindViop("VİOP 30 • ${contract.symbol}", quote)
++    }
++
++    private fun setLoading() {
++        findViewById<TextView>(R.id.marketDetailTitle).text = titleFor(instrument)
++        findViewById<TextView>(R.id.marketDetailValue).text = "—"
++        findViewById<TextView>(R.id.marketDetailChange).text = "Veri alınıyor..."
++        findViewById<TextView>(R.id.marketDetailMeta).text = "Kaynak doğrulanıyor"
++        findViewById<TextView>(R.id.marketDetailStats).text = ""
++        findViewById<Button>(R.id.marketDetailSettings).visibility = View.GONE
++    }
++
++    private fun bindStock(title: String, stock: Stock) {
++        val price = stock.quotePrice ?: stock.candles.lastOrNull()?.close ?: run { showError("$title fiyatı boş döndü."); return }
