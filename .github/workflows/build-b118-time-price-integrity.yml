@@ -4,6 +4,7 @@ on:
     branches: [v525-b118-time-price-integrity]
     paths:
       - '.github/workflows/build-b118-time-price-integrity.yml'
+      - 'ci_payload/b118_time_price_integrity/**'
   workflow_dispatch:
 permissions:
   contents: read
@@ -84,13 +85,18 @@ jobs:
           echo '0330352c979878e4d0e2ebb781c4fcf1b4df2c2c9148f6496377103004d4ffa9  /tmp/b118.patch.xz' | sha256sum -c -
           xz -dc /tmp/b118.patch.xz > /tmp/b118.patch
           echo '63c4173df6624245606602055b30ec13d0417443828c3a3186568f3332fab486  /tmp/b118.patch' | sha256sum -c -
+          echo '4f74aa070b532ab4d164ae35e11a0f7833942a0b675d2f85a571a74ff750bd04  ci_payload/b118_time_price_integrity/b118_test_followup.patch' | sha256sum -c -
           cd /tmp/src
           git apply --check /tmp/b118.patch
           git apply /tmp/b118.patch
+          git apply --check "$GITHUB_WORKSPACE/ci_payload/b118_time_price_integrity/b118_test_followup.patch"
+          git apply "$GITHUB_WORKSPACE/ci_payload/b118_time_price_integrity/b118_test_followup.patch"
           grep -F 'versionCode = 118' app/build.gradle.kts
           grep -F 'fetchLatestDelayedQuote' app/src/main/java/tr/borsatakip/v5/data/YahooFallbackProvider.kt
           grep -F 'val price = c.last().close' app/src/main/java/tr/borsatakip/v5/analysis/OpportunityEngine.kt
           grep -F 'fetchDailyHistory(opportunity.symbol, maximumRange = false)' app/src/main/java/tr/borsatakip/v5/scan/BistScanner.kt
+          test -f app/src/test/java/tr/borsatakip/v5/analysis/B118TemporalIntegrityTest.kt
+          test -f app/src/test/java/tr/borsatakip/v5/data/B118PriceIntegritySourceTest.kt
           ! grep -R -F 'MAX_MTF_CANDIDATES' app/src/main/java/tr/borsatakip/v5
           ! grep -F 'favoriteBid' app/src/main/res/layout/item_favorite.xml
 
@@ -159,6 +165,7 @@ jobs:
             echo "source_branch=$GITHUB_REF_NAME"
             echo "source_commit=$GITHUB_SHA"
             echo 'b118_patch_sha256=63c4173df6624245606602055b30ec13d0417443828c3a3186568f3332fab486'
+            echo 'b118_test_followup_sha256=4f74aa070b532ab4d164ae35e11a0f7833942a0b675d2f85a571a74ff750bd04'
             cat /tmp/test-summary.txt
             echo 'favorites_ui=PREVIOUS_SIMPLE_CARD_STRUCTURE'
             echo 'favorite_detail_stale_appsession_price=FIXED'
