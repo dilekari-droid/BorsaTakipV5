@@ -1,0 +1,93 @@
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+index ddbbd08..5d7ae12 100644
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -12,7 +12,7 @@ android {
+         applicationId = "tr.borsatakip.v5"
+         minSdk = 26
+         targetSdk = 35
+-        versionCode = 120
++        versionCode = 121
+         versionName = "5.2.5"
+         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+     }
+diff --git a/app/src/main/java/tr/borsatakip/v5/data/BistBootstrapCatalog.kt b/app/src/main/java/tr/borsatakip/v5/data/BistBootstrapCatalog.kt
+index 8fc99de..7067ca1 100644
+--- a/app/src/main/java/tr/borsatakip/v5/data/BistBootstrapCatalog.kt
++++ b/app/src/main/java/tr/borsatakip/v5/data/BistBootstrapCatalog.kt
+@@ -5,6 +5,12 @@ package tr.borsatakip.v5.data
+  * Bu liste piyasa verisi değildir, aktif BIST üyeliği iddiası taşımaz ve tarama evreni olarak kullanılmaz.
+  */
+ object BistBootstrapCatalog {
++    /** Takip listesi tamamen boşsa kullanılan, tarama evreni sayılmayan başlangıç listesi. */
++    val defaultWatchlist: List<String> = listOf(
++        "AKBNK","ASELS","BIMAS","EREGL","FROTO","GARAN","ISCTR","KCHOL","MGROS","PETKM",
++        "PGSUS","SAHOL","SASA","SISE","TCELL","THYAO","TOASO","TUPRS","VAKBN","YKBNK"
++    )
++
+     val symbols: List<String> = listOf(
+         "AKBNK","ALARK","ARCLK","ASELS","ASTOR","BIMAS","DOAS","EKGYO","ENKAI","EREGL",
+         "FROTO","GARAN","GUBRF","HEKTS","ISCTR","KCHOL","KOZAA","KOZAL","KRDMD","MGROS",
+diff --git a/app/src/main/java/tr/borsatakip/v5/data/WatchlistDataResolver.kt b/app/src/main/java/tr/borsatakip/v5/data/WatchlistDataResolver.kt
+index d9eca95..70e2ffc 100644
+--- a/app/src/main/java/tr/borsatakip/v5/data/WatchlistDataResolver.kt
++++ b/app/src/main/java/tr/borsatakip/v5/data/WatchlistDataResolver.kt
+@@ -2,6 +2,8 @@ package tr.borsatakip.v5.data
+ 
+ import android.content.Context
+ import kotlinx.coroutines.CancellationException
++import kotlinx.coroutines.sync.Semaphore
++import kotlinx.coroutines.sync.withPermit
+ import tr.borsatakip.v5.model.Stock
+ 
+ /**
+@@ -11,10 +13,11 @@ import tr.borsatakip.v5.model.Stock
+  */
+ class WatchlistDataResolver(context: Context) {
+     private val settings = SettingsStore(context)
+-    private val strict = ProviderRouter(context)
++    private val strict = ProviderRouter(context, experimentalFallbackOverride = false)
+     private val delayed = YahooFallbackProvider(context)
+ 
+     data class SymbolUniverse(val symbols: List<String>, val sourceLabel: String)
++    data class FetchResult(val stock: Stock?, val error: String? = null)
+ 
+     suspend fun symbolUniverse(): SymbolUniverse {
+         val merged = linkedSetOf<String>()
+@@ -43,10 +46,46 @@ class WatchlistDataResolver(context: Context) {
+         )
+     }
+ 
+-    suspend fun fetchDisplayStock(symbol: String): Stock? {
++    suspend fun fetchDisplayStock(symbol: String): Stock? = fetchDisplayStockResult(symbol).stock
++
++    /**
++     * Takip listesinde aynı anda çok sayıda sembol istendiğinde provider'a kontrolsüz fan-out yapmaz.
++     * Production ve Yahoo hata nedenlerini de UI'ya taşır; tüm hatalar artık yalnızca "Veri yok" olmaz.
++     */
++    suspend fun fetchDisplayStockResult(symbol: String): FetchResult = DISPLAY_REQUEST_LIMIT.withPermit {
+         val normalized = symbol.trim().uppercase()
+-        val primary = try { strict.fetchOne(normalized) } catch (ce: CancellationException) { throw ce } catch (_: Throwable) { null }
+-        if (primary != null) return primary
+-        return try { delayed.fetchOne(normalized) } catch (ce: CancellationException) { throw ce } catch (_: Throwable) { null }
++        if (!normalized.matches(Regex("[A-Z0-9_]{3,12}"))) return@withPermit FetchResult(null, "Geçersiz sembol")
++
++        var primaryError: String? = null
++        if (settings.baseUrl.startsWith("https://")) {
++            val primary = try {
++                strict.fetchOne(normalized)
++            } catch (ce: CancellationException) {
++                throw ce
++            } catch (t: Throwable) {
++                primaryError = "Production: ${t.message ?: t.javaClass.simpleName}"
++                null
++            }
++            if (primary != null) return@withPermit FetchResult(primary)
++            if (primaryError == null) primaryError = "Production: veri dönmedi"
++        } else {
++            primaryError = "Production provider yapılandırılmamış"
++        }
++
++        val fallback = try {
++            delayed.fetchDisplayQuoteOnly(normalized)
++        
