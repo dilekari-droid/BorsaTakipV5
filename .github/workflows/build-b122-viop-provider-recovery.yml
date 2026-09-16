@@ -1,0 +1,115 @@
+name: B122 VIOP Provider Recovery
+on:
+  push:
+    branches: [v525-b122-viop-provider-recovery]
+    paths:
+      - '.github/workflows/build-b122-viop-provider-recovery.yml'
+      - 'ci_payload/b122_viop_provider_recovery/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 80
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore verified B121 source baseline
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/src /tmp/out /tmp/b121 && mkdir -p /tmp/src /tmp/out /tmp/b121
+          curl -fL --retry 3 -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "https://api.github.com/repos/dilekari-droid/BorsaTakipV5/actions/artifacts/10459103815/zip" -o /tmp/b121-artifact.zip
+          unzip -q /tmp/b121-artifact.zip -d /tmp/b121
+          SRCZIP=$(find /tmp/b121 -type f -name '*B121*Kaynak-Kod.zip' | head -n1)
+          test -n "$SRCZIP" -a -s "$SRCZIP"
+          echo 'a7c45142731e13b46f734bc42da26e388f14034c34cf18b59add7886822e0b77  '"$SRCZIP" | sha256sum -c -
+          unzip -q "$SRCZIP" -d /tmp/src
+          grep -F 'versionCode = 121' /tmp/src/app/build.gradle.kts
+      - name: Apply B122 VIOP provider recovery patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp ci_payload/b122_viop_provider_recovery/b122.patch /tmp/b122.patch
+          echo 'e9d5e6434eb4c6dbda76d0a872ebebfcb9a085a5dc45f3ae3c71858ae3ae23f8  /tmp/b122.patch' | sha256sum -c -
+          cd /tmp/src
+          git apply --check /tmp/b122.patch
+          git apply /tmp/b122.patch
+          grep -F 'versionCode = 122' app/build.gradle.kts
+          grep -F 'recoverProviderAndLoad()' app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt
+          grep -F 'autoTestAfterSave()' app/src/main/java/tr/borsatakip/v5/ui/SettingsActivity.kt
+          grep -F 'class B122ViopProviderRecoveryTest' app/src/test/java/tr/borsatakip/v5/data/B122ViopProviderRecoveryTest.kt
+          cp /tmp/b122.patch /tmp/out/B122-VIOP-PROVIDER-RECOVERY.patch
+          sha256sum /tmp/b122.patch > /tmp/out/B122-VIOP-PROVIDER-RECOVERY.patch.sha256
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Discover and require all Android unit tests
+        working-directory: /tmp/src
+        shell: bash
+        run: |
+          set -euo pipefail
+          DISCOVERED=$(grep -Rho '@Test' app/src/test --include='*.kt' | wc -l | tr -d ' ')
+          export DISCOVERED
+          echo "TEST_DISCOVERED=$DISCOVERED" | tee /tmp/test-summary.txt
+          gradle --no-daemon testDebugUnitTest --stacktrace
+          python3 - <<'PY' | tee -a /tmp/test-summary.txt
+          import glob, os, xml.etree.ElementTree as ET
+          d=int(os.environ['DISCOVERED']); t=f=e=s=0
+          for p in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
+              r=ET.parse(p).getroot(); t+=int(r.attrib.get('tests',0)); f+=int(r.attrib.get('failures',0)); e+=int(r.attrib.get('errors',0)); s+=int(r.attrib.get('skipped',0))
+          passed=t-f-e-s
+          print(f'TEST_EXECUTED={t} TEST_PASSED={passed} TEST_FAILURES={f} TEST_ERRORS={e} TEST_SKIPPED={s}')
+          if t != d or f or e or s: raise SystemExit(f'Test contract failed: discovered={d}, executed={t}, failures={f}, errors={e}, skipped={s}')
+          PY
+      - name: Build debug APK
+        working-directory: /tmp/src
+        run: gradle --no-daemon assembleDebug --stacktrace
+      - name: Verify and export B122
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=/tmp/src/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          BT="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)"
+          AAPT="$ANDROID_HOME/build-tools/$BT/aapt"; APKSIGNER="$ANDROID_HOME/build-tools/$BT/apksigner"; ZIPALIGN="$ANDROID_HOME/build-tools/$BT/zipalign"
+          BADGING="$($AAPT dump badging "$APK" | head -n1)"; echo "$BADGING" | tee /tmp/out/BADGING.txt
+          echo "$BADGING" | grep -F "name='tr.borsatakip.v5'"; echo "$BADGING" | grep -F "versionCode='122'"; echo "$BADGING" | grep -F "versionName='5.2.5'"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee /tmp/out/APKSIGNER.txt
+          "$APKSIGNER" verify --verbose "$APK" | grep -F 'Verified using v2 scheme (APK Signature Scheme v2): true'
+          "$ZIPALIGN" -c -v 4 "$APK" | tee /tmp/out/ZIPALIGN.txt
+          OUT=/tmp/out/V5-ARACI-KURUM-5.2.5-B122-VIOP-PROVIDER-RECOVERY-debug.apk
+          cp "$APK" "$OUT"; sha256sum "$OUT" | tee "$OUT.sha256"
+          python3 - <<'PY'
+          from pathlib import Path
+          import zipfile
+          src=Path('/tmp/src'); out=Path('/tmp/out/V5-ARACI-KURUM-5.2.5-B122-VIOP-PROVIDER-RECOVERY-Kaynak-Kod.zip'); excluded={'.git','.gradle','build'}
+          with zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED) as z:
+              for p in src.rglob('*'):
+                  if p.is_file() and not any(x in excluded for x in p.relative_to(src).parts): z.write(p,p.relative_to(src).as_posix())
+          PY
+          sha256sum /tmp/out/V5-ARACI-KURUM-5.2.5-B122-VIOP-PROVIDER-RECOVERY-Kaynak-Kod.zip > /tmp/out/V5-ARACI-KURUM-5.2.5-B122-VIOP-PROVIDER-RECOVERY-Kaynak-Kod.zip.sha256
+          cp /tmp/test-summary.txt /tmp/out/TEST-SUMMARY.txt
+          {
+            echo 'B122 VIOP PROVIDER RECOVERY VERIFIED BUILD'
+            echo 'applicationId=tr.borsatakip.v5'; echo 'versionCode=122'; echo 'versionName=5.2.5'
+            echo 'b122_patch_sha256=e9d5e6434eb4c6dbda76d0a872ebebfcb9a085a5dc45f3ae3c71858ae3ae23f8'
+            echo 'viop_missing_backend_root_cause=EXTERNAL_CONFIGURATION_REQUIRED'
+            echo 'viop_settings_return_flow=AUTO_TEST_AND_RETURN'
+            echo 'viop_auto_recovery=CONFIGURED_STALE_ERROR_STATES'
+            echo 'viop_fake_fallback=NONE'
+            cat /tmp/test-summary.txt
+            echo 'production_live_e2e=NOT_RUN'; echo 'physical_device_test=NOT_RUN'; echo 'signing=DEBUG'
+          } > /tmp/out/PROVENANCE.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: B122-VIOP-PROVIDER-RECOVERY
+          path: /tmp/out/*
+          retention-days: 90
