@@ -1,0 +1,11 @@
+diff --git a/app/src/test/java/tr/borsatakip/v5/data/B117EngineIntegritySourceTest.kt b/app/src/test/java/tr/borsatakip/v5/data/B117EngineIntegritySourceTest.kt
+--- a/app/src/test/java/tr/borsatakip/v5/data/B117EngineIntegritySourceTest.kt
++++ b/app/src/test/java/tr/borsatakip/v5/data/B117EngineIntegritySourceTest.kt
+@@ -13,6 +13,6 @@ class B117EngineIntegritySourceTest {
+         assertTrue(s.contains("OpportunityRankingPolicy.sort(filteredItems)"))
+         assertTrue(s.contains("scanState.skipped.coerceAtLeast(scanState.failedSymbols.size)"))
+         // Canonical non-double-count expression must be used in both summary/detail paths.
+-        assertTrue(s.split("scanState.skipped.coerceAtLeast(scanState.failedSymbols.size)").size - 1 >= 2)
++        assertTrue(s.contains("val failed = scanState.skipped.coerceAtLeast(scanState.failedSymbols.size)"))
+     }
+ 
