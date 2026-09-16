@@ -34,16 +34,23 @@ jobs:
         run: |
           set -euo pipefail
           cp ci_payload/b122_viop_provider_recovery/b122.patch /tmp/b122.patch
+          cp ci_payload/b122_viop_provider_recovery/b122_test_migration.patch /tmp/b122-test.patch
           echo 'e9d5e6434eb4c6dbda76d0a872ebebfcb9a085a5dc45f3ae3c71858ae3ae23f8  /tmp/b122.patch' | sha256sum -c -
+          echo 'c3ed55d4d750820fae7f3f45bb89612b8580b69940aebe96d98a7975549ee067  /tmp/b122-test.patch' | sha256sum -c -
           cd /tmp/src
           git apply --check /tmp/b122.patch
           git apply /tmp/b122.patch
+          git apply --check /tmp/b122-test.patch
+          git apply /tmp/b122-test.patch
           grep -F 'versionCode = 122' app/build.gradle.kts
           grep -F 'recoverProviderAndLoad()' app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt
           grep -F 'autoTestAfterSave()' app/src/main/java/tr/borsatakip/v5/ui/SettingsActivity.kt
           grep -F 'class B122ViopProviderRecoveryTest' app/src/test/java/tr/borsatakip/v5/data/B122ViopProviderRecoveryTest.kt
+          grep -F 'versionCode = 122' app/src/test/java/tr/borsatakip/v5/data/B117EngineIntegritySourceTest.kt
           cp /tmp/b122.patch /tmp/out/B122-VIOP-PROVIDER-RECOVERY.patch
+          cp /tmp/b122-test.patch /tmp/out/B122-LEGACY-TEST-MIGRATION.patch
           sha256sum /tmp/b122.patch > /tmp/out/B122-VIOP-PROVIDER-RECOVERY.patch.sha256
+          sha256sum /tmp/b122-test.patch > /tmp/out/B122-LEGACY-TEST-MIGRATION.patch.sha256
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -101,6 +108,7 @@ jobs:
             echo 'B122 VIOP PROVIDER RECOVERY VERIFIED BUILD'
             echo 'applicationId=tr.borsatakip.v5'; echo 'versionCode=122'; echo 'versionName=5.2.5'
             echo 'b122_patch_sha256=e9d5e6434eb4c6dbda76d0a872ebebfcb9a085a5dc45f3ae3c71858ae3ae23f8'
+            echo 'b122_test_migration_sha256=c3ed55d4d750820fae7f3f45bb89612b8580b69940aebe96d98a7975549ee067'
             echo 'viop_missing_backend_root_cause=EXTERNAL_CONFIGURATION_REQUIRED'
             echo 'viop_settings_return_flow=AUTO_TEST_AND_RETURN'
             echo 'viop_auto_recovery=CONFIGURED_STALE_ERROR_STATES'
