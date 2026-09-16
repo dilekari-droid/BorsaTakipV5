@@ -1,0 +1,65 @@
+diff --git a/app/src/main/java/tr/borsatakip/v5/data/LastSuccessfulScanStore.kt b/app/src/main/java/tr/borsatakip/v5/data/LastSuccessfulScanStore.kt
+index 9d4c0cd..3d20202 100644
+--- a/app/src/main/java/tr/borsatakip/v5/data/LastSuccessfulScanStore.kt
++++ b/app/src/main/java/tr/borsatakip/v5/data/LastSuccessfulScanStore.kt
+@@ -78,6 +78,8 @@ class LastSuccessfulScanStore(context: Context) {
+         put("technical", technicalJson(x.technical))
+         putNullable("mtfConsensusScore", x.mtfConsensusScore); put("mtfConsensusLabel", x.mtfConsensusLabel)
+         put("marketRegime", x.marketRegime); put("marketRegimeConfidence", x.marketRegimeConfidence)
++        put("setupType", x.setupType); put("qualityClass", x.qualityClass); put("timingStatus", x.timingStatus)
++        put("rankingScore", x.rankingScore)
+         put("analysisTimeframeMinutes", x.analysisTimeframeMinutes)
+         put("scanCadenceMinutes", x.scanCadenceMinutes)
+         put("scanMode", x.scanMode.name)
+@@ -116,6 +118,10 @@ class LastSuccessfulScanStore(context: Context) {
+             signalValidity=SignalValidity.WATCH,
+             signalValidityReason="ARŞİV KAYDI • Canlı geçerlilik için yeniden veri doğrulaması gerekli. Üretim anındaki durum: ${o.optString("signalValidity")}/${o.optString("dataMode")}",
+             scanRunId=o.optString("scanRunId").takeIf { it.isNotBlank() },
++            setupType=o.optString("setupType","TEKNİK İZLEME"),
++            qualityClass=o.optString("qualityClass","İZLE"),
++            timingStatus=o.optString("timingStatus","DEĞERLENDİRİLMEDİ"),
++            rankingScore=o.optInt("rankingScore", o.optInt("finalSignalScore")),
+             mtfConsensusScore=i(o,"mtfConsensusScore"), mtfConsensusLabel=o.optString("mtfConsensusLabel","MTF VERİ YOK"),
+             marketRegime=o.optString("marketRegime","VERİ YOK"), marketRegimeConfidence=o.optInt("marketRegimeConfidence",0),
+             analysisTimeframeMinutes=o.optInt("analysisTimeframeMinutes",0).let { if (it == 0) 0 else ScanTimeframe.normalizeStoredMinutes(it) },
+diff --git a/app/src/main/java/tr/borsatakip/v5/data/RealtimeScannerClient.kt b/app/src/main/java/tr/borsatakip/v5/data/RealtimeScannerClient.kt
+index 895000a..5e50613 100644
+--- a/app/src/main/java/tr/borsatakip/v5/data/RealtimeScannerClient.kt
++++ b/app/src/main/java/tr/borsatakip/v5/data/RealtimeScannerClient.kt
+@@ -257,6 +257,10 @@ class RealtimeScannerClient(context: Context) {
+                 "DOWN" -> "TEYİTLİ AŞAĞI KIRILIM"
+                 else -> "TEYİTLİ MOMENTUM"
+             },
++            // Realtime backend riskPlan sağlamıyorsa istemci puandan A sınıfı uydurmaz.
++            // Typed kalite/zamanlama yalnız backend açıkça gönderirse taşınır; aksi halde izleme/unknown kalır.
++            qualityClass = optString("qualityClass").trim().takeIf { it.isNotBlank() } ?: "İZLE",
++            timingStatus = optString("timingStatus").trim().takeIf { it.isNotBlank() } ?: "DEĞERLENDİRİLMEDİ",
+             volumeAnomalyPct = relativeVolume?.let { (it - 1.0) * 100.0 },
+             rankingScore = score,
+             marketRegime = marketRegime,
+diff --git a/app/src/test/java/tr/borsatakip/v5/analysis/DecisionSupportEngineTest.kt b/app/src/test/java/tr/borsatakip/v5/analysis/DecisionSupportEngineTest.kt
+index e01c042..8cdcdca 100644
+--- a/app/src/test/java/tr/borsatakip/v5/analysis/DecisionSupportEngineTest.kt
++++ b/app/src/test/java/tr/borsatakip/v5/analysis/DecisionSupportEngineTest.kt
+@@ -39,7 +39,7 @@ class DecisionSupportEngineTest {
+             interval = "1d",
+             exchangeTimezone = "Europe/Istanbul",
+             lastBarTime = candles.last().timestamp,
+-            lastBarClosed = false,
++            lastBarClosed = true,
+             previousClose = candles[candles.lastIndex - 1].close
+         )
+ 
+diff --git a/app/src/test/java/tr/borsatakip/v5/analysis/OpportunityValidityTest.kt b/app/src/test/java/tr/borsatakip/v5/analysis/OpportunityValidityTest.kt
+index d1c9c49..7bca149 100644
+--- a/app/src/test/java/tr/borsatakip/v5/analysis/OpportunityValidityTest.kt
++++ b/app/src/test/java/tr/borsatakip/v5/analysis/OpportunityValidityTest.kt
+@@ -19,7 +19,7 @@ class OpportunityValidityTest {
+         val cs = candles()
+         val stock=Stock("TEST",null,cs,"licensed",now,true,0,true,receivedAt=now,receivedElapsedRealtime=Long.MAX_VALUE/4,
+             market="BIST", historySymbol="TEST", interval="1d", exchangeTimezone="Europe/Istanbul",
+-            lastBarTime=cs.last().timestamp, lastBarClosed=false, previousClose=cs[cs.lastIndex-1].close)
++            lastBarTime=cs.last().timestamp, lastBarClosed=true, previousClose=cs[cs.lastIndex-1].close)
+         val x=OpportunityEngine.score(stock)
+         assertNotNull(x)
+         x!!
