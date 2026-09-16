@@ -1,4 +1,4 @@
-name: Inspect Auto Scan Activation
+name: Inspect Opportunity Symbols Path
 on:
   push:
     branches: [v525-b113-verified-apk]
@@ -41,12 +41,23 @@ jobs:
           python3 "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b114_final/post_b114_condition_fix.py" /tmp/src
           python3 "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b115_intraday_fallback/apply_b115_intraday_fallback.py" /tmp/src
           cp "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b115_intraday_fallback/B115IntradayFallbackSourceTest.kt" app/src/test/java/tr/borsatakip/v5/data/B115IntradayFallbackSourceTest.kt
-      - name: Print conflicting tests
+      - name: Print opportunity symbols benchmark path
         shell: bash
         run: |
           set -euo pipefail
           cd /tmp/src
-          for f in $(find app/src/test -type f \( -name 'B114AutoScanTimeframeTrendSourceTest.kt' -o -name 'AutomaticScanSourceContractTest.kt' \)); do
+          echo '=== MATCHING FILES ==='
+          grep -RIl -E 'BIST_SYMBOLS_ERROR|Production provider hazır değil|Benchmark verisi yok|Fırsat analizi başarısız|FIRSATLARI YENİLE' app/src/main || true
+          echo '=== OPPORTUNITY FILES ==='
+          find app/src/main/java -type f | grep -Ei 'opportun|firsat|regime|benchmark|symbol|provider' | sort || true
+          echo '=== MATCH CONTEXT ==='
+          grep -RIn -C 8 -E 'BIST_SYMBOLS_ERROR|Production provider hazır değil|Benchmark verisi yok|Fırsat analizi başarısız|FIRSATLARI YENİLE' app/src/main || true
+          echo '=== FULL RELEVANT FILES ==='
+          for f in $(grep -RIl -E 'BIST_SYMBOLS_ERROR|Production provider hazır değil|Benchmark verisi yok|Fırsat analizi başarısız|FIRSATLARI YENİLE' app/src/main || true); do
             echo "===== $f ====="
             nl -ba "$f"
+          done
+          echo '=== PROVIDER ROUTER / YAHOO ==='
+          for f in app/src/main/java/tr/borsatakip/v5/data/ProviderRouter.kt app/src/main/java/tr/borsatakip/v5/data/YahooFallbackProvider.kt; do
+            if [ -f "$f" ]; then echo "===== $f ====="; nl -ba "$f"; fi
           done
