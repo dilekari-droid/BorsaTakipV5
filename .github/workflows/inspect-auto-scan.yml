@@ -39,19 +39,16 @@ jobs:
           git apply /tmp/prod.patch
           python3 "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b114_final/apply_b114_final.py" /tmp/src
           python3 "$GITHUB_WORKSPACE/ci_payload/b113_fixes/b114_final/post_b114_condition_fix.py" /tmp/src
-      - name: Print exact provider implementations
+      - name: Print execution files
         shell: bash
         run: |
           set -euo pipefail
           cd /tmp/src
           for f in \
-            app/src/main/java/tr/borsatakip/v5/data/ProviderRouter.kt \
-            app/src/main/java/tr/borsatakip/v5/data/YahooFallbackProvider.kt \
-            app/src/main/java/tr/borsatakip/v5/data/MobileMarketDataProvider.kt \
-            app/src/main/java/tr/borsatakip/v5/data/MarketDataProvider.kt \
-            app/src/main/java/tr/borsatakip/v5/data/SettingsStore.kt; do
+            app/src/main/java/tr/borsatakip/v5/data/IntervalMarketDataProvider.kt \
+            app/src/main/java/tr/borsatakip/v5/ui/BistScanActivity.kt \
+            app/src/main/java/tr/borsatakip/v5/worker/AutomaticScanRunner.kt \
+            app/src/main/java/tr/borsatakip/v5/worker/AutoScanForegroundService.kt; do
             echo "===== $f ====="
             cat "$f"
           done
-          echo '===== provider methods / interval capability ====='
-          grep -RniE 'fetchHistory|fetchDailyHistory|interval|chart|query1.finance|query2.finance|fallback|experimentalProvidersEnabled|yahooFallbackEnabled|baseUrl' app/src/main/java/tr/borsatakip/v5/data | head -n 1000 || true
