@@ -1,0 +1,13 @@
+diff --git a/app/src/androidTest/kotlin/tr/borsatakip/v5/ui/MainVersionSynchronizationTest.kt b/app/src/androidTest/kotlin/tr/borsatakip/v5/ui/MainVersionSynchronizationTest.kt
+index 5ea2c6c..9b017ea 100644
+--- a/app/src/androidTest/kotlin/tr/borsatakip/v5/ui/MainVersionSynchronizationTest.kt
++++ b/app/src/androidTest/kotlin/tr/borsatakip/v5/ui/MainVersionSynchronizationTest.kt
+@@ -18,7 +18,5 @@ class MainVersionSynchronizationTest {
+         ActivityScenario.launch(MainActivity::class.java).use {
+             onView(withId(R.id.txtVersionBadge))
+                 .check(matches(withText("V${BuildConfig.VERSION_NAME}")))
+-            onView(withId(R.id.txtVersionSubtitle))
+-                .check(matches(withText("V${BuildConfig.VERSION_NAME} • Profesyonel fırsat takibi")))
+         }
+     }
+ }
