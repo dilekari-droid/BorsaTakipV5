@@ -1,0 +1,120 @@
+name: B125 VIOP Fallback Recovery
+on:
+  push:
+    branches: [v525-b125-viop-fallback-recovery]
+    paths:
+      - '.github/workflows/build-b125-viop-fallback-recovery.yml'
+      - 'ci_payload/b125_viop_fallback_recovery/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore verified B124 source baseline
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/src /tmp/out /tmp/b124 && mkdir -p /tmp/src /tmp/out /tmp/b124
+          curl -fL --retry 3 -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "https://api.github.com/repos/dilekari-droid/BorsaTakipV5/actions/artifacts/10483833752/zip" -o /tmp/b124-artifact.zip
+          unzip -q /tmp/b124-artifact.zip -d /tmp/b124
+          SRCZIP=$(find /tmp/b124 -type f -name '*B124*Kaynak-Kod.zip' | head -n1)
+          test -n "$SRCZIP" -a -s "$SRCZIP"
+          echo '9f0dcba5c9cc829b178f59212789e34005b7ca7ef76933d41a7330bd70043bda  '"$SRCZIP" | sha256sum -c -
+          unzip -q "$SRCZIP" -d /tmp/src
+          grep -F 'versionCode = 124' /tmp/src/app/build.gradle.kts
+      - name: Apply B125 VIOP fallback recovery patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp ci_payload/b125_viop_fallback_recovery/b125.patch /tmp/b125.patch
+          echo '51ca306461e3885b63307ae90b5dc6acff13620bd0bd48c63a638302e2527eb0  /tmp/b125.patch' | sha256sum -c -
+          cd /tmp/src
+          git apply --check /tmp/b125.patch
+          git apply /tmp/b125.patch
+          grep -F 'versionCode = 125' app/build.gradle.kts
+          grep -F 'fetchHistory(symbol, nowMs - HOURLY_LOOKBACK_MS, nowMs, 60)' app/src/main/java/tr/borsatakip/v5/analysis/ViopUnderlyingScanner.kt
+          grep -F 'fetchDailyHistory(symbol, maximumRange = true)' app/src/main/java/tr/borsatakip/v5/analysis/ViopUnderlyingScanner.kt
+          grep -F 'MODE_QUOTE_ONLY' app/src/main/java/tr/borsatakip/v5/analysis/ViopUnderlyingScanner.kt
+          grep -F 'lastUnderlyingSummary' app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt
+          grep -F 'D=referans' app/src/main/java/tr/borsatakip/v5/ui/ViopWatchlistAdapter.kt
+          grep -F 'class B125ViopUnderlyingRecoveryTest' app/src/test/java/tr/borsatakip/v5/data/B125ViopUnderlyingRecoveryTest.kt
+          cp /tmp/b125.patch /tmp/out/B125-VIOP-FALLBACK-RECOVERY.patch
+          sha256sum /tmp/b125.patch > /tmp/out/B125-VIOP-FALLBACK-RECOVERY.patch.sha256
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Discover and require all Android unit tests
+        working-directory: /tmp/src
+        shell: bash
+        run: |
+          set -euo pipefail
+          DISCOVERED=$(grep -Rho '@Test' app/src/test --include='*.kt' | wc -l | tr -d ' ')
+          export DISCOVERED
+          echo "TEST_DISCOVERED=$DISCOVERED" | tee /tmp/test-summary.txt
+          gradle --no-daemon testDebugUnitTest --stacktrace
+          python3 - <<'PY' | tee -a /tmp/test-summary.txt
+          import glob, os, xml.etree.ElementTree as ET
+          d=int(os.environ['DISCOVERED']); t=f=e=s=0
+          for p in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
+              r=ET.parse(p).getroot(); t+=int(r.attrib.get('tests',0)); f+=int(r.attrib.get('failures',0)); e+=int(r.attrib.get('errors',0)); s+=int(r.attrib.get('skipped',0))
+          passed=t-f-e-s
+          print(f'TEST_EXECUTED={t} TEST_PASSED={passed} TEST_FAILURES={f} TEST_ERRORS={e} TEST_SKIPPED={s}')
+          if t != d or f or e or s: raise SystemExit(f'Test contract failed: discovered={d}, executed={t}, failures={f}, errors={e}, skipped={s}')
+          PY
+      - name: Build debug APK
+        working-directory: /tmp/src
+        run: gradle --no-daemon assembleDebug --stacktrace
+      - name: Verify and export B125
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=/tmp/src/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          BT="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)"
+          AAPT="$ANDROID_HOME/build-tools/$BT/aapt"; APKSIGNER="$ANDROID_HOME/build-tools/$BT/apksigner"; ZIPALIGN="$ANDROID_HOME/build-tools/$BT/zipalign"
+          BADGING="$($AAPT dump badging "$APK" | head -n1)"; echo "$BADGING" | tee /tmp/out/BADGING.txt
+          echo "$BADGING" | grep -F "name='tr.borsatakip.v5'"; echo "$BADGING" | grep -F "versionCode='125'"; echo "$BADGING" | grep -F "versionName='5.2.5'"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee /tmp/out/APKSIGNER.txt
+          "$APKSIGNER" verify --verbose "$APK" | grep -F 'Verified using v2 scheme (APK Signature Scheme v2): true'
+          "$ZIPALIGN" -c -v 4 "$APK" | tee /tmp/out/ZIPALIGN.txt
+          OUT=/tmp/out/V5-ARACI-KURUM-5.2.5-B125-VIOP-FALLBACK-RECOVERY-debug.apk
+          cp "$APK" "$OUT"; sha256sum "$OUT" | tee "$OUT.sha256"
+          python3 - <<'PY'
+          from pathlib import Path
+          import zipfile
+          src=Path('/tmp/src'); out=Path('/tmp/out/V5-ARACI-KURUM-5.2.5-B125-VIOP-FALLBACK-RECOVERY-Kaynak-Kod.zip'); excluded={'.git','.gradle','build'}
+          with zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED) as z:
+              for p in src.rglob('*'):
+                  if p.is_file() and not any(x in excluded for x in p.relative_to(src).parts): z.write(p,p.relative_to(src).as_posix())
+          PY
+          sha256sum /tmp/out/V5-ARACI-KURUM-5.2.5-B125-VIOP-FALLBACK-RECOVERY-Kaynak-Kod.zip > /tmp/out/V5-ARACI-KURUM-5.2.5-B125-VIOP-FALLBACK-RECOVERY-Kaynak-Kod.zip.sha256
+          cp /tmp/test-summary.txt /tmp/out/TEST-SUMMARY.txt
+          {
+            echo 'B125 VIOP FALLBACK RECOVERY VERIFIED BUILD'
+            echo 'applicationId=tr.borsatakip.v5'; echo 'versionCode=125'; echo 'versionName=5.2.5'
+            echo 'b125_patch_sha256=51ca306461e3885b63307ae90b5dc6acff13620bd0bd48c63a638302e2527eb0'
+            echo 'base=B124_VERIFIED_SOURCE_9f0dcba5c9cc829b178f59212789e34005b7ca7ef76933d41a7330bd70043bda'
+            echo 'viop_real_provider_scan=UNCHANGED_WHEN_READY'
+            echo 'viop_underlying_history_recovery=EMBEDDED_THEN_60M_THEN_DAILY_THEN_QUOTE_ONLY'
+            echo 'viop_quote_only_candidate=STRUCTURED_INSUFFICIENT_DATA_NOT_DROPPED'
+            echo 'viop_watchlist_underlying_reference=EXPLICIT_D_PREFIX'
+            echo 'viop_fake_contract_price=NONE'
+            cat /tmp/test-summary.txt
+            echo 'production_viop_live_e2e=NOT_RUN'; echo 'yahoo_live_e2e=NOT_RUN'; echo 'physical_device_test=NOT_RUN'; echo 'signing=DEBUG'
+          } > /tmp/out/PROVENANCE.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: B125-VIOP-FALLBACK-RECOVERY
+          path: /tmp/out/*
+          retention-days: 90
