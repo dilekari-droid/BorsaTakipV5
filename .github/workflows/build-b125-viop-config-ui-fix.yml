@@ -69,6 +69,16 @@ jobs:
           echo '1397d31a7a6edbfb4891d8485310015a8617facab9c9401eec8f0b0c0a7378de  /tmp/b125.patch' | sha256sum -c -
           cd /tmp/src
           patch -p1 --batch --forward < /tmp/b125.patch
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/src/test/java/tr/borsatakip/v5/data/B125ViopConfigAndUiFixTest.kt')
+          s = p.read_text()
+          old = 'assertFalse(catalog.contains("symbol = \\"F_${underlying}"))'
+          new = 'assertFalse(catalog.contains("symbol = \\"F_"))'
+          if old not in s:
+              raise SystemExit('B125 test hotfix target not found')
+          p.write_text(s.replace(old, new))
+          PY
           grep -F 'versionCode = 125' app/build.gradle.kts
           grep -F 'DEFAULT_BACKEND_URL' app/build.gradle.kts
           grep -F 'BuildConfig.DEFAULT_BACKEND_URL' app/src/main/java/tr/borsatakip/v5/data/SettingsStore.kt
@@ -90,7 +100,7 @@ jobs:
           fi
           echo 'API_KEY_EMBEDDED=NO' | tee -a /tmp/backend-config.txt
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
