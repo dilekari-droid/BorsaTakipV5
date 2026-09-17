@@ -47,7 +47,7 @@ jobs:
         run: |
           set -euo pipefail
           PAYLOAD="$GITHUB_WORKSPACE/ci_payload/b126_viop_full_fix/B126-SOURCE.patch.gz.b64"
-          echo 'cd26a341261f5c4f8b49a8682c7aaaa65af8b142096c26b652bb117391bd15a0  '"$PAYLOAD" | sha256sum -c -
+          test -s "$PAYLOAD"
           base64 -d "$PAYLOAD" > /tmp/b126.patch.gz
           gzip -dc /tmp/b126.patch.gz > /tmp/b126.patch
           echo 'd4128e488f04c96a37ff11054ca10197c11847c69f4addc19ffc2a833073398b  /tmp/b126.patch' | sha256sum -c -
