@@ -1,0 +1,75 @@
+pContract,
+         val underlying: Opportunity
+@@ -41,7 +44,9 @@ class ViopUnderlyingScanner(private val provider: MarketDataProvider) {
+         val rows = nearestContracts.map { contract ->
+             async(Dispatchers.IO) {
+                 semaphore.withPermit {
+-                    val stock = runCatching { provider.fetchOne(contract.underlying) }.getOrNull()
++                    val stock = runCatching {
++                        externalResolver?.invoke(contract.underlying) ?: provider.fetchOne(contract.underlying)
++                    }.getOrNull()
+                     val opportunity = stock?.let { OpportunityEngine.score(it) }
+                     if (opportunity == null) null else Candidate(contract, opportunity)
+                 }
+diff --git a/app/src/main/java/tr/borsatakip/v5/data/BackendProvider.kt b/app/src/main/java/tr/borsatakip/v5/data/BackendProvider.kt
+index 8961f27..9a92cf9 100644
+--- a/app/src/main/java/tr/borsatakip/v5/data/BackendProvider.kt
++++ b/app/src/main/java/tr/borsatakip/v5/data/BackendProvider.kt
+@@ -121,9 +121,11 @@ class BackendProvider(context: Context) {
+             require(delay != null && delay in 0..RealTimeIntegrityPolicy.MAX_DECLARED_DELAY_SECONDS) { "STALE_DATA: Gecikme eşiği aşıldı veya bildirilmedi." }
+             require(exchangeTs <= now + RealTimeIntegrityPolicy.MAX_FUTURE_CLOCK_SKEW_MS) { "STALE_DATA: Piyasa zamanı gelecekte." }
+             require(now - exchangeTs <= RealTimeIntegrityPolicy.MAX_DATA_AGE_MS) { "STALE_DATA: Quote güncel değil." }
+-            require(x.optString("symbol").ifBlank { symbol }.uppercase() == symbol.uppercase()) { "QUOTE_ERROR: Sembol kimliği uyuşmuyor." }
++            val responseSymbol = x.optString("symbol").trim().uppercase()
++            require(responseSymbol.isNotBlank()) { "QUOTE_ERROR: Sembol kimliği eksik." }
++            require(responseSymbol == symbol.uppercase()) { "QUOTE_ERROR: Sembol kimliği uyuşmuyor." }
+             ViopQuote(
+-                symbol=x.optString("symbol").ifBlank { symbol }.uppercase(), price=price,
++                symbol=responseSymbol, price=price,
+                 bid=x.optDouble("bid", Double.NaN).takeIf { it.isFinite() && it >= 0.0 },
+                 ask=x.optDouble("ask", Double.NaN).takeIf { it.isFinite() && it >= 0.0 },
+                 dailyChangePct=x.optDouble("dailyChangePct", Double.NaN).takeIf { it.isFinite() },
+@@ -144,17 +146,41 @@ class BackendProvider(context: Context) {
+             require(interval in setOf("1m","3m","5m","15m","60m","1d")) { "HISTORY_ERROR: Geçersiz interval." }
+             val safe = URLEncoder.encode(symbol.uppercase(), "UTF-8")
+             val root = readJson("/v1/viop/history/$safe?range=$range&interval=$interval", "VİOP history")
++            val responseSymbol = root.optString("symbol").trim().uppercase()
++            require(responseSymbol.isNotBlank()) { "HISTORY_ERROR: Sembol kimliği eksik." }
++            require(responseSymbol == symbol.uppercase()) { "HISTORY_ERROR: Sembol kimliği uyuşmuyor." }
++            val responseInterval = root.optString("interval").trim()
++            require(responseInterval == interval) { "HISTORY_ERROR: Interval kimliği uyuşmuyor." }
++            val timezone = root.optString("exchangeTimezone").trim()
++            require(timezone == "Europe/Istanbul") { "HISTORY_ERROR: exchangeTimezone eksik/geçersiz." }
++            val sessionId = root.optString("sessionId").trim()
++            require(sessionId.isNotBlank()) { "HISTORY_ERROR: sessionId eksik." }
++            require(root.has("currentSessionIncluded") && !root.isNull("currentSessionIncluded")) { "HISTORY_ERROR: currentSessionIncluded eksik." }
++            if (interval != "1d") require(root.optBoolean("currentSessionIncluded", false)) { "HISTORY_ERROR: Güncel seans intraday history içinde değil." }
++            require(root.has("lastBarClosed") && !root.isNull("lastBarClosed")) { "HISTORY_ERROR: lastBarClosed eksik." }
++            require(root.optBoolean("lastBarClosed", false)) { "HISTORY_ERROR: Son history mumu kapanmamış." }
+             val array = root.optJSONArray("candles") ?: error("HISTORY_ERROR: candles alanı yok.")
+-            val candles = buildList {
+-                for (i in 0 until array.length()) {
+-                    val x=array.optJSONObject(i)?:continue
+-                    val c=Candle(x.optLong("timestamp",0L),x.optDouble("open",Double.NaN),x.optDouble("high",Double.NaN),x.optDouble("low",Double.NaN),x.optDouble("close",Double.NaN),x.optDouble("volume",Double.NaN))
+-                    if(c.timestamp>0 && listOf(c.open,c.high,c.low,c.close,c.volume).all{it.isFinite()} && c.high>=c.low && c.close>0 && c.volume>=0) add(c)
++            require(array.length() > 0) { "HISTORY_ERROR: candles boş." }
++            val candles = ArrayList<Candle>(array.length())
++            for (i in 0 until array.length()) {
++                val x = array.optJSONObject(i) ?: error("HISTORY_ERROR: candles[$i] nesne değil.")
++                for (field in listOf("timestamp", "open", "high", "low", "close", "volume")) {
++                    require(x.has(field) && !x.isNull(field)) { "HISTORY_ERROR: candles[$i].$field eksik." }
+                 }
+-            }.distinctBy{it.timestamp}.sortedBy{it.timestamp}
++                candles += Candle(
++                    x.optLong("timestamp", 0L),
++                    x.optDouble("open", Double.NaN),
++                    x.optDouble("high", Double.NaN),
++                    x.optDouble("low", Double.NaN),
++                    x.optDouble("close", Double.NaN),
++                    x.optDouble("volume", Double.NaN)
++                )
++            }
+             RealTimeIntegrityPolicy.validateCandles(candles)?.let { error("HISTORY_ERROR: $it") }
++            val lastBarTime = root.optLong("lastBarTime", 0L)
++            require(lastBarTime > 0L) { "HISTORY_ERROR: lastBarTime eksik." }
++            require(lastBarTime == candles.last().timestamp) { "HISTORY_ERROR: lastBarTime son mumla eşleşmiyor.
