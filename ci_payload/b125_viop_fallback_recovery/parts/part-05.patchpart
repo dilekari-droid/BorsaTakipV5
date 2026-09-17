@@ -1,0 +1,54 @@
++        findViewById<TextView>(R.id.metricAsk).text = "Satış\n—"
++        findViewById<TextView>(R.id.metricVolume).text = "Dayanak Hacim  ${last?.volume?.let(::formatCompact) ?: "—"}"
++        findViewById<TextView>(R.id.metricOi).text = "VİOP Açık Poz.  —"
++        findViewById<TextView>(R.id.metricBasis).text = "VİOP Basis  —"
++        findViewById<TextView>(R.id.providerLastUpdate).text = timeOf(o.dataTimestamp)
++        findViewById<TextView>(R.id.providerDataAge).text = "DAYANAK"
++        findViewById<TextView>(R.id.providerLatency).text = if (candidate.historyMode == ViopUnderlyingScanner.MODE_QUOTE_ONLY) "QUOTE" else candidate.historyMode
++        findViewById<TextView>(R.id.marketContracts).text = "Dayanak\n${candidate.contract.underlying}"
++    }
++
+     private fun renderOpportunities(items: List<ViopOpportunity>) {
+         val sorted = ViopScanner.sortOpportunities(items)
+         list.adapter = ViopOpportunityAdapter(sorted) {
+diff --git a/app/src/main/java/tr/borsatakip/v5/ui/ViopContractsActivity.kt b/app/src/main/java/tr/borsatakip/v5/ui/ViopContractsActivity.kt
+index 4d3aa39..42505d0 100644
+--- a/app/src/main/java/tr/borsatakip/v5/ui/ViopContractsActivity.kt
++++ b/app/src/main/java/tr/borsatakip/v5/ui/ViopContractsActivity.kt
+@@ -15,6 +15,9 @@ import android.widget.Toast
+ import androidx.lifecycle.lifecycleScope
+ import androidx.recyclerview.widget.LinearLayoutManager
+ import androidx.recyclerview.widget.RecyclerView
++import kotlinx.coroutines.async
++import kotlinx.coroutines.awaitAll
++import kotlinx.coroutines.coroutineScope
+ import kotlinx.coroutines.launch
+ import tr.borsatakip.v5.R
+ import tr.borsatakip.v5.analysis.ViopContractCategory
+@@ -339,8 +342,12 @@ class ViopContractsActivity : BaseActivity() {
+         if (underlyings.isEmpty()) return
+         lifecycleScope.launch {
+             val resolver = WatchlistDataResolver(this@ViopContractsActivity)
+-            underlyings.forEach { underlying ->
+-                val stock = runCatching { resolver.fetchDisplayStock(underlying) }.getOrNull()
++            val fetched = coroutineScope {
++                underlyings.map { underlying ->
++                    async { underlying to runCatching { resolver.fetchDisplayStock(underlying) }.getOrNull() }
++                }.awaitAll()
++            }
++            fetched.forEach { (underlying, stock) ->
+                 if (stock != null) underlyingStocks[underlying] = stock
+             }
+             bindWatchlist()
+diff --git a/app/src/main/java/tr/borsatakip/v5/ui/ViopUnderlyingOpportunityAdapter.kt b/app/src/main/java/tr/borsatakip/v5/ui/ViopUnderlyingOpportunityAdapter.kt
+index d3ee6cc..ec0e39a 100644
+--- a/app/src/main/java/tr/borsatakip/v5/ui/ViopUnderlyingOpportunityAdapter.kt
++++ b/app/src/main/java/tr/borsatakip/v5/ui/ViopUnderlyingOpportunityAdapter.kt
+@@ -36,8 +36,8 @@ class ViopUnderlyingOpportunityAdapter(
+         val isShort = direction == "SHORT"
+ 
+         holder.symbol.text = x.contract.symbol.uppercase()
+-        holder.subtitle.text = "${x.contract.underlying} • ${x.contract.expiry} • DAYANAK"
+-        holder.klass.text = "🟡 DAYANAK İZLEME • VİOP FİYATI YOK"
++        holder.subtitle.text = "${x.contract.underlying} • ${x.contract.expiry} • DAYANAK • ${x.historyMode}"
++        holder.klass.text = if (x.historyMode == ViopUnderlyingScanner.MODE_QUOTE_ONLY) "🟡 DAYANAK • TEKNİK HISTORY YETERSİZ" else "🟡 DAYANAK İZLEME • VİOP FİYATI YOK"

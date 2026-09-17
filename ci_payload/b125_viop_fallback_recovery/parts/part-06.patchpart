@@ -1,0 +1,59 @@
+         holder.direction.text = when {
+             isLong -> "↗  LONG DAYANAK"
+             isShort -> "↘  SHORT DAYANAK"
+diff --git a/app/src/main/java/tr/borsatakip/v5/ui/ViopWatchlistAdapter.kt b/app/src/main/java/tr/borsatakip/v5/ui/ViopWatchlistAdapter.kt
+index 29e0451..4209a3b 100644
+--- a/app/src/main/java/tr/borsatakip/v5/ui/ViopWatchlistAdapter.kt
++++ b/app/src/main/java/tr/borsatakip/v5/ui/ViopWatchlistAdapter.kt
+@@ -46,9 +46,24 @@ class ViopWatchlistAdapter(
+             }
+         } ?: "Sözleşme verisi bekleniyor"
+ 
+-        holder.last.text = c?.lastPrice?.takeIf { it.isFinite() }?.let { "%.2f".format(it) } ?: "—"
+-        val change = c?.dailyChangePct?.takeIf { it.isFinite() }
+-        holder.change.text = change?.let { "%+.2f%%".format(it) } ?: "—"
++        val contractPrice = c?.lastPrice?.takeIf { it.isFinite() }
++        val underlyingPrice = row.underlyingStock?.quotePrice?.takeIf { it.isFinite() && it > 0.0 }
++        val underlyingPrev = row.underlyingStock?.previousClose?.takeIf { it.isFinite() && it > 0.0 }
++        val contractChange = c?.dailyChangePct?.takeIf { it.isFinite() }
++        val underlyingChange = if (underlyingPrice != null && underlyingPrev != null) {
++            ((underlyingPrice - underlyingPrev) / underlyingPrev * 100.0).takeIf { it.isFinite() }
++        } else null
++        val change = contractChange ?: underlyingChange
++        holder.last.text = when {
++            contractPrice != null -> "%.2f".format(contractPrice)
++            underlyingPrice != null -> "D %.2f".format(underlyingPrice)
++            else -> "—"
++        }
++        holder.change.text = when {
++            contractChange != null -> "%+.2f%%".format(contractChange)
++            underlyingChange != null -> "D %+.2f%%".format(underlyingChange)
++            else -> "—"
++        }
+ 
+         val color = holder.itemView.context.getColor(when {
+             change == null -> R.color.text_secondary
+@@ -59,10 +74,9 @@ class ViopWatchlistAdapter(
+         holder.change.setTextColor(color)
+         holder.last.setTextColor(if (change == null) holder.itemView.context.getColor(R.color.text_primary) else color)
+ 
+-        val underlyingPrice = row.underlyingStock?.quotePrice?.takeIf { it.isFinite() && it > 0.0 }
+         holder.status.text = c?.let {
+             when {
+-                underlyingPrice != null -> "Dayanak ${"%.2f".format(underlyingPrice)}"
++                underlyingPrice != null && contractPrice == null -> "Dayanak • D=referans"
+                 it.providerId == "builtin_catalog" -> "Katalog"
+                 it.validity == SignalValidity.REJECTED -> "Reddedildi"
+                 it.validity == SignalValidity.INSUFFICIENT -> "Yetersiz"
+diff --git a/app/src/test/java/tr/borsatakip/v5/data/B117EngineIntegritySourceTest.kt b/app/src/test/java/tr/borsatakip/v5/data/B117EngineIntegritySourceTest.kt
+index af5c5bc..3f76fc5 100644
+--- a/app/src/test/java/tr/borsatakip/v5/data/B117EngineIntegritySourceTest.kt
++++ b/app/src/test/java/tr/borsatakip/v5/data/B117EngineIntegritySourceTest.kt
+@@ -18,6 +18,6 @@ class B117EngineIntegritySourceTest {
+ 
+     @Test fun versionCodeTracksCurrentIntegrityBuild() {
+         val s = File("build.gradle.kts").readText()
+-        assertTrue(s.contains("versionCode = 124"))
++        assertTrue(s.contains("versionCode = 125"))
+     }
+ }

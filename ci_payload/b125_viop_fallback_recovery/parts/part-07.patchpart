@@ -1,0 +1,52 @@
+diff --git a/app/src/test/java/tr/borsatakip/v5/data/B125ViopUnderlyingRecoveryTest.kt b/app/src/test/java/tr/borsatakip/v5/data/B125ViopUnderlyingRecoveryTest.kt
+new file mode 100644
+index 0000000..1cc3dac
+--- /dev/null
++++ b/app/src/test/java/tr/borsatakip/v5/data/B125ViopUnderlyingRecoveryTest.kt
+@@ -0,0 +1,46 @@
++package tr.borsatakip.v5.data
++
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertTrue
++import org.junit.Test
++import java.io.File
++
++class B125ViopUnderlyingRecoveryTest {
++    private fun read(path: String) = File(path).readText()
++
++    @Test fun underlyingScannerRecoversHistoryWhenFetchOneIsQuoteOnly() {
++        val s = read("src/main/java/tr/borsatakip/v5/analysis/ViopUnderlyingScanner.kt")
++        assertTrue(s.contains("provider.fetchHistory(symbol, nowMs - HOURLY_LOOKBACK_MS, nowMs, 60)"))
++        assertTrue(s.contains("provider.fetchDailyHistory(symbol, maximumRange = true)"))
++        assertTrue(s.contains("MODE_QUOTE_ONLY"))
++    }
++
++    @Test fun quoteOnlyUnderlyingDoesNotDisappear() {
++        val s = read("src/main/java/tr/borsatakip/v5/analysis/ViopUnderlyingScanner.kt")
++        assertTrue(s.contains("lastBarTime = quoteStock.dataTimestamp"))
++        assertTrue(s.contains("lastBarClosed = false"))
++        assertTrue(s.contains("OpportunityEngine.score(quoteOnly)"))
++    }
++
++    @Test fun contractWatchlistLoadsUnderlyingReferencesConcurrently() {
++        val s = read("src/main/java/tr/borsatakip/v5/ui/ViopContractsActivity.kt")
++        assertTrue(s.contains("underlyings.map { underlying ->"))
++        assertTrue(s.contains("async { underlying to"))
++        assertTrue(s.contains("awaitAll()"))
++    }
++
++    @Test fun underlyingReferenceIsExplicitlyNotContractPrice() {
++        val a = read("src/main/java/tr/borsatakip/v5/ui/ViopWatchlistAdapter.kt")
++        val v = read("src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt")
++        assertTrue(a.contains("D %.2f"))
++        assertTrue(a.contains("Dayanak • D=referans"))
++        assertTrue(v.contains("VİOP FİYATI DEĞİL"))
++    }
++
++    @Test fun underlyingCompletionSummaryIsNotImmediatelyOverwritten() {
++        val s = read("src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt")
++        val finallyBlock = s.substringAfter("underlyingScanCompleted = true").take(350)
++        assertFalse(finallyBlock.contains("refreshProviderState()"))
++        assertTrue(s.contains("lastUnderlyingSummary"))
++    }
++}

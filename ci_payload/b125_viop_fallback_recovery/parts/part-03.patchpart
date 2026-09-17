@@ -1,0 +1,76 @@
++        val previous = history.getOrNull(history.lastIndex - 1)?.close
++        return if (base != null) {
++            base.copy(
++                candles = history,
++                historySymbol = symbol,
++                market = "BIST",
++                interval = interval,
++                lastBarTime = last.timestamp,
++                // Conservative: current terminal bar is never promoted to a confirmed bar in fallback mode.
++                lastBarClosed = false,
++                exchangeTimezone = base.exchangeTimezone ?: "Europe/Istanbul",
++                previousClose = base.previousClose ?: previous
++            )
++        } else {
++            Stock(
++                symbol = symbol,
++                companyName = null,
++                candles = history,
++                source = "DAYANAK_HISTORY",
++                dataTimestamp = last.timestamp,
++                isRealtime = false,
++                delaySeconds = null,
++                currentSessionIncluded = false,
++                receivedAt = nowMs,
++                quotePrice = last.close,
++                previousClose = previous,
++                market = "BIST",
++                historySymbol = symbol,
++                interval = interval,
++                exchangeTimezone = "Europe/Istanbul",
++                lastBarTime = last.timestamp,
++                lastBarClosed = false
++            )
++        }
++    }
++
++    private fun closedBarCount(stock: Stock): Int = CandleReadinessPolicy.closedCandles(stock).size
++
++    private fun List<Candle>.sanitize(): List<Candle> = asSequence()
++        .filter { c ->
++            c.timestamp > 0L &&
++                listOf(c.open, c.high, c.low, c.close, c.volume).all { it.isFinite() } &&
++                c.open > 0.0 && c.high > 0.0 && c.low > 0.0 && c.close > 0.0 && c.volume >= 0.0 &&
++                c.low <= c.high && c.open in c.low..c.high && c.close in c.low..c.high
++        }
++        .distinctBy { it.timestamp }
++        .sortedBy { it.timestamp }
++        .toList()
++
+     companion object {
+         const val CONCURRENCY = 4
++        private const val REQUIRED_CLOSED_BARS = 220
++        private const val REQUIRED_SOURCE_BARS = REQUIRED_CLOSED_BARS + 1
++        private const val HOURLY_LOOKBACK_MS = 180L * 24L * 60L * 60L * 1000L
++        const val MODE_EMBEDDED = "EMBEDDED"
++        const val MODE_60M = "60M"
++        const val MODE_DAILY = "DAILY"
++        const val MODE_QUOTE_ONLY = "QUOTE_ONLY"
+     }
+ }
+diff --git a/app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt b/app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt
+index d5827fc..2415e19 100644
+--- a/app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt
++++ b/app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt
+@@ -49,6 +49,7 @@ class ViopActivity : BaseActivity() {
+     private var lastProviderAutoTestAt = 0L
+     private var underlyingScanInFlight = false
+     private var underlyingScanCompleted = false
++    private var lastUnderlyingSummary: String? = null
+ 
+     override fun onCreate(savedInstanceState: Bundle?) {
+         super.onCreate(savedInstanceState)
+@@ -164,7 +165,11 @@ class ViopActivity : BaseActivity() {
+             val error = s.state == ProviderState.PROVIDER_ERROR || s.state == ProviderState.PROVIDER_NOT_CONFIGURED
+             title.setTextColor(Color.parseColor(if (error) "#FF6B72" else "#AFC2D4"))
+             dot.setTextColor(Color.parseColor(if (error) "#FF4545" else "#7F9AB0"))

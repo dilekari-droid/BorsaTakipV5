@@ -1,0 +1,64 @@
+         val items = rows.filterNotNull().sortedWith(
+-            compareByDescending<Candidate> { it.underlying.rankingScore }
++            compareByDescending<Candidate> { it.underlying.decisionState.name != "INSUFFICIENT_DATA" }
++                .thenByDescending { it.underlying.rankingScore }
+                 .thenByDescending { it.underlying.finalSignalScore }
+                 .thenBy { it.contract.underlying }
+         )
+-        Result(items, nearestContracts.size, items.size, nearestContracts.size - items.size)
++        Result(
++            items = items,
++            attempted = nearestContracts.size,
++            resolved = items.size,
++            failed = nearestContracts.size - items.size,
++            technicalReady = items.count { it.historyMode != MODE_QUOTE_ONLY },
++            quoteOnly = items.count { it.historyMode == MODE_QUOTE_ONLY }
++        )
+     }
+ 
++    private suspend fun resolve(contract: ViopContract, nowMs: Long): Candidate? {
++        val symbol = contract.underlying
++        val quoteStock = runCatching { provider.fetchOne(symbol) }.getOrNull()
++
++        // fetchOne bazı sağlayıcılarda quote'u döndürür fakat analiz history'si boş kalabilir.
++        // Bu durumda adayın sessizce kaybolmaması için history'yi açıkça tamamlarız.
++        val embedded = quoteStock?.takeIf { closedBarCount(it) >= REQUIRED_CLOSED_BARS }
++        if (embedded != null) {
++            return OpportunityEngine.score(embedded)?.let { Candidate(contract, it, MODE_EMBEDDED) }
++        }
++
++        val hourly = runCatching {
++            provider.fetchHistory(symbol, nowMs - HOURLY_LOOKBACK_MS, nowMs, 60)
++        }.getOrDefault(emptyList()).sanitize()
++        if (hourly.size >= REQUIRED_SOURCE_BARS) {
++            val stock = stockWithHistory(quoteStock, symbol, hourly, "60m", nowMs)
++            val opportunity = OpportunityEngine.score(stock)
++            if (opportunity != null) return Candidate(contract, opportunity, MODE_60M)
++        }
++
++        val daily = runCatching { provider.fetchDailyHistory(symbol, maximumRange = true) }
++            .getOrDefault(emptyList()).sanitize()
++        if (daily.size >= REQUIRED_SOURCE_BARS) {
++            val stock = stockWithHistory(quoteStock, symbol, daily, "1d", nowMs)
++            val opportunity = OpportunityEngine.score(stock)
++            if (opportunity != null) return Candidate(contract, opportunity, MODE_DAILY)
++        }
++
++        // Quote mevcutsa teknik history yetersiz olsa bile satırı düşürmeyiz. lastBarTime vererek
++        // OpportunityEngine'in yapılandırılmış INSUFFICIENT_DATA çıktısı üretmesini sağlarız.
++        val quoteOnly = quoteStock?.quotePrice?.takeIf { it.isFinite() && it > 0.0 }?.let {
++            quoteStock.copy(
++                candles = emptyList(),
++                interval = "1m",
++                historySymbol = symbol,
++                market = "BIST",
++                lastBarTime = quoteStock.dataTimestamp.takeIf { ts -> ts > 0L } ?: nowMs,
++                lastBarClosed = false,
++                exchangeTimezone = quoteStock.exchangeTimezone ?: "Europe/Istanbul"
++            )
++        } ?: return null
++        return OpportunityEngine.score(quoteOnly)?.let { Candidate(contract, it, MODE_QUOTE_ONLY) }
++    }
++
++    private fun stockWithHistory(base: Stock?, symbol: String, history: List<Candle>, interval: String, nowMs: Long): Stock {
++        val last = history.last()

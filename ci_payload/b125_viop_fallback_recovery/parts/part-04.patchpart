@@ -1,0 +1,49 @@
+-            providerStatus.text = "${s.failureCode} • ${s.message}"
++            providerStatus.text = if (s.state == ProviderState.PROVIDER_NOT_CONFIGURED && !lastUnderlyingSummary.isNullOrBlank()) {
++                lastUnderlyingSummary
++            } else {
++                "${s.failureCode} • ${s.message}"
++            }
+         }
+         scanButton.text = when (s.state) {
+             ProviderState.PROVIDER_NOT_CONFIGURED -> if (underlyingScanCompleted) "DAYANAK TARAMASINI YENİLE" else "DAYANAK TARAMASINI BAŞLAT"
+@@ -295,9 +300,11 @@ class ViopActivity : BaseActivity() {
+                     shorts > longs -> "Eğilim\nSHORT"
+                     else -> "Eğilim\nDENGELİ"
+                 }
++                result.items.firstOrNull()?.let(::renderUnderlyingReference)
++                lastUnderlyingSummary = "Dayanak taraması: ${result.resolved}/${result.attempted} • Teknik ${result.technicalReady} • Quote-only ${result.quoteOnly}"
+                 status.text = buildString {
+                     append("DAYANAK TARAMASI TAMAMLANDI • VİOP fiyatı üretilmedi\n")
+-                    append("Denenen ${result.attempted} • Analiz ${result.resolved} • Veri yok ${result.failed}\n")
++                    append("Denenen ${result.attempted} • Gösterilen ${result.resolved} • Teknik ${result.technicalReady} • Quote-only ${result.quoteOnly} • Veri yok ${result.failed}\n")
+                     append("Gerçek VİOP fırsatı için production kontrat quote/history gerekir.")
+                 }
+             } catch (t: Throwable) {
+@@ -306,11 +313,38 @@ class ViopActivity : BaseActivity() {
+                 underlyingScanInFlight = false
+                 underlyingScanCompleted = true
+                 scanButton.isEnabled = true
+-                refreshProviderState()
++                scanButton.text = "DAYANAK TARAMASINI YENİLE"
++                providerStatus.text = lastUnderlyingSummary ?: "Dayanak taraması tamamlandı"
+             }
+         }
+     }
+ 
++    private fun renderUnderlyingReference(candidate: ViopUnderlyingScanner.Candidate) {
++        val o = candidate.underlying
++        val last = o.candles.lastOrNull()
++        findViewById<TextView>(R.id.heroTitle).text = "${candidate.contract.underlying} DAYANAK"
++        findViewById<TextView>(R.id.heroContract).text = "${candidate.contract.symbol} • ${candidate.contract.expiry} • VİOP FİYATI DEĞİL"
++        findViewById<TextView>(R.id.heroExpiry).text = "${candidate.historyMode} referansı"
++        findViewById<TextView>(R.id.heroPrice).text = formatPrice(o.price)
++        findViewById<TextView>(R.id.heroChange).apply {
++            text = o.dailyChangePct?.let { "DAYANAK %+.2f%%".format(it) } ?: "DAYANAK • değişim verisi yok"
++            setTextColor(when { o.dailyChangePct == null -> Color.parseColor("#AFC2D4"); o.dailyChangePct!! >= 0 -> Color.parseColor("#00F080"); else -> Color.parseColor("#FF5A66") })
++        }
++        findViewById<ViopSparklineView>(R.id.heroSparkline).setCandles(o.candles)
++        findViewById<TextView>(R.id.metricOpen).text = "Açılış\n${last?.open?.let(::formatPrice) ?: "—"}"
++        findViewById<TextView>(R.id.metricHigh).text = "En Yüksek\n${last?.high?.let(::formatPrice) ?: "—"}"
++        findViewById<TextView>(R.id.metricLow).text = "En Düşük\n${last?.low?.let(::formatPrice) ?: "—"}"
++        findViewById<TextView>(R.id.metricBid).text = "Alış\n—"
