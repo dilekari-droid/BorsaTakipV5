@@ -32,12 +32,13 @@ jobs:
           cat "$GITHUB_WORKSPACE"/ci_payload/b127_hotfix/chunks/part_* > /tmp/hotfix.b64
           base64 -d /tmp/hotfix.b64 | gzip -dc > /tmp/hotfix.patch
           (cd /tmp/src && patch -p1 --batch --forward < /tmp/hotfix.patch)
-      - name: Print MTF compile targets
+          (cd /tmp/src && python3 "$GITHUB_WORKSPACE/ci_payload/b127_hotfix/apply_compile_fix.py")
+      - name: Print warning sources
         shell: bash
         run: |
           set -euo pipefail
           cd /tmp/src
-          echo '=== MtfHistoryCache ==='
-          nl -ba app/src/main/java/tr/borsatakip/v5/data/MtfHistoryCache.kt
-          echo '=== B119StabilityPerformanceTest 90-135 ==='
-          nl -ba app/src/test/java/tr/borsatakip/v5/analysis/B119StabilityPerformanceTest.kt | sed -n '90,135p'
+          echo '=== ProductionBackendConfigSourceTest ==='
+          nl -ba app/src/test/java/tr/borsatakip/v5/production/ProductionBackendConfigSourceTest.kt
+          echo '=== ViopProviderFallbackPolicySourceTest ==='
+          nl -ba app/src/test/java/tr/borsatakip/v5/ui/ViopProviderFallbackPolicySourceTest.kt
