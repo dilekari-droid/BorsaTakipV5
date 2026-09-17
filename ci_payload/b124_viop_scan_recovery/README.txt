@@ -1,0 +1,1 @@
+B124 exact patch is transported as b124_exact.patch.gz. The workflow verifies decompression, git apply, source contracts, all discovered unit tests, APK signature and zipalign.
