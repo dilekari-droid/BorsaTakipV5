@@ -1,0 +1,116 @@
+mp in from..now }
++                .distinctBy { it.timestamp }
++                .sortedBy { it.timestamp }
++            if (candles.size < 220) continue
++            val bad = RealTimeIntegrityPolicy.validateCandles(candles)
++            if (bad != null) continue
++            return@withContext Stock(
++                symbol = symbolLabel.trim().uppercase(),
++                companyName = q.companyName,
++                candles = candles,
++                source = "$displayName • DAYANAK REFERANSI",
++                dataTimestamp = q.timestamp,
++                isRealtime = false,
++                delaySeconds = null,
++                currentSessionIncluded = false,
++                receivedAt = System.currentTimeMillis(),
++                receivedElapsedRealtime = SystemClock.elapsedRealtime(),
++                quotePrice = q.price,
++                currency = q.currency,
++                market = "REFERENCE",
++                historySymbol = ticker.uppercase(),
++                interval = "1d",
++                lastBarTime = candles.last().timestamp,
++                lastBarClosed = true,
++                previousClose = q.previousClose
++            )
++        }
++        null
++    }
++
+     /**
+      * Genel fetchOne önce quote'u alır. Günlük history başarısız olsa bile geçerli quote kaybolmaz.
+      * Böylece takip ekranı için fiyat, analiz history'sine yanlışlıkla bağımlı olmaz.
+@@ -271,7 +315,11 @@ class YahooFallbackProvider(context: Context) : MarketDataProvider {
+         repeat(MAX_QUOTE_ATTEMPTS) { index ->
+             last = fetchDelayedQuoteOnce(providerTicker)
+             if (last.quote != null || !last.retryable) return last
+-            if (index < MAX_QUOTE_ATTEMPTS - 1) delay(QUOTE_RETRY_BASE_MS * (index + 1))
++            if (index < MAX_QUOTE_ATTEMPTS - 1) {
++                val base = QUOTE_RETRY_BASE_MS * (index + 1)
++                val jitter = Random.nextLong(0L, QUOTE_RETRY_JITTER_MS + 1L)
++                delay(base + jitter)
++            }
+         }
+         return last
+     }
+@@ -413,5 +461,6 @@ class YahooFallbackProvider(context: Context) : MarketDataProvider {
+         private const val ONE_MINUTE_HISTORY_CHUNK_MS = 5L * 24 * 60 * 60 * 1000
+         private const val MAX_QUOTE_ATTEMPTS = 3
+         private const val QUOTE_RETRY_BASE_MS = 350L
++        private const val QUOTE_RETRY_JITTER_MS = 175L
+     }
+ }
+diff --git a/app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt b/app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt
+index d5827fc..332a3a8 100644
+--- a/app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt
++++ b/app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt
+@@ -19,6 +19,8 @@ import tr.borsatakip.v5.analysis.ViopUnderlyingScanner
+ import tr.borsatakip.v5.data.BackendProvider
+ import tr.borsatakip.v5.data.ProviderReadinessService
+ import tr.borsatakip.v5.data.ProviderRouter
++import tr.borsatakip.v5.data.YahooFallbackProvider
++import tr.borsatakip.v5.data.ViopUnderlyingTickerMap
+ import tr.borsatakip.v5.data.AlertEventStore
+ import tr.borsatakip.v5.data.ProviderState
+ import tr.borsatakip.v5.data.SettingsStore
+@@ -56,7 +58,15 @@ class ViopActivity : BaseActivity() {
+         setupBottomNav()
+         backend = BackendProvider(this)
+         scanner = ViopScanner(backend, ProviderRouter(this), ViopStrategyDecisionService(this, backend))
+-        underlyingScanner = ViopUnderlyingScanner(ProviderRouter(this, experimentalFallbackOverride = true))
++        val underlyingRouter = ProviderRouter(this, experimentalFallbackOverride = true)
++        val delayedReferenceProvider = YahooFallbackProvider(this)
++        underlyingScanner = ViopUnderlyingScanner(underlyingRouter) { underlying ->
++            if (ViopUnderlyingTickerMap.isExternalReference(underlying)) {
++                delayedReferenceProvider.fetchExternalTechnicalStock(underlying, ViopUnderlyingTickerMap.yahooTickers(underlying))
++            } else {
++                underlyingRouter.fetchOne(underlying)
++            }
++        }
+         readiness = ProviderReadinessService(this)
+         list = findViewById(R.id.list)
+         status = findViewById(R.id.status)
+diff --git a/app/src/test/java/tr/borsatakip/v5/analysis/B119StabilityPerformanceTest.kt b/app/src/test/java/tr/borsatakip/v5/analysis/B119StabilityPerformanceTest.kt
+index 0454f9c..39894df 100644
+--- a/app/src/test/java/tr/borsatakip/v5/analysis/B119StabilityPerformanceTest.kt
++++ b/app/src/test/java/tr/borsatakip/v5/analysis/B119StabilityPerformanceTest.kt
+@@ -56,7 +56,7 @@ class B119StabilityPerformanceTest {
+ 
+     @Test fun decisionPricePrefersHistoryBarOverLiveQuote() {
+         val history = listOf(candle(0), candle(1))
+-        val decision = DecisionPricePolicy.historyBarPrice(history, 999.0)
++        val decision = DecisionPricePolicy.historyBarPrice(history)
+         assertEquals(history.last().close, decision!!, 0.0001)
+         assertNotEquals(999.0, decision, 0.0001)
+     }
+@@ -68,9 +68,9 @@ class B119StabilityPerformanceTest {
+             loads += 1
+             listOf(candle(loads))
+         }
+-        val first = MtfHistoryCache.loadFresh("P", "THYAO", "1m", 1_000L, { now }, loader)
++        val first = MtfHistoryCache.loadFresh("P", "THYAO", "1m", 1_000L, nowMs = { now }, loader = loader)
+         now += 500L
+-        val second = MtfHistoryCache.loadFresh("P", "THYAO", "1m", 1_000L, { now }, loader)
++        val second = MtfHistoryCache.loadFresh("P", "THYAO", "1m", 1_000L, nowMs = { now }, loader = loader)
+         assertEquals(1, loads)
+         assertEquals(first, second)
+     }
+@@ -82,9 +82,9 @@ class B119StabilityPerformanceTest {
+             loads += 1
+             listOf(candle(loads))
+         }
+-        val first = MtfHistoryCache.loadFresh("P", "GARAN", "60m", 1_000L, { now }, loader)
++        val first = MtfHistoryCache.loadFresh("P", "GARAN", "60m", 1_000L, nowMs = { now }, loader = loader)
+         now += 1_001L
+-        val second = MtfHistoryCache.loadFresh("P", "GARAN", "60m", 1_000L, {
