@@ -1,0 +1,152 @@
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+index b19bca1..d34bac9 100644
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -12,7 +12,7 @@ android {
+         applicationId = "tr.borsatakip.v5"
+         minSdk = 26
+         targetSdk = 35
+-        versionCode = 124
++        versionCode = 125
+         versionName = "5.2.5"
+         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+     }
+diff --git a/app/src/main/java/tr/borsatakip/v5/analysis/ViopUnderlyingScanner.kt b/app/src/main/java/tr/borsatakip/v5/analysis/ViopUnderlyingScanner.kt
+index d1c4b37..f8459d2 100644
+--- a/app/src/main/java/tr/borsatakip/v5/analysis/ViopUnderlyingScanner.kt
++++ b/app/src/main/java/tr/borsatakip/v5/analysis/ViopUnderlyingScanner.kt
+@@ -6,31 +6,39 @@ import kotlinx.coroutines.awaitAll
+ import kotlinx.coroutines.coroutineScope
+ import kotlinx.coroutines.sync.Semaphore
+ import kotlinx.coroutines.sync.withPermit
++import tr.borsatakip.v5.data.CandleReadinessPolicy
+ import tr.borsatakip.v5.data.MarketDataProvider
+ import tr.borsatakip.v5.data.ViopBuiltinContractCatalog
++import tr.borsatakip.v5.model.Candle
+ import tr.borsatakip.v5.model.Opportunity
++import tr.borsatakip.v5.model.Stock
+ import tr.borsatakip.v5.model.ViopContract
+ 
+ /**
+  * Production VİOP quote/history bulunmadığında kullanılan DAYANAK İZLEME taraması.
+- * Bu sınıf VİOP fiyatı, hacmi veya açık pozisyon üretmez. Yalnız ilgili BIST dayanağının
+- * mevcut teknik motor çıktısını en yakın yerel kontrat etiketiyle birlikte sunar.
++ * VİOP fiyatı, hacmi veya açık pozisyon üretmez. Yalnız BIST dayanak verisini teknik olarak tarar.
++ *
++ * B125: quote ile history birbirine bağlı değildir. Quote geldiyse history ayrıca 60m/daily olarak
++ * tamamlanır. History yine yetersizse aday kaybolmaz; YETERSİZ VERİ olarak görünür.
+  */
+ class ViopUnderlyingScanner(private val provider: MarketDataProvider) {
+     data class Candidate(
+         val contract: ViopContract,
+-        val underlying: Opportunity
++        val underlying: Opportunity,
++        val historyMode: String
+     )
+ 
+     data class Result(
+         val items: List<Candidate>,
+         val attempted: Int,
+         val resolved: Int,
+-        val failed: Int
++        val failed: Int,
++        val technicalReady: Int,
++        val quoteOnly: Int
+     )
+ 
+-    suspend fun scan(): Result = coroutineScope {
+-        val nearestContracts = ViopBuiltinContractCatalog.current()
++    suspend fun scan(nowMs: Long = System.currentTimeMillis()): Result = coroutineScope {
++        val nearestContracts = ViopBuiltinContractCatalog.current(nowMs)
+             .filter { it.underlying.matches(Regex("[A-Z0-9_]{3,12}")) }
+             .filterNot { it.underlying == "XU030" }
+             .groupBy { it.underlying }
+@@ -40,23 +48,129 @@ class ViopUnderlyingScanner(private val provider: MarketDataProvider) {
+         val semaphore = Semaphore(CONCURRENCY)
+         val rows = nearestContracts.map { contract ->
+             async(Dispatchers.IO) {
+-                semaphore.withPermit {
+-                    val stock = runCatching { provider.fetchOne(contract.underlying) }.getOrNull()
+-                    val opportunity = stock?.let { OpportunityEngine.score(it) }
+-                    if (opportunity == null) null else Candidate(contract, opportunity)
+-                }
++                semaphore.withPermit { resolve(contract, nowMs) }
+             }
+         }.awaitAll()
+ 
+         val items = rows.filterNotNull().sortedWith(
+-            compareByDescending<Candidate> { it.underlying.rankingScore }
++            compareByDescending<Candidate> { it.underlying.decisionState.name != "INSUFFICIENT_DATA" }
++                .thenByDescending { it.underlying.rankingScore }
+                 .thenByDescending { it.underlying.finalSignalScore }
+                 .thenBy { it.contract.underlying }
+         )
+-        Result(items, nearestContracts.size, items.size, nearestContracts.size - items.size)
++        Result(
++            items = items,
++            attempted = nearestContracts.size,
++            resolved = items.size,
++            failed = nearestContracts.size - items.size,
++            technicalReady = items.count { it.historyMode != MODE_QUOTE_ONLY },
++            quoteOnly = items.count { it.historyMode == MODE_QUOTE_ONLY }
++        )
+     }
+ 
++    private suspend fun resolve(contract: ViopContract, nowMs: Long): Candidate? {
++        val symbol = contract.underlying
++        val quoteStock = runCatching { provider.fetchOne(symbol) }.getOrNull()
++
++        // fetchOne bazı sağlayıcılarda quote'u döndürür fakat analiz history'si boş kalabilir.
++        // Bu durumda adayın sessizce kaybolmaması için history'yi açıkça tamamlarız.
++        val embedded = quoteStock?.takeIf { closedBarCount(it) >= REQUIRED_CLOSED_BARS }
++        if (embedded != null) {
++            return OpportunityEngine.score(embedded)?.let { Candidate(contract, it, MODE_EMBEDDED) }
++        }
++
++        val hourly = runCatching {
++            provider.fetchHistory(symbol, nowMs - HOURLY_LOOKBACK_MS, nowMs, 60)
++        }.getOrDefault(emptyList()).sanitize()
++        if (hourly.size >= REQUIRED_SOURCE_BARS) {
++            val stock = stockWithHistory(quoteStock, symbol, hourly, "60m", nowMs)
++            val opportunity = OpportunityEngine.score(stock)
++            if (opportunity != null) return Candidate(contract, opportunity, MODE_60M)
++        }
++
++        val daily = runCatching { provider.fetchDailyHistory(symbol, maximumRange = true) }
++            .getOrDefault(emptyList()).sanitize()
++        if (daily.size >= REQUIRED_SOURCE_BARS) {
++            val stock = stockWithHistory(quoteStock, symbol, daily, "1d", nowMs)
++            val opportunity = OpportunityEngine.score(stock)
++            if (opportunity != null) return Candidate(contract, opportunity, MODE_DAILY)
++        }
++
++        // Quote mevcutsa teknik history yetersiz olsa bile satırı düşürmeyiz. lastBarTime vererek
++        // OpportunityEngine'in yapılandırılmış INSUFFICIENT_DATA çıktısı üretmesini sağlarız.
++        val quoteOnly = quoteStock?.quotePrice?.takeIf { it.isFinite() && it > 0.0 }?.let {
++            quoteStock.copy(
++                candles = emptyList(),
++                interval = "1m",
++                historySymbol = symbol,
++                market = "BIST",
++                lastBarTime = quoteStock.dataTimestamp.takeIf { ts -> ts > 0L } ?: nowMs,
++                lastBarClosed = false,
++                exchangeTimezone = quoteStock.exchangeTimezone ?: "Europe/Istanbul"
++            )
++        } ?: return null
++        return OpportunityEngine.score(quoteOnly)?.let { Candidate(contract, it, MODE_QUOTE_ONLY) }
++    }
++
++    private fun stockWithHistory(base: Stock?, symbol: String, history: List<Candle>, interval: String, nowMs: Long): Stock {
++        val last = history.last()
++        val previous = history.getOrNull(history.lastIndex - 1)?.close
++        return if (base != null) {
++            base.copy(
++                candles = history,
++                historySymbol = symbol,
++                market = "BIST",
++                interval = interval,
++                lastBarTime = last.timestamp,
++                // Conservative: current terminal bar is never promoted to a confirmed bar in fallback mode.
++                lastBarClosed = false,
++                exchangeTimezone = base.exchangeTimezone ?: "Europe/Istanbul",
++      M�
