@@ -47,10 +47,10 @@ jobs:
         run: |
           set -euo pipefail
           PAYLOAD="$GITHUB_WORKSPACE/ci_payload/b126_viop_full_fix/B126-SOURCE.patch.gz.b64"
-          echo '91775d101925ac2abbab0674818c38aae5332ca67c0e9c6ccf40d6d5cd57fbb4  '"$PAYLOAD" | sha256sum -c -
+          echo 'cd26a341261f5c4f8b49a8682c7aaaa65af8b142096c26b652bb117391bd15a0  '"$PAYLOAD" | sha256sum -c -
           base64 -d "$PAYLOAD" > /tmp/b126.patch.gz
           gzip -dc /tmp/b126.patch.gz > /tmp/b126.patch
-          echo 'fe252b6b00e4be17db93af58181392b3434fb02cec0fab07b6a4ad19cc8ecfc0  /tmp/b126.patch' | sha256sum -c -
+          echo 'd4128e488f04c96a37ff11054ca10197c11847c69f4addc19ffc2a833073398b  /tmp/b126.patch' | sha256sum -c -
           cd /tmp/src
           patch -p1 --batch --forward < /tmp/b126.patch
           grep -F 'versionCode = 126' app/build.gradle.kts
