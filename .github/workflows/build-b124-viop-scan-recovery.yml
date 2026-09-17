@@ -33,10 +33,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cp ci_payload/b124_viop_scan_recovery/b124_final.patch /tmp/b124.patch
-          cp ci_payload/b124_viop_scan_recovery/b124_runtime_followup.patch /tmp/b124-followup.patch
-          echo '9b66b1dd84a5bfb72a22c067d89af66e64b31e38da3683c9caff6a1395b3e7f1  /tmp/b124.patch' | sha256sum -c -
-          echo '779c4760fd20f88128f4882eae340894e52c13129420e4fd2df7a884d42cb35d  /tmp/b124-followup.patch' | sha256sum -c -
+          MAIN=ci_payload/b124_viop_scan_recovery/b124_final.patch
+          FOLLOW=ci_payload/b124_viop_scan_recovery/b124_runtime_followup.patch
+          test "$(git hash-object "$MAIN")" = 'dfe6243bb81247c653f3da5a8227d0babba2023f'
+          test "$(git hash-object "$FOLLOW")" = '3034141fb9b7ad42484790a9038a454cd62b7644'
+          cp "$MAIN" /tmp/b124.patch
+          cp "$FOLLOW" /tmp/b124-followup.patch
+          sha256sum /tmp/b124.patch | tee /tmp/b124-main.sha256
+          sha256sum /tmp/b124-followup.patch | tee /tmp/b124-followup.sha256
           cd /tmp/src
           git apply --check /tmp/b124.patch
           git apply /tmp/b124.patch
@@ -50,8 +54,8 @@ jobs:
           grep -F 'VİOP taraması BIST sonucundan bağımsızdır' app/src/main/java/tr/borsatakip/v5/worker/OpportunityWorker.kt
           cp /tmp/b124.patch /tmp/out/B124-VIOP-SCAN-RECOVERY.patch
           cp /tmp/b124-followup.patch /tmp/out/B124-RUNTIME-FOLLOWUP.patch
-          sha256sum /tmp/b124.patch > /tmp/out/B124-VIOP-SCAN-RECOVERY.patch.sha256
-          sha256sum /tmp/b124-followup.patch > /tmp/out/B124-RUNTIME-FOLLOWUP.patch.sha256
+          cp /tmp/b124-main.sha256 /tmp/out/B124-VIOP-SCAN-RECOVERY.patch.sha256
+          cp /tmp/b124-followup.sha256 /tmp/out/B124-RUNTIME-FOLLOWUP.patch.sha256
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -105,11 +109,13 @@ jobs:
           PY
           sha256sum /tmp/out/V5-ARACI-KURUM-5.2.5-B124-VIOP-SCAN-RECOVERY-Kaynak-Kod.zip > /tmp/out/V5-ARACI-KURUM-5.2.5-B124-VIOP-SCAN-RECOVERY-Kaynak-Kod.zip.sha256
           cp /tmp/test-summary.txt /tmp/out/TEST-SUMMARY.txt
+          MAIN_SHA=$(cut -d' ' -f1 /tmp/b124-main.sha256)
+          FOLLOW_SHA=$(cut -d' ' -f1 /tmp/b124-followup.sha256)
           {
             echo 'B124 VIOP SCAN RECOVERY VERIFIED BUILD'
             echo 'applicationId=tr.borsatakip.v5'; echo 'versionCode=124'; echo 'versionName=5.2.5'
-            echo 'b124_patch_sha256=9b66b1dd84a5bfb72a22c067d89af66e64b31e38da3683c9caff6a1395b3e7f1'
-            echo 'b124_followup_sha256=779c4760fd20f88128f4882eae340894e52c13129420e4fd2df7a884d42cb35d'
+            echo "b124_patch_sha256=$MAIN_SHA"
+            echo "b124_followup_sha256=$FOLLOW_SHA"
             echo 'viop_production_scan=UNCHANGED_WHEN_PROVIDER_READY'
             echo 'viop_underlying_scan=AUTO_AVAILABLE_WITHOUT_VIOP_BACKEND'
             echo 'viop_underlying_scan_fake_contract_price=NONE'
