@@ -71,12 +71,21 @@ jobs:
           patch -p1 --batch --forward < /tmp/b125.patch
           python3 - <<'PY'
           from pathlib import Path
+
           p = Path('app/src/test/java/tr/borsatakip/v5/data/B125ViopConfigAndUiFixTest.kt')
           s = p.read_text()
           old = 'assertFalse(catalog.contains("symbol = \\"F_${underlying}"))'
           new = 'assertFalse(catalog.contains("symbol = \\"F_"))'
           if old not in s:
               raise SystemExit('B125 test hotfix target not found')
+          p.write_text(s.replace(old, new))
+
+          p = Path('app/src/test/java/tr/borsatakip/v5/data/B117EngineIntegritySourceTest.kt')
+          s = p.read_text()
+          old = 'assertTrue(s.contains("versionCode = 124"))'
+          new = 'assertTrue(s.contains("versionCode = 125"))'
+          if old not in s:
+              raise SystemExit('B117 version invariant target not found')
           p.write_text(s.replace(old, new))
           PY
           grep -F 'versionCode = 125' app/build.gradle.kts
