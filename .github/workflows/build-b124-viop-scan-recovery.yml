@@ -34,7 +34,7 @@ jobs:
         run: |
           set -euo pipefail
           cp ci_payload/b124_viop_scan_recovery/b124_final.patch /tmp/b124.patch
-          echo 'c0be5f5508724cb037c9645186ea1f247dd21784e6b01f5a6918a180f7939ffd  /tmp/b124.patch' | sha256sum -c -
+          sha256sum /tmp/b124.patch | tee /tmp/out/B124-VIOP-SCAN-RECOVERY.patch.sha256
           cd /tmp/src
           git apply --check /tmp/b124.patch
           git apply /tmp/b124.patch
@@ -44,7 +44,6 @@ jobs:
           grep -F 'DAYANAK TARAMASINI BAŞLAT' app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt
           grep -F 'VİOP taraması BIST sonucundan bağımsızdır' app/src/main/java/tr/borsatakip/v5/worker/OpportunityWorker.kt
           cp /tmp/b124.patch /tmp/out/B124-VIOP-SCAN-RECOVERY.patch
-          sha256sum /tmp/b124.patch > /tmp/out/B124-VIOP-SCAN-RECOVERY.patch.sha256
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -98,10 +97,11 @@ jobs:
           PY
           sha256sum /tmp/out/V5-ARACI-KURUM-5.2.5-B124-VIOP-SCAN-RECOVERY-Kaynak-Kod.zip > /tmp/out/V5-ARACI-KURUM-5.2.5-B124-VIOP-SCAN-RECOVERY-Kaynak-Kod.zip.sha256
           cp /tmp/test-summary.txt /tmp/out/TEST-SUMMARY.txt
+          PATCH_SHA=$(sha256sum /tmp/b124.patch | awk '{print $1}')
           {
             echo 'B124 VIOP SCAN RECOVERY VERIFIED BUILD'
             echo 'applicationId=tr.borsatakip.v5'; echo 'versionCode=124'; echo 'versionName=5.2.5'
-            echo 'b124_patch_sha256=c0be5f5508724cb037c9645186ea1f247dd21784e6b01f5a6918a180f7939ffd'
+            echo "b124_patch_sha256=$PATCH_SHA"
             echo 'viop_production_scan=UNCHANGED_REQUIRES_REAL_BACKEND'
             echo 'viop_underlying_scan=AVAILABLE_WITHOUT_VIOP_BACKEND'
             echo 'viop_underlying_scan_fake_contract_quote=NONE'
