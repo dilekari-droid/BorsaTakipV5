@@ -1,0 +1,120 @@
+name: B127 Install Fix Build
+
+on:
+  push:
+    branches: [v525-b127-merged-integrity-fix]
+    paths:
+      - '.github/workflows/build-b127-install-fix.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore verified B127 source
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/src /tmp/out /tmp/b127
+          mkdir -p /tmp/src /tmp/out /tmp/b127
+          curl -fL --retry 3 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/dilekari-droid/BorsaTakipV5/actions/artifacts/10513900581/zip" \
+            -o /tmp/b127-artifact.zip
+          unzip -q /tmp/b127-artifact.zip -d /tmp/b127
+          SRCZIP=$(find /tmp/b127 -type f -name '*B127*Kaynak-Kod.zip' | head -n1)
+          test -n "$SRCZIP" -a -s "$SRCZIP"
+          echo 'c8755ec2df120e14618593e48603ef19cfbfe07bce938f311d6c0e07fe117ff9  '"$SRCZIP" | sha256sum -c -
+          unzip -q "$SRCZIP" -d /tmp/src
+          grep -F 'applicationId = "tr.borsatakip.v5"' /tmp/src/app/build.gradle.kts
+          grep -F 'versionCode = 127' /tmp/src/app/build.gradle.kts
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Re-verify B127 source tests
+        working-directory: /tmp/src
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon testDebugUnitTest lintDebug --stacktrace
+
+      - name: Apply installability fix
+        working-directory: /tmp/src
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('app/build.gradle.kts')
+          s=p.read_text(encoding='utf-8')
+          s=s.replace('applicationId = "tr.borsatakip.v5"','applicationId = "tr.borsatakip.v5.b127fix"',1)
+          s=s.replace('versionCode = 127','versionCode = 12701',1)
+          s=s.replace('versionName = "5.2.5"','versionName = "5.2.5-b127-installfix"',1)
+          p.write_text(s,encoding='utf-8')
+          sp=Path('app/src/main/res/values/strings.xml')
+          ss=sp.read_text(encoding='utf-8')
+          ss=ss.replace('<string name="app_name">V5 ARACI KURUM</string>','<string name="app_name">V5 ARACI KURUM B127 FIX</string>',1)
+          sp.write_text(ss,encoding='utf-8')
+          PY
+          grep -F 'applicationId = "tr.borsatakip.v5.b127fix"' app/build.gradle.kts
+          grep -F 'versionCode = 12701' app/build.gradle.kts
+          grep -F 'versionName = "5.2.5-b127-installfix"' app/build.gradle.kts
+          grep -F '<string name="app_name">V5 ARACI KURUM B127 FIX</string>' app/src/main/res/values/strings.xml
+
+      - name: Assemble install-fix APK
+        working-directory: /tmp/src
+        run: gradle --no-daemon assembleDebug --stacktrace
+
+      - name: Verify and export install-fix APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=/tmp/src/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          BT="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)"
+          AAPT="$ANDROID_HOME/build-tools/$BT/aapt"
+          APKSIGNER="$ANDROID_HOME/build-tools/$BT/apksigner"
+          ZIPALIGN="$ANDROID_HOME/build-tools/$BT/zipalign"
+          BADGING="$($AAPT dump badging "$APK" | head -n1)"
+          echo "$BADGING" | tee /tmp/out/BADGING.txt
+          echo "$BADGING" | grep -F "name='tr.borsatakip.v5.b127fix'"
+          echo "$BADGING" | grep -F "versionCode='12701'"
+          echo "$BADGING" | grep -F "versionName='5.2.5-b127-installfix'"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee /tmp/out/APKSIGNER.txt
+          "$APKSIGNER" verify --verbose "$APK" | grep -F 'Verified using v2 scheme (APK Signature Scheme v2): true'
+          "$ZIPALIGN" -c -v 4 "$APK" | tee /tmp/out/ZIPALIGN.txt
+          OUT=/tmp/out/V5-ARACI-KURUM-5.2.5-B127-INSTALL-FIX-debug.apk
+          cp "$APK" "$OUT"
+          sha256sum "$OUT" | tee "$OUT.sha256"
+          cat > /tmp/out/INSTALL-FIX-NOTE.txt <<'EOF'
+B127 INSTALL FIX
+Original package: tr.borsatakip.v5
+Install-fix package: tr.borsatakip.v5.b127fix
+Reason: avoids Android signature conflict with previously installed builds signed by a different key.
+This APK installs as a separate application and does not overwrite the old package.
+Backend URL/API credentials are still not embedded.
+EOF
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: B127-INSTALL-FIX
+          path: /tmp/out/*
+          retention-days: 90
