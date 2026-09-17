@@ -1,0 +1,122 @@
+" }
+             if(minimumBars>0) require(candles.size>=minimumBars){"INSUFFICIENT_HISTORY: ${candles.size} mum; minimum $minimumBars."}
+-            require(root.optString("symbol").ifBlank{symbol}.uppercase()==symbol.uppercase()){ "HISTORY_ERROR: Sembol kimliği uyuşmuyor." }
+             candles
+         }
+     }
+diff --git a/app/src/main/java/tr/borsatakip/v5/data/MtfHistoryCache.kt b/app/src/main/java/tr/borsatakip/v5/data/MtfHistoryCache.kt
+index 365f605..64a1de1 100644
+--- a/app/src/main/java/tr/borsatakip/v5/data/MtfHistoryCache.kt
++++ b/app/src/main/java/tr/borsatakip/v5/data/MtfHistoryCache.kt
+@@ -30,6 +30,7 @@ object MtfHistoryCache {
+         symbol: String,
+         timeframe: String,
+         ttlMs: Long,
++        maxExchangeAgeMs: Long? = null,
+         nowMs: () -> Long = { System.currentTimeMillis() },
+         loader: suspend () -> List<Candle>
+     ): List<Candle> {
+@@ -37,12 +38,12 @@ object MtfHistoryCache {
+         val normalizedSymbol = symbol.trim().uppercase()
+         val key = "${sourceKey.trim()}|$normalizedSymbol|${timeframe.trim().lowercase()}"
+         val now = nowMs()
+-        entries[key]?.takeIf { now >= it.loadedAt && now - it.loadedAt <= ttlMs }?.let { return it.candles }
++        entries[key]?.takeIf { isFresh(it, now, ttlMs, maxExchangeAgeMs) }?.let { return it.candles }
+ 
+         val lock = locks.getOrPut(key) { Mutex() }
+         return lock.withLock {
+             val lockedNow = nowMs()
+-            entries[key]?.takeIf { lockedNow >= it.loadedAt && lockedNow - it.loadedAt <= ttlMs }?.let {
++            entries[key]?.takeIf { isFresh(it, lockedNow, ttlMs, maxExchangeAgeMs) }?.let {
+                 return@withLock it.candles
+             }
+ 
+@@ -51,10 +52,18 @@ object MtfHistoryCache {
+                 entries.remove(key)
+                 return@withLock emptyList()
+             }
++            val lastExchange = clean.last().timestamp
++            if (maxExchangeAgeMs != null) {
++                val age = lockedNow - lastExchange
++                if (lastExchange <= 0L || age < -RealTimeIntegrityPolicy.MAX_FUTURE_CLOCK_SKEW_MS || age > maxExchangeAgeMs) {
++                    entries.remove(key)
++                    return@withLock emptyList()
++                }
++            }
+             entries[key] = Entry(
+                 candles = clean,
+                 loadedAt = lockedNow,
+-                lastExchangeTimestamp = clean.last().timestamp,
++                lastExchangeTimestamp = lastExchange,
+                 sourceKey = sourceKey,
+                 symbol = normalizedSymbol,
+                 timeframe = timeframe
+@@ -63,6 +72,15 @@ object MtfHistoryCache {
+         }
+     }
+ 
++    private fun isFresh(entry: Entry, now: Long, ttlMs: Long, maxExchangeAgeMs: Long?): Boolean {
++        if (now < entry.loadedAt || now - entry.loadedAt > ttlMs) return false
++        if (maxExchangeAgeMs == null) return true
++        val age = now - entry.lastExchangeTimestamp
++        return entry.lastExchangeTimestamp > 0L &&
++            age >= -RealTimeIntegrityPolicy.MAX_FUTURE_CLOCK_SKEW_MS &&
++            age <= maxExchangeAgeMs
++    }
++
+     fun peek(sourceKey: String, symbol: String, timeframe: String): Entry? {
+         val key = "${sourceKey.trim()}|${symbol.trim().uppercase()}|${timeframe.trim().lowercase()}"
+         return entries[key]
+diff --git a/app/src/main/java/tr/borsatakip/v5/data/ViopUnderlyingTickerMap.kt b/app/src/main/java/tr/borsatakip/v5/data/ViopUnderlyingTickerMap.kt
+new file mode 100644
+index 0000000..ed9150f
+--- /dev/null
++++ b/app/src/main/java/tr/borsatakip/v5/data/ViopUnderlyingTickerMap.kt
+@@ -0,0 +1,17 @@
++package tr.borsatakip.v5.data
++
++/** Explicit provider ticker mapping for delayed underlying-reference mode. */
++object ViopUnderlyingTickerMap {
++    fun yahooTickers(underlying: String): List<String> = when (val u = underlying.trim().uppercase()) {
++        "USDTRY" -> listOf("TRY=X", "USDTRY=X")
++        "EURTRY" -> listOf("EURTRY=X")
++        "GOLD" -> listOf("GC=F")
++        "SILVER" -> listOf("SI=F")
++        "BRENT" -> listOf("BZ=F")
++        "XU030" -> listOf("XU030.IS", "^XU030", "XU030")
++        else -> if (u.matches(Regex("[A-Z0-9_]{3,12}"))) listOf("$u.IS") else emptyList()
++    }
++
++    fun isExternalReference(underlying: String): Boolean =
++        underlying.trim().uppercase() in setOf("USDTRY", "EURTRY", "GOLD", "SILVER", "BRENT", "XU030")
++}
+diff --git a/app/src/main/java/tr/borsatakip/v5/data/YahooFallbackProvider.kt b/app/src/main/java/tr/borsatakip/v5/data/YahooFallbackProvider.kt
+index 34fc7bc..c58f595 100644
+--- a/app/src/main/java/tr/borsatakip/v5/data/YahooFallbackProvider.kt
++++ b/app/src/main/java/tr/borsatakip/v5/data/YahooFallbackProvider.kt
+@@ -17,6 +17,7 @@ import tr.borsatakip.v5.model.Stock
+ import java.net.HttpURLConnection
+ import java.net.URL
+ import java.net.URLEncoder
++import kotlin.random.Random
+ 
+ /**
+  * Deneysel yedek/gecikmeli kaynaktır. Hiçbir zaman REALTIME olarak etiketlenmez.
+@@ -76,6 +77,49 @@ class YahooFallbackProvider(context: Context) : MarketDataProvider {
+         DisplayQuoteResult(null, errors.joinToString(" • ").ifBlank { "Yahoo quote alınamadı" })
+     }
+ 
++
++    /**
++     * VİOP dayanak izleme için ham Yahoo ticker'ı ile gecikmeli quote + günlük history döndürür.
++     * Bu sonuç hiçbir zaman VİOP kontrat fiyatı veya REALTIME veri değildir.
++     */
++    suspend fun fetchExternalTechnicalStock(symbolLabel: String, providerTickers: List<String>): Stock? = withContext(Dispatchers.IO) {
++        val now = System.currentTimeMillis()
++        val from = now - 370L * 24L * 60L * 60L * 1000L
++        for (ticker in providerTickers.map { it.trim() }.filter { it.isNotBlank() }.distinct()) {
++            val quoteAttempt = fetchDelayedQuoteResult(ticker)
++            val q = quoteAttempt.quote ?: continue
++            val encoded = URLEncoder.encode(ticker, "UTF-8")
++            val candles = fetchHistoryWindow(encoded, from, now, "1d")
++                .filter { it.timesta
