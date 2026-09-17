@@ -5,6 +5,7 @@ on:
     branches: [v525-b127-merged-integrity-fix]
     paths:
       - '.github/workflows/build-b127-final.yml'
+      - 'ci_payload/b127_merged_integrity/B127-COMPILE-COMPAT.patch'
   workflow_dispatch:
 
 permissions:
@@ -66,6 +67,19 @@ jobs:
           test -f app/src/test/java/tr/borsatakip/v5/data/B127MergedIntegrityAndNavigationTest.kt
           cp /tmp/b127.patch /tmp/out/B127-SOURCE.patch
           sha256sum /tmp/b127.patch > /tmp/out/B127-SOURCE.patch.sha256
+
+      - name: Apply B127 compile compatibility patch
+        working-directory: /tmp/src
+        shell: bash
+        run: |
+          set -euo pipefail
+          PATCH="$GITHUB_WORKSPACE/ci_payload/b127_merged_integrity/B127-COMPILE-COMPAT.patch"
+          test -s "$PATCH"
+          patch -p1 --batch --forward < "$PATCH"
+          grep -F 'fun historyBarPrice(candles: List<Candle>): Double?' app/src/main/java/tr/borsatakip/v5/analysis/DecisionPricePolicy.kt
+          grep -F 'loader: suspend () -> List<Candle>' app/src/main/java/tr/borsatakip/v5/data/MtfHistoryCache.kt
+          cp "$PATCH" /tmp/out/B127-COMPILE-COMPAT.patch
+          sha256sum "$PATCH" > /tmp/out/B127-COMPILE-COMPAT.patch.sha256
 
       - uses: actions/setup-java@v5
         with:
@@ -174,6 +188,7 @@ jobs:
             echo 'underlying_price_as_viop_price=FORBIDDEN'
             echo 'viop_signal_without_quote_history=FORBIDDEN'
             echo 'api_key_ui_contract=MANDATORY'
+            echo 'compile_compatibility_patch=APPLIED'
             cat /tmp/test-summary.txt
             echo 'production_viop_live_e2e=NOT_RUN_NO_REAL_BACKEND_CREDENTIALS'
             echo 'physical_device_test=NOT_RUN'
