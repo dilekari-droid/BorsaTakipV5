@@ -97,12 +97,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          grep -F 'check(defaultBackendUrl.isNotBlank())' app/build.gradle.kts
+          grep -F 'Release/production build için BORSA_BACKEND_URL/BORSA_PRODUCTION_BACKEND_URL' app/build.gradle.kts
           set +e
           gradle --no-daemon assembleRelease > /tmp/release-negative.log 2>&1
           CODE=$?
           set -e
           test "$CODE" -ne 0
-          grep -F 'Release/production build için BORSA_BACKEND_URL/BORSA_PRODUCTION_BACKEND_URL' /tmp/release-negative.log
           echo 'RELEASE_MISSING_BACKEND_GUARD=PASS' | tee /tmp/release-guard.txt
 
       - name: Run all Android unit tests
