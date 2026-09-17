@@ -50,7 +50,7 @@ jobs:
           base64 -d "$PAYLOAD" > /tmp/B128-SURGICAL.patch.gz
           gzip -t /tmp/B128-SURGICAL.patch.gz
           gzip -dc /tmp/B128-SURGICAL.patch.gz > /tmp/B128-SURGICAL.patch
-          echo '3479c6a027e23040ba161cc633d55489520ffceff16c4be04bb67a43acbef8a3  /tmp/B128-SURGICAL.patch' | sha256sum -c -
+          echo 'd064c6aacf7e20cda27c46b20eace64abe49e5d408b58b5e5580b6e3792da893  /tmp/B128-SURGICAL.patch' | sha256sum -c -
           patch -p4 --batch --forward < /tmp/B128-SURGICAL.patch
           grep -F 'versionCode = 128' app/build.gradle.kts
           grep -F 'versionName = "5.2.5"' app/build.gradle.kts
