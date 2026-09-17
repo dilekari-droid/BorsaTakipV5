@@ -4,7 +4,7 @@ on:
     branches: [v525-b124-viop-scan-recovery]
     paths:
       - '.github/workflows/build-b124-viop-scan-recovery.yml'
-      - 'ci_payload/b124_viop_scan_recovery/b124_final.patch'
+      - 'ci_payload/b124_viop_scan_recovery/exact-*.b64'
   workflow_dispatch:
 permissions:
   contents: read
@@ -29,12 +29,19 @@ jobs:
           echo '25e50aeb742e12b3e56bd2211a73f517df7856537c886bea476cde664a66bb78  '"$SRCZIP" | sha256sum -c -
           unzip -q "$SRCZIP" -d /tmp/src
           grep -F 'versionCode = 123' /tmp/src/app/build.gradle.kts
-      - name: Apply B124 final VIOP scan recovery patch
+      - name: Reconstruct and apply exact B124 VIOP scan recovery patch
         shell: bash
         run: |
           set -euo pipefail
-          cp ci_payload/b124_viop_scan_recovery/b124_final.patch /tmp/b124.patch
-          sha256sum /tmp/b124.patch | tee /tmp/out/B124-VIOP-SCAN-RECOVERY.patch.sha256
+          echo '2a14add61cf70e57430ab952d01be51afbb6da2e42393e7ded3bd8f330cb703d  ci_payload/b124_viop_scan_recovery/exact-00.b64' | sha256sum -c -
+          echo '0e9faeeb14bbf8b65e9560136a8bb7390136d6032387b679d69bff31f197511c  ci_payload/b124_viop_scan_recovery/exact-01.b64' | sha256sum -c -
+          echo '2b50aa4dcdc575bae6895ba0c414bdab68dbd9358c217700e195803c9fd29019  ci_payload/b124_viop_scan_recovery/exact-02.b64' | sha256sum -c -
+          cat ci_payload/b124_viop_scan_recovery/exact-00.b64 ci_payload/b124_viop_scan_recovery/exact-01.b64 ci_payload/b124_viop_scan_recovery/exact-02.b64 > /tmp/b124.b64
+          test "$(wc -c < /tmp/b124.b64 | tr -d ' ')" = '8380'
+          base64 -d /tmp/b124.b64 > /tmp/b124.patch.gz
+          echo '77643466e641c50be6267feeeb8c22d3967bc4e2aacd7ac6549f1da383f0bf9f  /tmp/b124.patch.gz' | sha256sum -c -
+          gzip -dc /tmp/b124.patch.gz > /tmp/b124.patch
+          echo 'c0be5f5508724cb037c9645186ea1f247dd21784e6b01f5a6918a180f7939ffd  /tmp/b124.patch' | sha256sum -c -
           cd /tmp/src
           git apply --check /tmp/b124.patch
           git apply /tmp/b124.patch
@@ -44,6 +51,7 @@ jobs:
           grep -F 'DAYANAK TARAMASINI BAŞLAT' app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt
           grep -F 'VİOP taraması BIST sonucundan bağımsızdır' app/src/main/java/tr/borsatakip/v5/worker/OpportunityWorker.kt
           cp /tmp/b124.patch /tmp/out/B124-VIOP-SCAN-RECOVERY.patch
+          sha256sum /tmp/b124.patch > /tmp/out/B124-VIOP-SCAN-RECOVERY.patch.sha256
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -97,11 +105,10 @@ jobs:
           PY
           sha256sum /tmp/out/V5-ARACI-KURUM-5.2.5-B124-VIOP-SCAN-RECOVERY-Kaynak-Kod.zip > /tmp/out/V5-ARACI-KURUM-5.2.5-B124-VIOP-SCAN-RECOVERY-Kaynak-Kod.zip.sha256
           cp /tmp/test-summary.txt /tmp/out/TEST-SUMMARY.txt
-          PATCH_SHA=$(sha256sum /tmp/b124.patch | awk '{print $1}')
           {
             echo 'B124 VIOP SCAN RECOVERY VERIFIED BUILD'
             echo 'applicationId=tr.borsatakip.v5'; echo 'versionCode=124'; echo 'versionName=5.2.5'
-            echo "b124_patch_sha256=$PATCH_SHA"
+            echo 'b124_patch_sha256=c0be5f5508724cb037c9645186ea1f247dd21784e6b01f5a6918a180f7939ffd'
             echo 'viop_production_scan=UNCHANGED_REQUIRES_REAL_BACKEND'
             echo 'viop_underlying_scan=AVAILABLE_WITHOUT_VIOP_BACKEND'
             echo 'viop_underlying_scan_fake_contract_quote=NONE'
