@@ -34,10 +34,13 @@ jobs:
         run: |
           set -euo pipefail
           SCRIPT=ci_payload/b124_viop_scan_recovery/apply_b124.py
+          FIX=ci_payload/b124_viop_scan_recovery/fix_generated_strings.py
           test "$(git hash-object "$SCRIPT")" = '28c66e36629d547b47112cbdee9855b505dd2cf2'
           sha256sum "$SCRIPT" | tee /tmp/b124-script.sha256
+          sha256sum "$FIX" | tee /tmp/b124-fix.sha256
           cd /tmp/src
           python3 "$GITHUB_WORKSPACE/$SCRIPT"
+          python3 "$GITHUB_WORKSPACE/$FIX"
           grep -F 'versionCode = 124' app/build.gradle.kts
           grep -F 'class ViopUnderlyingScanner' app/src/main/java/tr/borsatakip/v5/analysis/ViopUnderlyingScanner.kt
           grep -F 'ProviderState.PROVIDER_NOT_CONFIGURED -> runUnderlyingScan' app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt
@@ -46,7 +49,9 @@ jobs:
           grep -F 'VİOP taraması BIST sonucundan bağımsızdır' app/src/main/java/tr/borsatakip/v5/worker/OpportunityWorker.kt
           grep -F 'Dayanak tara' app/src/main/java/tr/borsatakip/v5/ui/MainActivity.kt
           cp "$GITHUB_WORKSPACE/$SCRIPT" /tmp/out/apply_b124.py
+          cp "$GITHUB_WORKSPACE/$FIX" /tmp/out/fix_generated_strings.py
           cp /tmp/b124-script.sha256 /tmp/out/apply_b124.py.sha256
+          cp /tmp/b124-fix.sha256 /tmp/out/fix_generated_strings.py.sha256
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -101,10 +106,12 @@ jobs:
           sha256sum /tmp/out/V5-ARACI-KURUM-5.2.5-B124-VIOP-SCAN-RECOVERY-Kaynak-Kod.zip > /tmp/out/V5-ARACI-KURUM-5.2.5-B124-VIOP-SCAN-RECOVERY-Kaynak-Kod.zip.sha256
           cp /tmp/test-summary.txt /tmp/out/TEST-SUMMARY.txt
           SCRIPT_SHA=$(cut -d' ' -f1 /tmp/b124-script.sha256)
+          FIX_SHA=$(cut -d' ' -f1 /tmp/b124-fix.sha256)
           {
             echo 'B124 VIOP SCAN RECOVERY VERIFIED BUILD'
             echo 'applicationId=tr.borsatakip.v5'; echo 'versionCode=124'; echo 'versionName=5.2.5'
             echo "b124_transform_sha256=$SCRIPT_SHA"
+            echo "b124_string_fix_sha256=$FIX_SHA"
             echo 'viop_production_scan=UNCHANGED_WHEN_PROVIDER_READY'
             echo 'viop_underlying_scan=AUTO_AVAILABLE_WITHOUT_VIOP_BACKEND'
             echo 'viop_underlying_scan_fake_contract_price=NONE'
