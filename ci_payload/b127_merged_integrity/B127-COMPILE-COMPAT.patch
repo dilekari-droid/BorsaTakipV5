@@ -37,3 +37,42 @@ diff -ruN a/app/src/main/java/tr/borsatakip/v5/data/MtfHistoryCache.kt b/app/src
      private fun isFresh(entry: Entry, ttlMs: Long, nowMs: Long): Boolean {
          if (nowMs < entry.loadedAt || nowMs - entry.loadedAt > ttlMs) return false
          if (entry.lastExchangeTimestamp <= 0L || entry.lastExchangeTimestamp > nowMs + MAX_FUTURE_CLOCK_SKEW_MS) return false
+diff -ruN a/app/src/test/java/tr/borsatakip/v5/analysis/B119StabilityPerformanceTest.kt b/app/src/test/java/tr/borsatakip/v5/analysis/B119StabilityPerformanceTest.kt
+--- a/app/src/test/java/tr/borsatakip/v5/analysis/B119StabilityPerformanceTest.kt	2026-09-16 14:53:12.000000000 +0000
++++ b/app/src/test/java/tr/borsatakip/v5/analysis/B119StabilityPerformanceTest.kt	2026-09-17 18:23:06.741210563 +0000
+@@ -63,10 +63,10 @@
+ 
+     @Test fun mtfCacheReturnsFreshEntryWithoutReloading() = runBlocking {
+         var loads = 0
+-        var now = 10_000L
++        var now = aligned + 60_000L
+         val loader: suspend () -> List<Candle> = {
+             loads += 1
+-            listOf(candle(loads))
++            listOf(candle(1))
+         }
+         val first = MtfHistoryCache.loadFresh("P", "THYAO", "1m", 1_000L, { now }, loader)
+         now += 500L
+@@ -77,10 +77,20 @@
+ 
+     @Test fun mtfCacheNeverReturnsExpiredEntryAsFresh() = runBlocking {
+         var loads = 0
+-        var now = 10_000L
++        var now = aligned + 60_000L
+         val loader: suspend () -> List<Candle> = {
+             loads += 1
+-            listOf(candle(loads))
++            val close = 100.0 + loads
++            listOf(
++                Candle(
++                    timestamp = now,
++                    open = close - 0.2,
++                    high = close + 0.5,
++                    low = close - 0.5,
++                    close = close,
++                    volume = 1000.0 + loads
++                )
++            )
+         }
+         val first = MtfHistoryCache.loadFresh("P", "GARAN", "60m", 1_000L, { now }, loader)
+         now += 1_001L
