@@ -29,33 +29,24 @@ jobs:
           echo '25e50aeb742e12b3e56bd2211a73f517df7856537c886bea476cde664a66bb78  '"$SRCZIP" | sha256sum -c -
           unzip -q "$SRCZIP" -d /tmp/src
           grep -F 'versionCode = 123' /tmp/src/app/build.gradle.kts
-      - name: Apply final B124 VIOP scan recovery patches
+      - name: Apply deterministic B124 VIOP scan recovery source transformation
         shell: bash
         run: |
           set -euo pipefail
-          MAIN=ci_payload/b124_viop_scan_recovery/b124_final.patch
-          FOLLOW=ci_payload/b124_viop_scan_recovery/b124_runtime_followup.patch
-          test "$(git hash-object "$MAIN")" = 'dfe6243bb81247c653f3da5a8227d0babba2023f'
-          test "$(git hash-object "$FOLLOW")" = '3034141fb9b7ad42484790a9038a454cd62b7644'
-          cp "$MAIN" /tmp/b124.patch
-          cp "$FOLLOW" /tmp/b124-followup.patch
-          sha256sum /tmp/b124.patch | tee /tmp/b124-main.sha256
-          sha256sum /tmp/b124-followup.patch | tee /tmp/b124-followup.sha256
+          SCRIPT=ci_payload/b124_viop_scan_recovery/apply_b124.py
+          test "$(git hash-object "$SCRIPT")" = '28c66e36629d547b47112cbdee9855b505dd2cf2'
+          sha256sum "$SCRIPT" | tee /tmp/b124-script.sha256
           cd /tmp/src
-          git apply --check /tmp/b124.patch
-          git apply /tmp/b124.patch
-          git apply --check /tmp/b124-followup.patch
-          git apply /tmp/b124-followup.patch
+          python3 "$GITHUB_WORKSPACE/$SCRIPT"
           grep -F 'versionCode = 124' app/build.gradle.kts
           grep -F 'class ViopUnderlyingScanner' app/src/main/java/tr/borsatakip/v5/analysis/ViopUnderlyingScanner.kt
           grep -F 'ProviderState.PROVIDER_NOT_CONFIGURED -> runUnderlyingScan' app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt
           grep -F 'underlyingScanCompleted' app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt
           grep -F 'BU DEĞER VİOP KONTRAT FİYATI DEĞİLDİR' app/src/main/java/tr/borsatakip/v5/ui/MarketInstrumentDetailActivity.kt
           grep -F 'VİOP taraması BIST sonucundan bağımsızdır' app/src/main/java/tr/borsatakip/v5/worker/OpportunityWorker.kt
-          cp /tmp/b124.patch /tmp/out/B124-VIOP-SCAN-RECOVERY.patch
-          cp /tmp/b124-followup.patch /tmp/out/B124-RUNTIME-FOLLOWUP.patch
-          cp /tmp/b124-main.sha256 /tmp/out/B124-VIOP-SCAN-RECOVERY.patch.sha256
-          cp /tmp/b124-followup.sha256 /tmp/out/B124-RUNTIME-FOLLOWUP.patch.sha256
+          grep -F 'Dayanak tara' app/src/main/java/tr/borsatakip/v5/ui/MainActivity.kt
+          cp "$GITHUB_WORKSPACE/$SCRIPT" /tmp/out/apply_b124.py
+          cp /tmp/b124-script.sha256 /tmp/out/apply_b124.py.sha256
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -109,13 +100,11 @@ jobs:
           PY
           sha256sum /tmp/out/V5-ARACI-KURUM-5.2.5-B124-VIOP-SCAN-RECOVERY-Kaynak-Kod.zip > /tmp/out/V5-ARACI-KURUM-5.2.5-B124-VIOP-SCAN-RECOVERY-Kaynak-Kod.zip.sha256
           cp /tmp/test-summary.txt /tmp/out/TEST-SUMMARY.txt
-          MAIN_SHA=$(cut -d' ' -f1 /tmp/b124-main.sha256)
-          FOLLOW_SHA=$(cut -d' ' -f1 /tmp/b124-followup.sha256)
+          SCRIPT_SHA=$(cut -d' ' -f1 /tmp/b124-script.sha256)
           {
             echo 'B124 VIOP SCAN RECOVERY VERIFIED BUILD'
             echo 'applicationId=tr.borsatakip.v5'; echo 'versionCode=124'; echo 'versionName=5.2.5'
-            echo "b124_patch_sha256=$MAIN_SHA"
-            echo "b124_followup_sha256=$FOLLOW_SHA"
+            echo "b124_transform_sha256=$SCRIPT_SHA"
             echo 'viop_production_scan=UNCHANGED_WHEN_PROVIDER_READY'
             echo 'viop_underlying_scan=AUTO_AVAILABLE_WITHOUT_VIOP_BACKEND'
             echo 'viop_underlying_scan_fake_contract_price=NONE'
