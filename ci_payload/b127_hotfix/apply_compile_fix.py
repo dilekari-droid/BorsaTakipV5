@@ -47,4 +47,19 @@ replace_exact(
     '''            val historyResult = loadHistory(contract.symbol)\n            if (historyResult.isFailure) {\n                failures += "${contract.symbol}:HISTORY_ERROR:${historyResult.exceptionOrNull()?.message.orEmpty()}"\n                continue\n            }\n            val history = historyResult.getOrThrow()'''
 )
 
+# MtfHistoryCache gained an optional Stats parameter after loader. Calls that use
+# a trailing lambda would bind that lambda to Stats instead of loader. Use named
+# loader arguments so the regression tests compile against the stricter API.
+mtf_test = "app/src/test/java/tr/borsatakip/v5/analysis/B119StabilityPerformanceTest.kt"
+replace_exact(
+    mtf_test,
+    'MtfHistoryCache.loadFresh("P", "XU030", "60m", 5 * 60_000L, { now }) { loads++; stale }',
+    'MtfHistoryCache.loadFresh("P", "XU030", "60m", 5 * 60_000L, { now }, loader = { loads++; stale })'
+)
+replace_exact(
+    mtf_test,
+    'MtfHistoryCache.loadFresh("P", "XU030", "60m", 5 * 60_000L, { now }) { loads++; fresh }',
+    'MtfHistoryCache.loadFresh("P", "XU030", "60m", 5 * 60_000L, { now }, loader = { loads++; fresh })'
+)
+
 print("B127 compile corrections applied")
