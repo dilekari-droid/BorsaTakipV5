@@ -1,0 +1,16 @@
+diff --git a/app/src/test/java/tr/borsatakip/v5/data/B122ViopProviderRecoveryTest.kt b/app/src/test/java/tr/borsatakip/v5/data/B122ViopProviderRecoveryTest.kt
+index c134dc8..23ea184 100644
+--- a/app/src/test/java/tr/borsatakip/v5/data/B122ViopProviderRecoveryTest.kt
++++ b/app/src/test/java/tr/borsatakip/v5/data/B122ViopProviderRecoveryTest.kt
+@@ -30,7 +30,10 @@ class B122ViopProviderRecoveryTest {
+ 
+     @Test fun noFakeViopFallbackWasIntroduced() {
+         val s = read("src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt")
+-        assertFalse(s.contains("YahooFallbackProvider"))
++        val delayedReference = read("src/main/java/tr/borsatakip/v5/data/YahooFallbackProvider.kt")
++        assertTrue(s.contains("ViopUnderlyingTickerMap"))
++        assertTrue(delayedReference.contains("DAYANAK REFERANSI"))
++        assertFalse(delayedReference.contains("ViopQuote("))
+         assertFalse(s.contains("fakeViop"))
+     }
+ }
