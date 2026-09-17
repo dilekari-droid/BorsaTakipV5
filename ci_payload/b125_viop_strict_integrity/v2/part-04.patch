@@ -1,0 +1,104 @@
+now }, loader)
++        val second = MtfHistoryCache.loadFresh("P", "GARAN", "60m", 1_000L, nowMs = { now }, loader = loader)
+         assertEquals(2, loads)
+         assertNotEquals(first.single().close, second.single().close, 0.0001)
+     }
+diff --git a/app/src/test/java/tr/borsatakip/v5/data/B117EngineIntegritySourceTest.kt b/app/src/test/java/tr/borsatakip/v5/data/B117EngineIntegritySourceTest.kt
+index af5c5bc..3f76fc5 100644
+--- a/app/src/test/java/tr/borsatakip/v5/data/B117EngineIntegritySourceTest.kt
++++ b/app/src/test/java/tr/borsatakip/v5/data/B117EngineIntegritySourceTest.kt
+@@ -18,6 +18,6 @@ class B117EngineIntegritySourceTest {
+ 
+     @Test fun versionCodeTracksCurrentIntegrityBuild() {
+         val s = File("build.gradle.kts").readText()
+-        assertTrue(s.contains("versionCode = 124"))
++        assertTrue(s.contains("versionCode = 125"))
+     }
+ }
+diff --git a/app/src/test/java/tr/borsatakip/v5/data/B125ViopSourceContractTest.kt b/app/src/test/java/tr/borsatakip/v5/data/B125ViopSourceContractTest.kt
+new file mode 100644
+index 0000000..f92ca91
+--- /dev/null
++++ b/app/src/test/java/tr/borsatakip/v5/data/B125ViopSourceContractTest.kt
+@@ -0,0 +1,29 @@
++package tr.borsatakip.v5.data
++
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertTrue
++import org.junit.Test
++import java.io.File
++
++class B125ViopSourceContractTest {
++    private fun read(path: String) = File(path).readText()
++
++    @Test fun quoteAndHistoryRequireExplicitSymbolIdentity() {
++        val s = read("src/main/java/tr/borsatakip/v5/data/BackendProvider.kt")
++        assertTrue(s.contains("QUOTE_ERROR: Sembol kimliği eksik."))
++        assertTrue(s.contains("HISTORY_ERROR: Sembol kimliği eksik."))
++        assertFalse(s.contains("optString(\"symbol\").ifBlank { symbol }"))
++    }
++
++    @Test fun historyRejectsMalformedBarsInsteadOfFilteringThem() {
++        val s = read("src/main/java/tr/borsatakip/v5/data/BackendProvider.kt")
++        assertTrue(s.contains("nesne değil"))
++        assertTrue(s.contains("lastBarClosed eksik"))
++        assertTrue(s.contains("lastBarTime son mumla eşleşmiyor"))
++        assertFalse(s.contains(".distinctBy{it.timestamp}.sortedBy{it.timestamp}"))
++    }
++
++    @Test fun versionCodeIs125() {
++        assertTrue(read("build.gradle.kts").contains("versionCode = 125"))
++    }
++}
+diff --git a/app/src/test/java/tr/borsatakip/v5/data/B125ViopStrictIntegrityTest.kt b/app/src/test/java/tr/borsatakip/v5/data/B125ViopStrictIntegrityTest.kt
+new file mode 100644
+index 0000000..41655cf
+--- /dev/null
++++ b/app/src/test/java/tr/borsatakip/v5/data/B125ViopStrictIntegrityTest.kt
+@@ -0,0 +1,46 @@
++package tr.borsatakip.v5.data
++
++import org.junit.Assert.*
++import org.junit.Test
++import tr.borsatakip.v5.analysis.DecisionPricePolicy
++import tr.borsatakip.v5.model.Candle
++
++class B125ViopStrictIntegrityTest {
++    @Test fun decisionPriceNeverFallsBackToLiveQuote() {
++        assertNull(DecisionPricePolicy.historyBarPrice(emptyList()))
++    }
++
++    @Test fun decisionPriceUsesValidatedHistoryClose() {
++        val c = Candle(1_700_000_000_000L, 100.0, 103.0, 99.0, 102.0, 1_000.0)
++        assertEquals(102.0, DecisionPricePolicy.historyBarPrice(listOf(c)) ?: 0.0, 0.0001)
++    }
++
++    @Test fun viopExternalTickerMappingsAreExplicit() {
++        assertEquals(listOf("TRY=X", "USDTRY=X"), ViopUnderlyingTickerMap.yahooTickers("USDTRY"))
++        assertEquals(listOf("GC=F"), ViopUnderlyingTickerMap.yahooTickers("GOLD"))
++        assertEquals(listOf("BZ=F"), ViopUnderlyingTickerMap.yahooTickers("BRENT"))
++        assertEquals(listOf("AKBNK.IS"), ViopUnderlyingTickerMap.yahooTickers("AKBNK"))
++    }
++
++    @Test fun mtfCacheRejectsStaleExchangeTimeWhenGuarded() = kotlinx.coroutines.runBlocking {
++        MtfHistoryCache.clear()
++        val now = 1_700_000_600_000L
++        val stale = listOf(Candle(now - 10 * 60_000L, 10.0, 11.0, 9.0, 10.5, 100.0))
++        val result = MtfHistoryCache.loadFresh(
++            sourceKey = "VIOP_BACKEND", symbol = "F_X", timeframe = "1m", ttlMs = 30_000L,
++            maxExchangeAgeMs = 2 * 60_000L, nowMs = { now }, loader = { stale }
++        )
++        assertTrue(result.isEmpty())
++    }
++
++    @Test fun mtfCacheAcceptsFreshExchangeTimeWhenGuarded() = kotlinx.coroutines.runBlocking {
++        MtfHistoryCache.clear()
++        val now = 1_700_000_600_000L
++        val fresh = listOf(Candle(now - 30_000L, 10.0, 11.0, 9.0, 10.5, 100.0))
++        val result = MtfHistoryCache.loadFresh(
++            sourceKey = "VIOP_BACKEND", symbol = "F_X", timeframe = "1m", ttlMs = 30_000L,
++            maxExchangeAgeMs = 2 * 60_000L, nowMs = { now }, loader = { fresh }
++        )
++        assertEquals(1, result.size)
++    }
++}
