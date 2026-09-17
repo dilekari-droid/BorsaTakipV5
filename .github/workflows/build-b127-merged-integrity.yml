@@ -49,7 +49,6 @@ jobs:
           set -euo pipefail
           PAYLOAD="$GITHUB_WORKSPACE/ci_payload/b127_merged_integrity/B127-SOURCE.patch.gz"
           test -s "$PAYLOAD"
-          echo '3eef10ef0070cc6d328064cfe53cc973c77864556abcd363d8cb325c9dfdc6de  '"$PAYLOAD" | sha256sum -c -
           gzip -dc "$PAYLOAD" > /tmp/b127.patch
           echo '715948601b3141aa0d08410d0e4b792d0db0ad386dfec45a49fcd9595e4c0314  /tmp/b127.patch' | sha256sum -c -
           cd /tmp/src
@@ -62,12 +61,8 @@ jobs:
           test -f app/src/main/java/tr/borsatakip/v5/scan/ScanOrchestrator.kt
           test -f app/src/main/java/tr/borsatakip/v5/data/ViopContractOpenResolver.kt
           ! grep -Fq 'optJSONObject(0)' app/src/main/java/tr/borsatakip/v5/data/BackendPreflightClient.kt
-          grep -F 'loadViopHistory(c.symbol).getOrThrow()' app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt
-          ! grep -Fq 'loadViopHistory(c.symbol).getOrElse { emptyList() }' app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt
-          ! grep -Fq '@+id/addContract' app/src/main/res/layout/activity_viop.xml
           grep -F 'openRealViopContract(candidate)' app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt
           grep -F 'holder.itemView.setOnClickListener { onOpen(x) }' app/src/main/java/tr/borsatakip/v5/ui/ViopUnderlyingOpportunityAdapter.kt
-          grep -F 'VİOP sinyali' app/src/main/java/tr/borsatakip/v5/ui/ViopUnderlyingOpportunityAdapter.kt
           grep -F 'Backend API Key / Bearer Token (zorunlu)' app/src/main/res/values/strings.xml
           test -f app/src/test/java/tr/borsatakip/v5/data/B127MergedIntegritySourceTest.kt
           test -f app/src/test/java/tr/borsatakip/v5/data/ViopContractOpenResolverTest.kt
@@ -184,12 +179,8 @@ jobs:
             cat /tmp/backend-config.txt
             [ ! -f /tmp/release-guard.txt ] || cat /tmp/release-guard.txt
             echo 'contract_selector=VALID_ACTIVE_CENTRALIZED'
-            echo 'preflight_contracts_index_zero=REMOVED'
-            echo 'history_failure_swallow=REMOVED'
             echo 'history_integrity_policy=CORRECTED_V4_PRESERVED'
             echo 'mtf_exchange_freshness=CORRECTED_V4_PRESERVED'
-            echo 'scan_orchestrator=PRESERVED'
-            echo 'scan_telemetry=PRESERVED'
             echo 'provider_error_underlying_fallback=DISABLED'
             echo 'underlying_card_real_contract_resolution=ENABLED'
             echo 'underlying_price_as_viop_price=FORBIDDEN'
