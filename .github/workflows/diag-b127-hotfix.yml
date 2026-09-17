@@ -32,18 +32,12 @@ jobs:
           cat "$GITHUB_WORKSPACE"/ci_payload/b127_hotfix/chunks/part_* > /tmp/hotfix.b64
           base64 -d /tmp/hotfix.b64 | gzip -dc > /tmp/hotfix.patch
           (cd /tmp/src && patch -p1 --batch --forward < /tmp/hotfix.patch)
-      - name: Print compile targets
+      - name: Print MTF compile targets
         shell: bash
         run: |
           set -euo pipefail
           cd /tmp/src
-          echo '=== ViopActivity 1-330 ==='
-          nl -ba app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt | sed -n '1,330p'
-          echo '=== ViopContractOpenResolver ==='
-          nl -ba app/src/main/java/tr/borsatakip/v5/data/ViopContractOpenResolver.kt
-          echo '=== ScanOrchestrator ==='
-          nl -ba app/src/main/java/tr/borsatakip/v5/scan/ScanOrchestrator.kt
-          echo '=== OpportunityWorker 1-100 ==='
-          nl -ba app/src/main/java/tr/borsatakip/v5/worker/OpportunityWorker.kt | sed -n '1,100p'
-          echo '=== relevant scanner constructors ==='
-          grep -RIn 'class ViopUnderlyingScanner\|class ViopScanner\|class ScanOrchestrator' app/src/main/java/tr/borsatakip/v5 | head -30
+          echo '=== MtfHistoryCache ==='
+          nl -ba app/src/main/java/tr/borsatakip/v5/data/MtfHistoryCache.kt
+          echo '=== B119StabilityPerformanceTest 90-135 ==='
+          nl -ba app/src/test/java/tr/borsatakip/v5/analysis/B119StabilityPerformanceTest.kt | sed -n '90,135p'
