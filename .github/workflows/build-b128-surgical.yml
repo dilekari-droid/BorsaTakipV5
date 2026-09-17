@@ -1,0 +1,170 @@
+name: B128 Surgical Runtime Fix
+
+on:
+  push:
+    branches: [v525-b128-surgical-runtime-fix]
+    paths:
+      - '.github/workflows/build-b128-surgical.yml'
+      - 'ci_payload/b128_surgical/B128-SURGICAL.patch.gz.b64'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 80
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore verified B127 source
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/src /tmp/out /tmp/b127
+          mkdir -p /tmp/src /tmp/out /tmp/b127
+          curl -fL --retry 3 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/dilekari-droid/BorsaTakipV5/actions/artifacts/10513900581/zip" \
+            -o /tmp/b127-artifact.zip
+          unzip -q /tmp/b127-artifact.zip -d /tmp/b127
+          SRCZIP=$(find /tmp/b127 -type f -name '*B127*Kaynak-Kod.zip' | head -n1)
+          test -n "$SRCZIP" -a -s "$SRCZIP"
+          echo 'c8755ec2df120e14618593e48603ef19cfbfe07bce938f311d6c0e07fe117ff9  '"$SRCZIP" | sha256sum -c -
+          unzip -q "$SRCZIP" -d /tmp/src
+          grep -F 'applicationId = "tr.borsatakip.v5"' /tmp/src/app/build.gradle.kts
+          grep -F 'versionCode = 127' /tmp/src/app/build.gradle.kts
+
+      - name: Apply B128 surgical patch
+        working-directory: /tmp/src
+        shell: bash
+        run: |
+          set -euo pipefail
+          PAYLOAD="$GITHUB_WORKSPACE/ci_payload/b128_surgical/B128-SURGICAL.patch.gz.b64"
+          base64 -d "$PAYLOAD" > /tmp/B128-SURGICAL.patch.gz
+          gzip -t /tmp/B128-SURGICAL.patch.gz
+          gzip -dc /tmp/B128-SURGICAL.patch.gz > /tmp/B128-SURGICAL.patch
+          echo '3479c6a027e23040ba161cc633d55489520ffceff16c4be04bb67a43acbef8a3  /tmp/B128-SURGICAL.patch' | sha256sum -c -
+          patch -p4 --batch --forward < /tmp/B128-SURGICAL.patch
+          grep -F 'versionCode = 128' app/build.gradle.kts
+          grep -F 'versionName = "5.2.5"' app/build.gradle.kts
+          grep -F 'loadOptionalFresh' app/src/main/java/tr/borsatakip/v5/analysis/ViopScanner.kt
+          grep -F 'it.lastTradingAt?.let { t -> t > nowMs } == true' app/src/main/java/tr/borsatakip/v5/data/ViopContractSelector.kt
+          grep -F 'BistHistoryIntegrityPolicy.requireStrict(candles, minimum)' app/src/main/java/tr/borsatakip/v5/data/MobileMarketDataProvider.kt
+          ! grep -Fq 'val sorted = candles.sortedBy' app/src/main/java/tr/borsatakip/v5/data/MobileMarketDataProvider.kt
+          grep -F 'backend.mtfCacheSourceKey()' app/src/main/java/tr/borsatakip/v5/analysis/ViopScanner.kt
+          grep -F 'provider.mtfCacheSourceKey()' app/src/main/java/tr/borsatakip/v5/scan/BistScanner.kt
+          cp /tmp/B128-SURGICAL.patch /tmp/out/B128-SURGICAL.patch
+          sha256sum /tmp/B128-SURGICAL.patch > /tmp/out/B128-SURGICAL.patch.sha256
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Run all unit tests
+        working-directory: /tmp/src
+        shell: bash
+        run: |
+          set -euo pipefail
+          DISCOVERED=$(grep -Rho '@Test' app/src/test --include='*.kt' | wc -l | tr -d ' ')
+          export DISCOVERED
+          echo "TEST_DISCOVERED=$DISCOVERED" | tee /tmp/test-summary.txt
+          gradle --no-daemon testDebugUnitTest --stacktrace
+          python3 - <<'PY'
+          import glob, os, xml.etree.ElementTree as ET
+          discovered=int(os.environ['DISCOVERED'])
+          tests=failures=errors=skipped=0
+          for path in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
+              root=ET.parse(path).getroot()
+              tests += int(root.attrib.get('tests',0))
+              failures += int(root.attrib.get('failures',0))
+              errors += int(root.attrib.get('errors',0))
+              skipped += int(root.attrib.get('skipped',0))
+          passed=tests-failures-errors-skipped
+          line=f'TEST_EXECUTED={tests} TEST_PASSED={passed} TEST_FAILURES={failures} TEST_ERRORS={errors} TEST_SKIPPED={skipped}'
+          print(line)
+          with open('/tmp/test-summary.txt','a',encoding='utf-8') as f: f.write(line+'\n')
+          if tests != discovered or failures or errors or skipped:
+              raise SystemExit(line)
+          PY
+
+      - name: Lint debug
+        working-directory: /tmp/src
+        run: gradle --no-daemon lintDebug --stacktrace
+
+      - name: Assemble debug APK
+        working-directory: /tmp/src
+        run: gradle --no-daemon assembleDebug --stacktrace
+
+      - name: Verify and export B128
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=/tmp/src/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          BT="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)"
+          AAPT="$ANDROID_HOME/build-tools/$BT/aapt"
+          APKSIGNER="$ANDROID_HOME/build-tools/$BT/apksigner"
+          ZIPALIGN="$ANDROID_HOME/build-tools/$BT/zipalign"
+          BADGING="$($AAPT dump badging "$APK" | head -n1)"
+          echo "$BADGING" | tee /tmp/out/BADGING.txt
+          echo "$BADGING" | grep -F "name='tr.borsatakip.v5'"
+          echo "$BADGING" | grep -F "versionCode='128'"
+          echo "$BADGING" | grep -F "versionName='5.2.5'"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee /tmp/out/APKSIGNER.txt
+          "$APKSIGNER" verify --verbose "$APK" | grep -F 'Verified using v2 scheme (APK Signature Scheme v2): true'
+          "$ZIPALIGN" -c -v 4 "$APK" | tee /tmp/out/ZIPALIGN.txt
+
+          OUT=/tmp/out/V5-ARACI-KURUM-5.2.5-B128-SURGICAL-RUNTIME-FIX-debug.apk
+          cp "$APK" "$OUT"
+          sha256sum "$OUT" | tee "$OUT.sha256"
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import zipfile
+          src=Path('/tmp/src')
+          out=Path('/tmp/out/V5-ARACI-KURUM-5.2.5-B128-SURGICAL-RUNTIME-FIX-Kaynak-Kod.zip')
+          excluded={'.git','.gradle','.kotlin','build'}
+          with zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED) as z:
+              for p in src.rglob('*'):
+                  if p.is_file() and not any(part in excluded for part in p.relative_to(src).parts):
+                      z.write(p,p.relative_to(src).as_posix())
+          PY
+          sha256sum /tmp/out/V5-ARACI-KURUM-5.2.5-B128-SURGICAL-RUNTIME-FIX-Kaynak-Kod.zip | tee /tmp/out/V5-ARACI-KURUM-5.2.5-B128-SURGICAL-RUNTIME-FIX-Kaynak-Kod.zip.sha256
+          cp /tmp/test-summary.txt /tmp/out/TEST-SUMMARY.txt
+          cp /tmp/src/B128_CHANGES.md /tmp/out/B128_CHANGES.md
+          {
+            echo 'B128 SURGICAL RUNTIME FIX'
+            echo 'applicationId=tr.borsatakip.v5'
+            echo 'versionCode=128'
+            echo 'versionName=5.2.5'
+            echo 'fix_viop_optional_mtf_failure=ENABLED'
+            echo 'cancellation_exception_rethrow=ENABLED'
+            echo 'lastTradingAt_required=ENABLED'
+            echo 'bist_raw_history_order_fail_closed=ENABLED'
+            echo 'mtf_cache_source_identity=ORIGIN_AND_PROVIDER_AWARE'
+            echo 'backend_change_cache_clear=ENABLED'
+            echo 'provider_switch_cache_clear=ENABLED'
+            cat /tmp/test-summary.txt
+            echo 'production_viop_live_e2e=NOT_RUN_NO_REAL_BACKEND_CREDENTIALS'
+            echo 'physical_device_test=NOT_RUN'
+            echo 'instrumentation_test=NOT_RUN_NO_EMULATOR_OR_DEVICE'
+            echo 'signing=DEBUG'
+          } > /tmp/out/PROVENANCE.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: B128-SURGICAL-RUNTIME-FIX-FINAL
+          path: /tmp/out/*
+          retention-days: 90
