@@ -47,14 +47,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          CHUNKS="$GITHUB_WORKSPACE/ci_payload/b127_merged_integrity/chunks"
-          test "$(find "$CHUNKS" -maxdepth 1 -type f -name 'part_*' | wc -l | tr -d ' ')" = "8"
-          cat "$CHUNKS"/part_* > /tmp/b127.patch.gz.b64
-          echo 'a96116021e9616c1fe7ca6afc1d9d9c4060324f2fa7c3415ed64b1cc5b917e87  /tmp/b127.patch.gz.b64' | sha256sum -c -
-          base64 -d /tmp/b127.patch.gz.b64 > /tmp/b127.patch.gz
-          echo '4e9e99515851d49e0d2b4e936ae4c131cc50f4f072e2f13f8305fc3ea6f65210  /tmp/b127.patch.gz' | sha256sum -c -
-          gzip -dc /tmp/b127.patch.gz > /tmp/b127.patch
-          echo '3e7862cef5633d4fc7510a7970aa1c80e02f6f84e427299e735ceb8ef367ae07  /tmp/b127.patch' | sha256sum -c -
+          PAYLOAD="$GITHUB_WORKSPACE/ci_payload/b127_merged_integrity/B127-SOURCE.patch.gz"
+          test -s "$PAYLOAD"
+          echo '3eef10ef0070cc6d328064cfe53cc973c77864556abcd363d8cb325c9dfdc6de  '"$PAYLOAD" | sha256sum -c -
+          gzip -dc "$PAYLOAD" > /tmp/b127.patch
+          echo '715948601b3141aa0d08410d0e4b792d0db0ad386dfec45a49fcd9595e4c0314  /tmp/b127.patch' | sha256sum -c -
           cd /tmp/src
           patch -p1 --batch --forward < /tmp/b127.patch
           grep -F 'versionCode = 127' app/build.gradle.kts
@@ -63,15 +60,18 @@ jobs:
           grep -F 'lastExchangeTimestamp' app/src/main/java/tr/borsatakip/v5/data/MtfHistoryCache.kt
           grep -F 'ScanTelemetry.record' app/src/main/java/tr/borsatakip/v5/analysis/ViopScanner.kt
           test -f app/src/main/java/tr/borsatakip/v5/scan/ScanOrchestrator.kt
+          test -f app/src/main/java/tr/borsatakip/v5/data/ViopContractOpenResolver.kt
           ! grep -Fq 'optJSONObject(0)' app/src/main/java/tr/borsatakip/v5/data/BackendPreflightClient.kt
           grep -F 'loadViopHistory(c.symbol).getOrThrow()' app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt
           ! grep -Fq 'loadViopHistory(c.symbol).getOrElse { emptyList() }' app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt
           ! grep -Fq '@+id/addContract' app/src/main/res/layout/activity_viop.xml
           grep -F 'openRealViopContract(candidate)' app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt
-          grep -F 'VİOP provider doğrulanamadı' app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt
           grep -F 'holder.itemView.setOnClickListener { onOpen(x) }' app/src/main/java/tr/borsatakip/v5/ui/ViopUnderlyingOpportunityAdapter.kt
+          grep -F 'VİOP sinyali' app/src/main/java/tr/borsatakip/v5/ui/ViopUnderlyingOpportunityAdapter.kt
           grep -F 'Backend API Key / Bearer Token (zorunlu)' app/src/main/res/values/strings.xml
-          test -f app/src/test/java/tr/borsatakip/v5/data/B127MergedIntegrityAndNavigationTest.kt
+          test -f app/src/test/java/tr/borsatakip/v5/data/B127MergedIntegritySourceTest.kt
+          test -f app/src/test/java/tr/borsatakip/v5/data/ViopContractOpenResolverTest.kt
+          test -f app/src/test/java/tr/borsatakip/v5/data/ViopHistoryIntegrityPolicyTest.kt
           cp /tmp/b127.patch /tmp/out/B127-SOURCE.patch
           sha256sum /tmp/b127.patch > /tmp/out/B127-SOURCE.patch.sha256
 
@@ -95,6 +95,20 @@ jobs:
         with:
           gradle-version: '8.10.2'
 
+      - name: Verify production backend URL guard
+        if: ${{ env.BORSA_BACKEND_URL == '' && env.BORSA_PRODUCTION_BACKEND_URL == '' }}
+        working-directory: /tmp/src
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          gradle --no-daemon assembleRelease > /tmp/release-negative.log 2>&1
+          CODE=$?
+          set -e
+          test "$CODE" -ne 0
+          grep -F 'Release/production build için BORSA_BACKEND_URL/BORSA_PRODUCTION_BACKEND_URL' /tmp/release-negative.log
+          echo 'RELEASE_MISSING_BACKEND_GUARD=PASS' | tee /tmp/release-guard.txt
+
       - name: Run all Android unit tests
         working-directory: /tmp/src
         shell: bash
@@ -104,16 +118,18 @@ jobs:
           export DISCOVERED
           echo "TEST_DISCOVERED=$DISCOVERED" | tee /tmp/test-summary.txt
           gradle --no-daemon testDebugUnitTest --stacktrace
-          python3 - <<'PY2' | tee -a /tmp/test-summary.txt
+          python3 - <<'PY'
           import glob, os, xml.etree.ElementTree as ET
           d=int(os.environ['DISCOVERED']); t=f=e=s=0
           for p in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
               r=ET.parse(p).getroot(); t+=int(r.attrib.get('tests',0)); f+=int(r.attrib.get('failures',0)); e+=int(r.attrib.get('errors',0)); s+=int(r.attrib.get('skipped',0))
           passed=t-f-e-s
-          print(f'TEST_EXECUTED={t} TEST_PASSED={passed} TEST_FAILURES={f} TEST_ERRORS={e} TEST_SKIPPED={s}')
+          line=f'TEST_EXECUTED={t} TEST_PASSED={passed} TEST_FAILURES={f} TEST_ERRORS={e} TEST_SKIPPED={s}'
+          print(line)
+          with open('/tmp/test-summary.txt','a',encoding='utf-8') as out: out.write(line+'\n')
           if t != d or f or e or s:
               raise SystemExit(f'Test contract failed: discovered={d}, executed={t}, failures={f}, errors={e}, skipped={s}')
-          PY2
+          PY
 
       - name: Lint debug
         working-directory: /tmp/src
@@ -144,7 +160,7 @@ jobs:
           OUT=/tmp/out/V5-ARACI-KURUM-5.2.5-B127-MERGED-INTEGRITY-FIX-debug.apk
           cp "$APK" "$OUT"
           sha256sum "$OUT" | tee "$OUT.sha256"
-          python3 - <<'PY2'
+          python3 - <<'PY'
           from pathlib import Path
           import zipfile
           src=Path('/tmp/src')
@@ -154,10 +170,11 @@ jobs:
               for p in src.rglob('*'):
                   if p.is_file() and not any(x in excluded for x in p.relative_to(src).parts):
                       z.write(p,p.relative_to(src).as_posix())
-          PY2
+          PY
           sha256sum /tmp/out/V5-ARACI-KURUM-5.2.5-B127-MERGED-INTEGRITY-FIX-Kaynak-Kod.zip | tee /tmp/out/V5-ARACI-KURUM-5.2.5-B127-MERGED-INTEGRITY-FIX-Kaynak-Kod.zip.sha256
           cp /tmp/test-summary.txt /tmp/out/TEST-SUMMARY.txt
           cp /tmp/backend-config.txt /tmp/out/BACKEND-CONFIG.txt
+          [ ! -f /tmp/release-guard.txt ] || cp /tmp/release-guard.txt /tmp/out/RELEASE-GUARD.txt
           cp /tmp/src/B127_CHANGES.md /tmp/out/B127_CHANGES.md
           {
             echo 'B127 MERGED INTEGRITY FIX VERIFIED BUILD'
@@ -165,6 +182,7 @@ jobs:
             echo 'versionCode=127'
             echo 'versionName=5.2.5'
             cat /tmp/backend-config.txt
+            [ ! -f /tmp/release-guard.txt ] || cat /tmp/release-guard.txt
             echo 'contract_selector=VALID_ACTIVE_CENTRALIZED'
             echo 'preflight_contracts_index_zero=REMOVED'
             echo 'history_failure_swallow=REMOVED'
@@ -175,10 +193,12 @@ jobs:
             echo 'provider_error_underlying_fallback=DISABLED'
             echo 'underlying_card_real_contract_resolution=ENABLED'
             echo 'underlying_price_as_viop_price=FORBIDDEN'
+            echo 'viop_signal_without_quote_history=FORBIDDEN'
             echo 'api_key_ui_contract=MANDATORY'
             cat /tmp/test-summary.txt
             echo 'production_viop_live_e2e=NOT_RUN_WITHOUT_REAL_BACKEND_CREDENTIALS'
             echo 'physical_device_test=NOT_RUN'
+            echo 'instrumentation_test=NOT_RUN_NO_PHYSICAL_OR_EMULATOR_TARGET'
             echo 'signing=DEBUG'
           } > /tmp/out/PROVENANCE.txt
 
