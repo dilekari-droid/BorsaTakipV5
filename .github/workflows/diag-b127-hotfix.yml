@@ -1,0 +1,49 @@
+name: B127 Compile Diagnostics
+
+on:
+  push:
+    branches: [v525-b127-merged-integrity-fix]
+    paths: ['.github/workflows/diag-b127-hotfix.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore and patch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/src /tmp/b126 && mkdir -p /tmp/src /tmp/b126
+          curl -fL --retry 3 -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "https://api.github.com/repos/dilekari-droid/BorsaTakipV5/actions/artifacts/10497732204/zip" -o /tmp/b126-artifact.zip
+          unzip -q /tmp/b126-artifact.zip -d /tmp/b126
+          SRCZIP=$(find /tmp/b126 -type f -name '*B126*Kaynak-Kod.zip' | head -n1)
+          unzip -q "$SRCZIP" -d /tmp/src
+          cat "$GITHUB_WORKSPACE"/ci_payload/b127_merged_integrity/chunks/part_* > /tmp/base.b64
+          base64 -d /tmp/base.b64 | gzip -dc > /tmp/base.patch
+          (cd /tmp/src && patch -p1 --batch --forward < /tmp/base.patch)
+          cat "$GITHUB_WORKSPACE"/ci_payload/b127_hotfix/chunks/part_* > /tmp/hotfix.b64
+          base64 -d /tmp/hotfix.b64 | gzip -dc > /tmp/hotfix.patch
+          (cd /tmp/src && patch -p1 --batch --forward < /tmp/hotfix.patch)
+      - name: Print compile targets
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /tmp/src
+          echo '=== ViopActivity 1-330 ==='
+          nl -ba app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt | sed -n '1,330p'
+          echo '=== ViopContractOpenResolver ==='
+          nl -ba app/src/main/java/tr/borsatakip/v5/data/ViopContractOpenResolver.kt
+          echo '=== ScanOrchestrator ==='
+          nl -ba app/src/main/java/tr/borsatakip/v5/scan/ScanOrchestrator.kt
+          echo '=== OpportunityWorker 1-100 ==='
+          nl -ba app/src/main/java/tr/borsatakip/v5/worker/OpportunityWorker.kt | sed -n '1,100p'
+          echo '=== relevant scanner constructors ==='
+          grep -RIn 'class ViopUnderlyingScanner\|class ViopScanner\|class ScanOrchestrator' app/src/main/java/tr/borsatakip/v5 | head -30
