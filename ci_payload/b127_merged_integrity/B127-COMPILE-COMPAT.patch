@@ -1,0 +1,39 @@
+diff -ruN a/app/src/main/java/tr/borsatakip/v5/analysis/DecisionPricePolicy.kt b/app/src/main/java/tr/borsatakip/v5/analysis/DecisionPricePolicy.kt
+--- a/app/src/main/java/tr/borsatakip/v5/analysis/DecisionPricePolicy.kt	2026-09-17 18:03:45.527420385 +0000
++++ b/app/src/main/java/tr/borsatakip/v5/analysis/DecisionPricePolicy.kt	2026-09-17 18:03:46.418911910 +0000
+@@ -4,8 +4,12 @@
+ 
+ /** Keeps decision math on history-bar prices while live quote stays presentation-only. */
+ object DecisionPricePolicy {
++    fun historyBarPrice(candles: List<Candle>): Double? =
++        OhlcvResampler.sanitize(candles).lastOrNull()?.close?.takeIf { it.isFinite() && it > 0.0 }
++
++    /** Compatibility overload. Live quote is intentionally ignored and never used as a decision fallback. */
+     fun historyBarPrice(candles: List<Candle>, liveFallback: Double): Double? {
+         @Suppress("UNUSED_VARIABLE") val ignoredLiveQuote = liveFallback
+-        return OhlcvResampler.sanitize(candles).lastOrNull()?.close?.takeIf { it.isFinite() && it > 0.0 }
++        return historyBarPrice(candles)
+     }
+ }
+diff -ruN a/app/src/main/java/tr/borsatakip/v5/data/MtfHistoryCache.kt b/app/src/main/java/tr/borsatakip/v5/data/MtfHistoryCache.kt
+--- a/app/src/main/java/tr/borsatakip/v5/data/MtfHistoryCache.kt	2026-09-17 18:03:45.529138783 +0000
++++ b/app/src/main/java/tr/borsatakip/v5/data/MtfHistoryCache.kt	2026-09-17 18:03:46.421584276 +0000
+@@ -89,6 +89,18 @@
+         }
+     }
+ 
++    /** Compatibility overload for call sites that use a trailing loader lambda. */
++    suspend fun loadFresh(
++        sourceKey: String,
++        symbol: String,
++        timeframe: String,
++        ttlMs: Long,
++        loader: suspend () -> List<Candle>
++    ): List<Candle> = loadFresh(
++        sourceKey, symbol, timeframe, ttlMs,
++        { System.currentTimeMillis() }, loader, null
++    )
++
+     private fun isFresh(entry: Entry, ttlMs: Long, nowMs: Long): Boolean {
+         if (nowMs < entry.loadedAt || nowMs - entry.loadedAt > ttlMs) return false
+         if (entry.lastExchangeTimestamp <= 0L || entry.lastExchangeTimestamp > nowMs + MAX_FUTURE_CLOCK_SKEW_MS) return false
