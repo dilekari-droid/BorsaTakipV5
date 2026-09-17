@@ -104,14 +104,14 @@ jobs:
           OUT=/tmp/out/V5-ARACI-KURUM-5.2.5-B127-INSTALL-FIX-debug.apk
           cp "$APK" "$OUT"
           sha256sum "$OUT" | tee "$OUT.sha256"
-          cat > /tmp/out/INSTALL-FIX-NOTE.txt <<'EOF'
-B127 INSTALL FIX
-Original package: tr.borsatakip.v5
-Install-fix package: tr.borsatakip.v5.b127fix
-Reason: avoids Android signature conflict with previously installed builds signed by a different key.
-This APK installs as a separate application and does not overwrite the old package.
-Backend URL/API credentials are still not embedded.
-EOF
+          printf '%s\n' \
+            'B127 INSTALL FIX' \
+            'Original package: tr.borsatakip.v5' \
+            'Install-fix package: tr.borsatakip.v5.b127fix' \
+            'Reason: avoids Android signature conflict with previously installed builds signed by a different key.' \
+            'This APK installs as a separate application and does not overwrite the old package.' \
+            'Backend URL/API credentials are still not embedded.' \
+            > /tmp/out/INSTALL-FIX-NOTE.txt
 
       - uses: actions/upload-artifact@v4
         with:
