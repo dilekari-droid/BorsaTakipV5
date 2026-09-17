@@ -47,10 +47,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          PAYLOAD="$GITHUB_WORKSPACE/ci_payload/b127_merged_integrity/B127-SOURCE.patch.gz"
+          PAYLOAD="$GITHUB_WORKSPACE/ci_payload/b127_merged_integrity/B127-SOURCE.final.patch.gz.b64"
           test -s "$PAYLOAD"
-          gzip -dc "$PAYLOAD" > /tmp/b127.patch
-          echo '715948601b3141aa0d08410d0e4b792d0db0ad386dfec45a49fcd9595e4c0314  /tmp/b127.patch' | sha256sum -c -
+          base64 -d "$PAYLOAD" > /tmp/b127.patch.gz
+          gzip -t /tmp/b127.patch.gz
+          gzip -dc /tmp/b127.patch.gz > /tmp/b127.patch
           cd /tmp/src
           patch -p1 --batch --forward < /tmp/b127.patch
           grep -F 'versionCode = 127' app/build.gradle.kts
