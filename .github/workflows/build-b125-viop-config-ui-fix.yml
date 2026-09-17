@@ -1,0 +1,192 @@
+name: B125 VIOP Config UI Fix
+
+on:
+  push:
+    branches: [v525-b125-viop-config-ui-fix]
+    paths:
+      - '.github/workflows/build-b125-viop-config-ui-fix.yml'
+      - 'ci_payload/b125_viop_config_ui_fix/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  BORSA_BACKEND_URL: ${{ vars.BORSA_BACKEND_URL }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 80
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore verified B123 source baseline
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/src /tmp/out /tmp/b123 && mkdir -p /tmp/src /tmp/out /tmp/b123
+          curl -fL --retry 3 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/dilekari-droid/BorsaTakipV5/actions/artifacts/10465653492/zip" \
+            -o /tmp/b123-artifact.zip
+          unzip -q /tmp/b123-artifact.zip -d /tmp/b123
+          SRCZIP=$(find /tmp/b123 -type f -name '*B123*Kaynak-Kod.zip' | head -n1)
+          test -n "$SRCZIP" -a -s "$SRCZIP"
+          echo '25e50aeb742e12b3e56bd2211a73f517df7856537c886bea476cde664a66bb78  '"$SRCZIP" | sha256sum -c -
+          unzip -q "$SRCZIP" -d /tmp/src
+          grep -F 'versionCode = 123' /tmp/src/app/build.gradle.kts
+
+      - name: Reproduce verified B124 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          SCRIPT=ci_payload/b124_viop_scan_recovery/apply_b124.py
+          FIX=ci_payload/b124_viop_scan_recovery/fix_generated_strings.py
+          test "$(git hash-object "$SCRIPT")" = '28c66e36629d547b47112cbdee9855b505dd2cf2'
+          sha256sum "$SCRIPT" | tee /tmp/b124-script.sha256
+          sha256sum "$FIX" | tee /tmp/b124-fix.sha256
+          cd /tmp/src
+          python3 "$GITHUB_WORKSPACE/$SCRIPT"
+          python3 "$GITHUB_WORKSPACE/$FIX"
+          grep -F 'versionCode = 124' app/build.gradle.kts
+          grep -F 'class ViopUnderlyingScanner' app/src/main/java/tr/borsatakip/v5/analysis/ViopUnderlyingScanner.kt
+          grep -F 'ProviderState.PROVIDER_NOT_CONFIGURED -> runUnderlyingScan' app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt
+
+      - name: Apply deterministic B125 patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          PAYLOAD="$GITHUB_WORKSPACE/ci_payload/b125_viop_config_ui_fix/b125.patch.gz.b64"
+          echo '50f3c048198dd2d708d9dd739999f19d55b96d9fe58338ef9e7a78afee1fcc66  '"$PAYLOAD" | sha256sum -c -
+          base64 -d "$PAYLOAD" > /tmp/b125.patch.gz
+          gzip -dc /tmp/b125.patch.gz > /tmp/b125.patch
+          echo '1397d31a7a6edbfb4891d8485310015a8617facab9c9401eec8f0b0c0a7378de  /tmp/b125.patch' | sha256sum -c -
+          cd /tmp/src
+          patch -p1 --batch --forward < /tmp/b125.patch
+          grep -F 'versionCode = 125' app/build.gradle.kts
+          grep -F 'DEFAULT_BACKEND_URL' app/build.gradle.kts
+          grep -F 'BuildConfig.DEFAULT_BACKEND_URL' app/src/main/java/tr/borsatakip/v5/data/SettingsStore.kt
+          grep -F 'UNDERLYING:' app/src/main/java/tr/borsatakip/v5/data/ViopBuiltinContractCatalog.kt
+          grep -F 'DAYANAK REFERANSI' app/src/main/java/tr/borsatakip/v5/ui/ViopUnderlyingOpportunityAdapter.kt
+          ! grep -Fq '<HorizontalScrollView' app/src/main/res/layout/activity_viop.xml
+          ! grep -Fq 'android:layout_width="300dp"' app/src/main/res/layout/item_viop_opportunity.xml
+          cp /tmp/b125.patch /tmp/out/B125-SOURCE.patch
+          sha256sum /tmp/b125.patch > /tmp/out/B125-SOURCE.patch.sha256
+
+      - name: Backend build configuration status
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${BORSA_BACKEND_URL:-}" ]; then
+            echo 'BACKEND_URL_CONFIGURED=YES' | tee /tmp/backend-config.txt
+          else
+            echo 'BACKEND_URL_CONFIGURED=NO' | tee /tmp/backend-config.txt
+          fi
+          echo 'API_KEY_EMBEDDED=NO' | tee -a /tmp/backend-config.txt
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Discover and require all Android unit tests
+        working-directory: /tmp/src
+        shell: bash
+        run: |
+          set -euo pipefail
+          DISCOVERED=$(grep -Rho '@Test' app/src/test --include='*.kt' | wc -l | tr -d ' ')
+          export DISCOVERED
+          echo "TEST_DISCOVERED=$DISCOVERED" | tee /tmp/test-summary.txt
+          gradle --no-daemon testDebugUnitTest --stacktrace
+          python3 - <<'PY' | tee -a /tmp/test-summary.txt
+          import glob, os, xml.etree.ElementTree as ET
+          d=int(os.environ['DISCOVERED']); t=f=e=s=0
+          for p in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
+              r=ET.parse(p).getroot(); t+=int(r.attrib.get('tests',0)); f+=int(r.attrib.get('failures',0)); e+=int(r.attrib.get('errors',0)); s+=int(r.attrib.get('skipped',0))
+          passed=t-f-e-s
+          print(f'TEST_EXECUTED={t} TEST_PASSED={passed} TEST_FAILURES={f} TEST_ERRORS={e} TEST_SKIPPED={s}')
+          if t != d or f or e or s:
+              raise SystemExit(f'Test contract failed: discovered={d}, executed={t}, failures={f}, errors={e}, skipped={s}')
+          PY
+
+      - name: Lint debug
+        working-directory: /tmp/src
+        run: gradle --no-daemon lintDebug --stacktrace
+
+      - name: Build debug APK
+        working-directory: /tmp/src
+        run: gradle --no-daemon assembleDebug --stacktrace
+
+      - name: Verify and export B125
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=/tmp/src/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          BT="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)"
+          AAPT="$ANDROID_HOME/build-tools/$BT/aapt"
+          APKSIGNER="$ANDROID_HOME/build-tools/$BT/apksigner"
+          ZIPALIGN="$ANDROID_HOME/build-tools/$BT/zipalign"
+          BADGING="$($AAPT dump badging "$APK" | head -n1)"
+          echo "$BADGING" | tee /tmp/out/BADGING.txt
+          echo "$BADGING" | grep -F "name='tr.borsatakip.v5'"
+          echo "$BADGING" | grep -F "versionCode='125'"
+          echo "$BADGING" | grep -F "versionName='5.2.5'"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee /tmp/out/APKSIGNER.txt
+          "$APKSIGNER" verify --verbose "$APK" | grep -F 'Verified using v2 scheme (APK Signature Scheme v2): true'
+          "$ZIPALIGN" -c -v 4 "$APK" | tee /tmp/out/ZIPALIGN.txt
+
+          OUT=/tmp/out/V5-ARACI-KURUM-5.2.5-B125-VIOP-CONFIG-UI-FIX-debug.apk
+          cp "$APK" "$OUT"
+          sha256sum "$OUT" | tee "$OUT.sha256"
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import zipfile
+          src=Path('/tmp/src')
+          out=Path('/tmp/out/V5-ARACI-KURUM-5.2.5-B125-VIOP-CONFIG-UI-FIX-Kaynak-Kod.zip')
+          excluded={'.git','.gradle','.kotlin','build'}
+          with zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED) as z:
+              for p in src.rglob('*'):
+                  if p.is_file() and not any(x in excluded for x in p.relative_to(src).parts):
+                      z.write(p,p.relative_to(src).as_posix())
+          PY
+          sha256sum /tmp/out/V5-ARACI-KURUM-5.2.5-B125-VIOP-CONFIG-UI-FIX-Kaynak-Kod.zip | tee /tmp/out/V5-ARACI-KURUM-5.2.5-B125-VIOP-CONFIG-UI-FIX-Kaynak-Kod.zip.sha256
+          cp /tmp/test-summary.txt /tmp/out/TEST-SUMMARY.txt
+          cp /tmp/backend-config.txt /tmp/out/BACKEND-CONFIG.txt
+          cp /tmp/src/B125_CHANGES.md /tmp/out/B125_CHANGES.md
+
+          {
+            echo 'B125 VIOP CONFIG + UI FIX VERIFIED BUILD'
+            echo 'applicationId=tr.borsatakip.v5'
+            echo 'versionCode=125'
+            echo 'versionName=5.2.5'
+            cat /tmp/backend-config.txt
+            echo 'backend_url_source=GitHub Actions variable BORSA_BACKEND_URL or on-device Settings'
+            echo 'api_key_storage=on-device Android Keystore backed SettingsStore'
+            echo 'fallback_fake_exchange_symbol=REMOVED'
+            echo 'fallback_contract_price=NONE'
+            echo 'viop_action_layout=RESPONSIVE_2X2'
+            echo 'strong_signal_header_overflow=FIXED_IN_LAYOUT'
+            echo 'opportunity_card_fixed_300dp=REMOVED'
+            cat /tmp/test-summary.txt
+            echo 'production_viop_live_e2e=NOT_RUN'
+            echo 'physical_device_test=NOT_RUN'
+            echo 'signing=DEBUG'
+          } > /tmp/out/PROVENANCE.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: B125-VIOP-CONFIG-UI-FIX
+          path: /tmp/out/*
+          retention-days: 90
