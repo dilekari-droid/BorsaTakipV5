@@ -62,14 +62,12 @@ jobs:
           grep -F 'lastExchangeTimestamp' app/src/main/java/tr/borsatakip/v5/data/MtfHistoryCache.kt
           grep -F 'ScanTelemetry.record' app/src/main/java/tr/borsatakip/v5/analysis/ViopScanner.kt
           test -f app/src/main/java/tr/borsatakip/v5/scan/ScanOrchestrator.kt
-          test -f app/src/main/java/tr/borsatakip/v5/data/ViopContractOpenResolver.kt
           ! grep -Fq 'optJSONObject(0)' app/src/main/java/tr/borsatakip/v5/data/BackendPreflightClient.kt
           grep -F 'openRealViopContract(candidate)' app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt
           grep -F 'holder.itemView.setOnClickListener { onOpen(x) }' app/src/main/java/tr/borsatakip/v5/ui/ViopUnderlyingOpportunityAdapter.kt
+          ! grep -Fq 'holder.itemView.setOnClickListener(null)' app/src/main/java/tr/borsatakip/v5/ui/ViopUnderlyingOpportunityAdapter.kt
           grep -F 'Backend API Key / Bearer Token (zorunlu)' app/src/main/res/values/strings.xml
-          test -f app/src/test/java/tr/borsatakip/v5/data/B127MergedIntegritySourceTest.kt
-          test -f app/src/test/java/tr/borsatakip/v5/data/ViopContractOpenResolverTest.kt
-          test -f app/src/test/java/tr/borsatakip/v5/data/ViopHistoryIntegrityPolicyTest.kt
+          test -f app/src/test/java/tr/borsatakip/v5/data/B127MergedIntegrityAndNavigationTest.kt
           cp /tmp/b127.patch /tmp/out/B127-SOURCE.patch
           sha256sum /tmp/b127.patch > /tmp/out/B127-SOURCE.patch.sha256
 
