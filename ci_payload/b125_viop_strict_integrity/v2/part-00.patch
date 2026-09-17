@@ -1,0 +1,115 @@
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+index b19bca1..d34bac9 100644
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -12,7 +12,7 @@ android {
+         applicationId = "tr.borsatakip.v5"
+         minSdk = 26
+         targetSdk = 35
+-        versionCode = 124
++        versionCode = 125
+         versionName = "5.2.5"
+         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+     }
+diff --git a/app/src/main/java/tr/borsatakip/v5/analysis/DecisionPricePolicy.kt b/app/src/main/java/tr/borsatakip/v5/analysis/DecisionPricePolicy.kt
+index 7a26a65..93b1ed7 100644
+--- a/app/src/main/java/tr/borsatakip/v5/analysis/DecisionPricePolicy.kt
++++ b/app/src/main/java/tr/borsatakip/v5/analysis/DecisionPricePolicy.kt
+@@ -1,10 +1,15 @@
+ package tr.borsatakip.v5.analysis
+ 
++import tr.borsatakip.v5.data.RealTimeIntegrityPolicy
+ import tr.borsatakip.v5.model.Candle
+ 
+-/** Keeps decision math on history-bar prices while live quote stays presentation-only. */
++/**
++ * Karar fiyatı yalnız doğrulanmış kapanmış history mumundan gelir.
++ * Canlı quote yalnız sunum/tazelik kontrolü içindir; history yoksa sinyal üretilmez.
++ */
+ object DecisionPricePolicy {
+-    fun historyBarPrice(candles: List<Candle>, liveFallback: Double): Double? =
+-        OhlcvResampler.sanitize(candles).lastOrNull()?.close?.takeIf { it.isFinite() && it > 0.0 }
+-            ?: liveFallback.takeIf { it.isFinite() && it > 0.0 }
++    fun historyBarPrice(candles: List<Candle>): Double? {
++        if (RealTimeIntegrityPolicy.validateCandles(candles) != null) return null
++        return candles.lastOrNull()?.close?.takeIf { it.isFinite() && it > 0.0 }
++    }
+ }
+diff --git a/app/src/main/java/tr/borsatakip/v5/analysis/ViopScanner.kt b/app/src/main/java/tr/borsatakip/v5/analysis/ViopScanner.kt
+index cbcae07..dd346a8 100644
+--- a/app/src/main/java/tr/borsatakip/v5/analysis/ViopScanner.kt
++++ b/app/src/main/java/tr/borsatakip/v5/analysis/ViopScanner.kt
+@@ -39,6 +39,8 @@ class ViopScanner(
+         const val MTF_TIMEOUT_MS = 12_000L
+         const val MTF_1M_CACHE_TTL_MS = 30_000L
+         const val MTF_1H_CACHE_TTL_MS = 5 * 60_000L
++        const val MTF_1M_MAX_EXCHANGE_AGE_MS = 2 * 60_000L
++        const val MTF_1H_MAX_EXCHANGE_AGE_MS = 2 * 60 * 60_000L
+ 
+         fun isPastLastTradingAt(contract: ViopContract, nowMs: Long = System.currentTimeMillis()): Boolean =
+             contract.lastTradingAt?.let { it <= nowMs } == true
+@@ -152,8 +154,15 @@ class ViopScanner(
+                 errors += ViopScanError(contract.symbol, "EXPIRY_UNVERIFIED", "Gerçek son işlem zamanı sağlayıcı tarafından verilmedi.")
+                 onProgress(p); continue
+             }
++            val decisionPrice = DecisionPricePolicy.historyBarPrice(candles)
++            if (decisionPrice == null) {
++                p = p.copy(failed = p.failed + 1)
++                errors += ViopScanError(contract.symbol, "HISTORY_ERROR", "Kapanmış history mumundan karar fiyatı üretilemedi.")
++                onProgress(p)
++                continue
++            }
+             val technical = TechnicalAnalyzer.analyze(candles)
+-            val opportunity = score(contract, quote, candles, technical, publishAge.coerceAtLeast(0L))
++            val opportunity = score(contract, quote, candles, technical, publishAge.coerceAtLeast(0L), decisionPrice)
+             p = p.copy(
+                 analyzed = p.analyzed + 1,
+                 longCount = p.longCount + if (opportunity.direction == "LONG") 1 else 0,
+@@ -186,9 +195,10 @@ class ViopScanner(
+         quote: tr.borsatakip.v5.model.ViopQuote,
+         candles: List<Candle>,
+         t: tr.borsatakip.v5.model.TechnicalSnapshot,
+-        age: Long
++        age: Long,
++        decisionPrice: Double
+     ): ViopOpportunity {
+-        val price = DecisionPricePolicy.historyBarPrice(candles, quote.price) ?: quote.price
++        val price = decisionPrice
+         var longTech = 0
+         var shortTech = 0
+         if (t.ema20 != null && t.ema50 != null && t.ema200 != null) {
+@@ -301,7 +311,8 @@ class ViopScanner(
+                             sourceKey = "VIOP_BACKEND",
+                             symbol = symbol,
+                             timeframe = "1m",
+-                            ttlMs = MTF_1M_CACHE_TTL_MS
++                            ttlMs = MTF_1M_CACHE_TTL_MS,
++                            maxExchangeAgeMs = MTF_1M_MAX_EXCHANGE_AGE_MS
+                         ) {
+                             backend.loadViopHistoryFlexible(symbol, "7d", "1m", 0).getOrDefault(emptyList())
+                         }
+@@ -309,7 +320,8 @@ class ViopScanner(
+                             sourceKey = "VIOP_BACKEND",
+                             symbol = symbol,
+                             timeframe = "60m",
+-                            ttlMs = MTF_1H_CACHE_TTL_MS
++                            ttlMs = MTF_1H_CACHE_TTL_MS,
++                            maxExchangeAgeMs = MTF_1H_MAX_EXCHANGE_AGE_MS
+                         ) {
+                             backend.loadViopHistoryFlexible(symbol, "120d", "60m", 0).getOrDefault(emptyList())
+                         }
+diff --git a/app/src/main/java/tr/borsatakip/v5/analysis/ViopUnderlyingScanner.kt b/app/src/main/java/tr/borsatakip/v5/analysis/ViopUnderlyingScanner.kt
+index d1c4b37..d1258cb 100644
+--- a/app/src/main/java/tr/borsatakip/v5/analysis/ViopUnderlyingScanner.kt
++++ b/app/src/main/java/tr/borsatakip/v5/analysis/ViopUnderlyingScanner.kt
+@@ -16,7 +16,10 @@ import tr.borsatakip.v5.model.ViopContract
+  * Bu sınıf VİOP fiyatı, hacmi veya açık pozisyon üretmez. Yalnız ilgili BIST dayanağının
+  * mevcut teknik motor çıktısını en yakın yerel kontrat etiketiyle birlikte sunar.
+  */
+-class ViopUnderlyingScanner(private val provider: MarketDataProvider) {
++class ViopUnderlyingScanner(
++    private val provider: MarketDataProvider,
++    private val externalResolver: (suspend (String) -> tr.borsatakip.v5.model.Stock?)? = null
++) {
+     data class Candidate(
+         val contract: ViopContract,
