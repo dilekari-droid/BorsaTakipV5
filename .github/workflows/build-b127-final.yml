@@ -1,0 +1,188 @@
+name: B127 Final Verified Build
+
+on:
+  push:
+    branches: [v525-b127-merged-integrity-fix]
+    paths:
+      - '.github/workflows/build-b127-final.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 80
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore verified B126 source
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/src /tmp/out /tmp/b126
+          mkdir -p /tmp/src /tmp/out /tmp/b126
+          curl -fL --retry 3 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/dilekari-droid/BorsaTakipV5/actions/artifacts/10497732204/zip" \
+            -o /tmp/b126-artifact.zip
+          unzip -q /tmp/b126-artifact.zip -d /tmp/b126
+          SRCZIP=$(find /tmp/b126 -type f -name '*B126*Kaynak-Kod.zip' | head -n1)
+          test -n "$SRCZIP" -a -s "$SRCZIP"
+          echo 'f81a2a78321e269c3bb25874d47ac41e1ecd89bd7d3e867c6bacda75bb88530e  '"$SRCZIP" | sha256sum -c -
+          unzip -q "$SRCZIP" -d /tmp/src
+          grep -F 'versionCode = 126' /tmp/src/app/build.gradle.kts
+
+      - name: Apply B127 merged integrity patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          CHUNKS="$GITHUB_WORKSPACE/ci_payload/b127_merged_integrity/chunks"
+          test -d "$CHUNKS"
+          test "$(find "$CHUNKS" -maxdepth 1 -type f -name 'part_*' | wc -l)" -eq 8
+          cat "$CHUNKS"/part_* > /tmp/b127.patch.gz.b64
+          base64 -d /tmp/b127.patch.gz.b64 > /tmp/b127.patch.gz
+          gzip -t /tmp/b127.patch.gz
+          gzip -dc /tmp/b127.patch.gz > /tmp/b127.patch
+          cd /tmp/src
+          patch -p1 --batch --forward < /tmp/b127.patch
+          grep -F 'versionCode = 127' app/build.gradle.kts
+          grep -F 'object ViopContractSelector' app/src/main/java/tr/borsatakip/v5/data/ViopContractSelector.kt
+          grep -F 'ViopHistoryIntegrityPolicy.validateLastBarClosed' app/src/main/java/tr/borsatakip/v5/data/BackendProvider.kt
+          grep -F 'lastExchangeTimestamp' app/src/main/java/tr/borsatakip/v5/data/MtfHistoryCache.kt
+          grep -F 'ScanTelemetry.record' app/src/main/java/tr/borsatakip/v5/analysis/ViopScanner.kt
+          test -f app/src/main/java/tr/borsatakip/v5/scan/ScanOrchestrator.kt
+          ! grep -Fq 'optJSONObject(0)' app/src/main/java/tr/borsatakip/v5/data/BackendPreflightClient.kt
+          grep -F 'openRealViopContract(candidate)' app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt
+          grep -F 'holder.itemView.setOnClickListener { onOpen(x) }' app/src/main/java/tr/borsatakip/v5/ui/ViopUnderlyingOpportunityAdapter.kt
+          ! grep -Fq 'holder.itemView.setOnClickListener(null)' app/src/main/java/tr/borsatakip/v5/ui/ViopUnderlyingOpportunityAdapter.kt
+          grep -F 'Backend API Key / Bearer Token (zorunlu)' app/src/main/res/values/strings.xml
+          test -f app/src/test/java/tr/borsatakip/v5/data/B127MergedIntegrityAndNavigationTest.kt
+          cp /tmp/b127.patch /tmp/out/B127-SOURCE.patch
+          sha256sum /tmp/b127.patch > /tmp/out/B127-SOURCE.patch.sha256
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Verify release backend guard source contract
+        working-directory: /tmp/src
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -F 'check(defaultBackendUrl.isNotBlank())' app/build.gradle.kts
+          grep -F 'Release/production build için BORSA_BACKEND_URL veya -Pborsa.backendUrl zorunludur.' app/build.gradle.kts
+          echo 'RELEASE_BACKEND_GUARD_SOURCE=PASS' | tee /tmp/release-guard.txt
+
+      - name: Run Android unit tests
+        working-directory: /tmp/src
+        shell: bash
+        run: |
+          set -euo pipefail
+          DISCOVERED=$(grep -Rho '@Test' app/src/test --include='*.kt' | wc -l | tr -d ' ')
+          export DISCOVERED
+          echo "TEST_DISCOVERED=$DISCOVERED" | tee /tmp/test-summary.txt
+          gradle --no-daemon testDebugUnitTest --stacktrace
+          python3 - <<'PY'
+          import glob, os, xml.etree.ElementTree as ET
+          discovered=int(os.environ['DISCOVERED'])
+          tests=failures=errors=skipped=0
+          for path in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
+              root=ET.parse(path).getroot()
+              tests += int(root.attrib.get('tests',0))
+              failures += int(root.attrib.get('failures',0))
+              errors += int(root.attrib.get('errors',0))
+              skipped += int(root.attrib.get('skipped',0))
+          passed=tests-failures-errors-skipped
+          line=f'TEST_EXECUTED={tests} TEST_PASSED={passed} TEST_FAILURES={failures} TEST_ERRORS={errors} TEST_SKIPPED={skipped}'
+          print(line)
+          with open('/tmp/test-summary.txt','a',encoding='utf-8') as f: f.write(line+'\n')
+          if tests != discovered or failures or errors or skipped:
+              raise SystemExit(line)
+          PY
+
+      - name: Lint debug
+        working-directory: /tmp/src
+        run: gradle --no-daemon lintDebug --stacktrace
+
+      - name: Assemble debug APK
+        working-directory: /tmp/src
+        run: gradle --no-daemon assembleDebug --stacktrace
+
+      - name: Verify and export B127
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=/tmp/src/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          BT="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)"
+          AAPT="$ANDROID_HOME/build-tools/$BT/aapt"
+          APKSIGNER="$ANDROID_HOME/build-tools/$BT/apksigner"
+          ZIPALIGN="$ANDROID_HOME/build-tools/$BT/zipalign"
+          BADGING="$($AAPT dump badging "$APK" | head -n1)"
+          echo "$BADGING" | tee /tmp/out/BADGING.txt
+          echo "$BADGING" | grep -F "name='tr.borsatakip.v5'"
+          echo "$BADGING" | grep -F "versionCode='127'"
+          echo "$BADGING" | grep -F "versionName='5.2.5'"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee /tmp/out/APKSIGNER.txt
+          "$APKSIGNER" verify --verbose "$APK" | grep -F 'Verified using v2 scheme (APK Signature Scheme v2): true'
+          "$ZIPALIGN" -c -v 4 "$APK" | tee /tmp/out/ZIPALIGN.txt
+
+          OUT=/tmp/out/V5-ARACI-KURUM-5.2.5-B127-MERGED-INTEGRITY-FIX-debug.apk
+          cp "$APK" "$OUT"
+          sha256sum "$OUT" | tee "$OUT.sha256"
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import zipfile
+          src=Path('/tmp/src')
+          out=Path('/tmp/out/V5-ARACI-KURUM-5.2.5-B127-MERGED-INTEGRITY-FIX-Kaynak-Kod.zip')
+          excluded={'.git','.gradle','.kotlin','build'}
+          with zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED) as z:
+              for p in src.rglob('*'):
+                  if p.is_file() and not any(part in excluded for part in p.relative_to(src).parts):
+                      z.write(p,p.relative_to(src).as_posix())
+          PY
+          sha256sum /tmp/out/V5-ARACI-KURUM-5.2.5-B127-MERGED-INTEGRITY-FIX-Kaynak-Kod.zip | tee /tmp/out/V5-ARACI-KURUM-5.2.5-B127-MERGED-INTEGRITY-FIX-Kaynak-Kod.zip.sha256
+          cp /tmp/test-summary.txt /tmp/out/TEST-SUMMARY.txt
+          cp /tmp/release-guard.txt /tmp/out/RELEASE-GUARD.txt
+          cp /tmp/src/B127_CHANGES.md /tmp/out/B127_CHANGES.md
+          {
+            echo 'B127 MERGED INTEGRITY FIX VERIFIED DEBUG BUILD'
+            echo 'applicationId=tr.borsatakip.v5'
+            echo 'versionCode=127'
+            echo 'versionName=5.2.5'
+            echo 'BACKEND_URL_CONFIGURED=NO'
+            echo 'API_KEY_EMBEDDED=NO'
+            cat /tmp/release-guard.txt
+            echo 'contract_selector=VALID_ACTIVE_CENTRALIZED'
+            echo 'history_integrity_policy=CORRECTED_V4_PRESERVED'
+            echo 'mtf_exchange_freshness=CORRECTED_V4_PRESERVED'
+            echo 'provider_error_underlying_fallback=DISABLED'
+            echo 'underlying_card_real_contract_resolution=ENABLED'
+            echo 'underlying_price_as_viop_price=FORBIDDEN'
+            echo 'viop_signal_without_quote_history=FORBIDDEN'
+            echo 'api_key_ui_contract=MANDATORY'
+            cat /tmp/test-summary.txt
+            echo 'production_viop_live_e2e=NOT_RUN_NO_REAL_BACKEND_CREDENTIALS'
+            echo 'physical_device_test=NOT_RUN'
+            echo 'instrumentation_test=NOT_RUN_NO_EMULATOR_OR_DEVICE'
+            echo 'signing=DEBUG'
+          } > /tmp/out/PROVENANCE.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: B127-MERGED-INTEGRITY-FIX-FINAL
+          path: /tmp/out/*
+          retention-days: 90
