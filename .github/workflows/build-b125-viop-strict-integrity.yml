@@ -34,19 +34,27 @@ jobs:
         run: |
           set -euo pipefail
           cp ci_payload/b125_viop_strict_integrity/b125.patch.gz /tmp/b125.patch.gz
+          cp ci_payload/b125_viop_strict_integrity/b125-extras.patch /tmp/b125-extras.patch
           echo '1717b400a5468fe8bfb21efce0cebe6df2d4910e9a5e85cb463d410b4b356dae  /tmp/b125.patch.gz' | sha256sum -c -
+          echo 'd100cb64ec30006e41b34044a3b9ae4abaa6fca0e87cd1e3fc6b40c43d4d1bc6  /tmp/b125-extras.patch' | sha256sum -c -
           gzip -dc /tmp/b125.patch.gz > /tmp/b125.patch
           echo '91d6ba2dce1f3b04b9ead6f1a864cfb3a38bbd4f11fa8dc6af6086c1685b6afa  /tmp/b125.patch' | sha256sum -c -
           cd /tmp/src
           git apply --check /tmp/b125.patch
           git apply /tmp/b125.patch
+          git apply --check /tmp/b125-extras.patch
+          git apply /tmp/b125-extras.patch
           grep -F 'versionCode = 125' app/build.gradle.kts
           grep -F 'QUOTE_ERROR: Sembol kimliği eksik.' app/src/main/java/tr/borsatakip/v5/data/BackendProvider.kt
           grep -F 'HISTORY_ERROR: lastBarClosed eksik.' app/src/main/java/tr/borsatakip/v5/data/BackendProvider.kt
           grep -F 'fetchExternalTechnicalStock' app/src/main/java/tr/borsatakip/v5/data/YahooFallbackProvider.kt
           grep -F 'maxExchangeAgeMs = MTF_1M_MAX_EXCHANGE_AGE_MS' app/src/main/java/tr/borsatakip/v5/analysis/ViopScanner.kt
+          grep -F 'object ViopUnderlyingTickerMap' app/src/main/java/tr/borsatakip/v5/data/ViopUnderlyingTickerMap.kt
+          grep -F 'class B125ViopStrictIntegrityTest' app/src/test/java/tr/borsatakip/v5/data/B125ViopStrictIntegrityTest.kt
           cp /tmp/b125.patch /tmp/out/B125-VIOP-STRICT-INTEGRITY.patch
+          cp /tmp/b125-extras.patch /tmp/out/B125-VIOP-STRICT-INTEGRITY-EXTRAS.patch
           sha256sum /tmp/b125.patch > /tmp/out/B125-VIOP-STRICT-INTEGRITY.patch.sha256
+          sha256sum /tmp/b125-extras.patch > /tmp/out/B125-VIOP-STRICT-INTEGRITY-EXTRAS.patch.sha256
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -62,7 +70,7 @@ jobs:
           DISCOVERED=$(grep -Rho '@Test' app/src/test --include='*.kt' | wc -l | tr -d ' ')
           export DISCOVERED
           echo "TEST_DISCOVERED=$DISCOVERED" | tee /tmp/test-summary.txt
-          test "$DISCOVERED" -ge 279
+          test "$DISCOVERED" -eq 279
           gradle --no-daemon testDebugUnitTest --stacktrace
           python3 - <<'PY' | tee -a /tmp/test-summary.txt
           import glob, os, xml.etree.ElementTree as ET
@@ -114,6 +122,7 @@ jobs:
             echo 'B125 VIOP STRICT INTEGRITY VERIFIED DEBUG BUILD'
             echo 'applicationId=tr.borsatakip.v5'; echo 'versionCode=125'; echo 'versionName=5.2.5'
             echo 'b125_patch_sha256=91d6ba2dce1f3b04b9ead6f1a864cfb3a38bbd4f11fa8dc6af6086c1685b6afa'
+            echo 'b125_extras_patch_sha256=d100cb64ec30006e41b34044a3b9ae4abaa6fca0e87cd1e3fc6b40c43d4d1bc6'
             echo 'viop_quote_symbol_identity=REQUIRED_FAIL_CLOSED'
             echo 'viop_history_symbol_identity=REQUIRED_FAIL_CLOSED'
             echo 'viop_history_malformed_candle=REJECT_WHOLE_RESPONSE'
