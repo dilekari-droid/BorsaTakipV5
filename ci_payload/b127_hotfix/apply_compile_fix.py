@@ -62,4 +62,19 @@ replace_exact(
     'MtfHistoryCache.loadFresh("P", "XU030", "60m", 5 * 60_000L, { now }, loader = { loads++; fresh })'
 )
 
+# System.getProperty is a Java platform type and may be null. The project treats
+# compiler warnings as errors, so source-only tests must provide a deterministic
+# fallback rather than passing a nullable platform value to File(String).
+for source_test in (
+    "app/src/test/java/tr/borsatakip/v5/production/ProductionBackendConfigSourceTest.kt",
+    "app/src/test/java/tr/borsatakip/v5/ui/ViopProviderFallbackPolicySourceTest.kt",
+):
+    p = Path(source_test)
+    text = p.read_text(encoding="utf-8")
+    old = 'File(System.getProperty("user.dir"))'
+    count = text.count(old)
+    if count != 2:
+        raise SystemExit(f"Expected two user.dir File calls in {source_test}, found {count}")
+    p.write_text(text.replace(old, 'File(System.getProperty("user.dir") ?: ".")'), encoding="utf-8")
+
 print("B127 compile corrections applied")
