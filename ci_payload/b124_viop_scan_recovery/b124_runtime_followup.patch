@@ -1,0 +1,140 @@
+diff --git a/app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt b/app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt
+--- a/app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt
++++ b/app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt
+@@ -45,6 +45,8 @@ class ViopActivity : BaseActivity() {
+     private var previewQuote: ViopQuote? = null
+     private var providerAutoTestInFlight = false
+     private var lastProviderAutoTestAt = 0L
++    private var underlyingScanInFlight = false
++    private var underlyingScanCompleted = false
+@@ -107,8 +109,10 @@ class ViopActivity : BaseActivity() {
+             }
+             ProviderState.PROVIDER_NOT_CONFIGURED -> {
+                 clearPreview()
+-                status.text = "Gerçek VİOP backend bağlı değil. DAYANAK TARAMASI kullanılabilir; bu mod VİOP fiyatı/hacmi/açık pozisyon üretmez."
++                if (!underlyingScanInFlight && !underlyingScanCompleted) {
++                    runUnderlyingScan("Production VİOP backend bağlı değil")
++                }
+             }
+             ProviderState.PROVIDER_TESTING -> Unit
+         }
+@@ -164,7 +168,7 @@ class ViopActivity : BaseActivity() {
+             providerStatus.text = "${s.failureCode} • ${s.message}"
+         }
+         scanButton.text = when (s.state) {
+-            ProviderState.PROVIDER_NOT_CONFIGURED -> "DAYANAK TARAMASINI BAŞLAT"
++            ProviderState.PROVIDER_NOT_CONFIGURED -> if (underlyingScanCompleted) "DAYANAK TARAMASINI YENİLE" else "DAYANAK TARAMASINI BAŞLAT"
+             ProviderState.PROVIDER_READY -> "VİOP TARAMASINI BAŞLAT"
+             ProviderState.PROVIDER_STALE_READY -> "YENİDEN DOĞRULA"
+             ProviderState.PROVIDER_ERROR -> "DAYANAK TARAMASI / TEKRAR DENE"
+@@ -273,6 +277,8 @@ class ViopActivity : BaseActivity() {
+     }
+ 
+     private fun runUnderlyingScan(reason: String) {
++        if (underlyingScanInFlight) return
++        underlyingScanInFlight = true
+         scanButton.isEnabled = false
+         status.text = "$reason • BIST dayanakları teknik olarak taranıyor..."
+         lifecycleScope.launch {
+@@ -302,6 +308,8 @@ class ViopActivity : BaseActivity() {
+                 status.text = "Dayanak taraması başarısız • ${t.message ?: "Beklenmeyen hata"}"
+             } finally {
++                underlyingScanInFlight = false
++                underlyingScanCompleted = true
+                 scanButton.isEnabled = true
+                 refreshProviderState()
+             }
+diff --git a/app/src/main/java/tr/borsatakip/v5/ui/MarketInstrumentDetailActivity.kt b/app/src/main/java/tr/borsatakip/v5/ui/MarketInstrumentDetailActivity.kt
+--- a/app/src/main/java/tr/borsatakip/v5/ui/MarketInstrumentDetailActivity.kt
++++ b/app/src/main/java/tr/borsatakip/v5/ui/MarketInstrumentDetailActivity.kt
+@@ -65,8 +65,7 @@ class MarketInstrumentDetailActivity : BaseActivity() {
+     private suspend fun loadViop30() {
+         val settings = SettingsStore(this)
+         if (!settings.baseUrl.startsWith("https://") || settings.apiKey.isBlank()) {
+-            showError("VİOP30 için production HTTPS backend ve API erişimi gerekli.", showSettings = true)
+-            return
++            return loadViop30Underlying("Production VİOP backend bağlı değil")
+         }
+         val backend = BackendProvider(this)
+         val contract = backend.loadViop().getOrNull().orEmpty()
+@@ -74,12 +73,28 @@ class MarketInstrumentDetailActivity : BaseActivity() {
+             .sortedBy { it.expiry }
+             .firstOrNull()
+         if (contract == null) {
+-            showError("XU030 dayanaklı aktif VİOP sözleşmesi alınamadı.", showSettings = true)
+-            return
++            return loadViop30Underlying("XU030 dayanaklı production VİOP kontratı alınamadı")
+         }
+         val quote = backend.loadViopQuote(contract.symbol).getOrNull()
+-        if (quote == null) showError("${contract.symbol} için VİOP fiyatı alınamadı.", showSettings = true)
++        if (quote == null) loadViop30Underlying("${contract.symbol} production VİOP quote alınamadı")
+         else bindViop("VİOP 30 • ${contract.symbol}", quote)
+     }
++
++    private suspend fun loadViop30Underlying(reason: String) {
++        val result = YahooFallbackProvider(this).fetchExternalQuote("XU030", listOf("XU030.IS", "^XU030", "XU030"))
++        val stock = result.stock
++        if (stock == null) {
++            showError("$reason. XU030 dayanak referansı da alınamadı. ${result.error ?: ""}".trim(), showSettings = true)
++            return
++        }
++        bindStock("VİOP 30 • DAYANAK XU030", stock)
++        findViewById<TextView>(R.id.marketDetailStats).text = buildString {
++            append("BU DEĞER VİOP KONTRAT FİYATI DEĞİLDİR.\n")
++            append("XU030 spot/dayanak referansıdır; VİOP kontrat fiyatı, hacim ve açık pozisyon üretilmez.\n")
++            append("Neden: ").append(reason)
++        }
++        findViewById<Button>(R.id.marketDetailSettings).visibility = View.VISIBLE
++    }
+diff --git a/app/src/main/java/tr/borsatakip/v5/ui/MainActivity.kt b/app/src/main/java/tr/borsatakip/v5/ui/MainActivity.kt
+--- a/app/src/main/java/tr/borsatakip/v5/ui/MainActivity.kt
++++ b/app/src/main/java/tr/borsatakip/v5/ui/MainActivity.kt
+@@ -260,7 +260,13 @@ class MainActivity : BaseActivity() {
+     }
+ 
+     private fun bindQuoteTile(tile: TileViews, quote: tr.borsatakip.v5.model.ViopQuote?) {
+-        if (quote == null) return
++        if (quote == null) {
++            tile.value.text = "—"
++            tile.change.text = "Dayanak tara"
++            tile.change.setTextColor(getColor(R.color.text_muted))
++            tile.spark.text = "→"
++            tile.spark.setTextColor(getColor(R.color.text_muted))
++            return
++        }
+         bindMarketTile(tile, quote.price, quote.dailyChangePct, emptyList())
+     }
+diff --git a/app/src/test/java/tr/borsatakip/v5/data/B124ViopFallbackUxTest.kt b/app/src/test/java/tr/borsatakip/v5/data/B124ViopFallbackUxTest.kt
+new file mode 100644
+--- /dev/null
++++ b/app/src/test/java/tr/borsatakip/v5/data/B124ViopFallbackUxTest.kt
+@@ -0,0 +1,31 @@
++package tr.borsatakip.v5.data
++
++import org.junit.Assert.assertTrue
++import org.junit.Test
++import java.io.File
++
++class B124ViopFallbackUxTest {
++    private fun read(path: String) = File(path).readText()
++
++    @Test fun viopUnderlyingScanStartsAutomaticallyWhenBackendIsMissing() {
++        val s = read("src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt")
++        assertTrue(s.contains("underlyingScanInFlight"))
++        assertTrue(s.contains("underlyingScanCompleted"))
++        assertTrue(s.contains("runUnderlyingScan(\"Production VİOP backend bağlı değil\")"))
++    }
++
++    @Test fun viop30DetailFallsBackOnlyToExplicitUnderlyingReference() {
++        val s = read("src/main/java/tr/borsatakip/v5/ui/MarketInstrumentDetailActivity.kt")
++        assertTrue(s.contains("loadViop30Underlying"))
++        assertTrue(s.contains("BU DEĞER VİOP KONTRAT FİYATI DEĞİLDİR"))
++        assertTrue(s.contains("XU030.IS"))
++    }
++
++    @Test fun viopTileDoesNotInventContractPriceWhenBackendIsMissing() {
++        val s = read("src/main/java/tr/borsatakip/v5/ui/MainActivity.kt")
++        assertTrue(s.contains("tile.value.text = \"—\""))
++        assertTrue(s.contains("tile.change.text = \"Dayanak tara\""))
++    }
++}
