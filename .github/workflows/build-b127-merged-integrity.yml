@@ -47,11 +47,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          PAYLOAD="$GITHUB_WORKSPACE/ci_payload/b127_merged_integrity/B127-SOURCE.patch.gz.b64"
-          test -s "$PAYLOAD"
-          base64 -d "$PAYLOAD" > /tmp/b127.patch.gz
+          CHUNKS="$GITHUB_WORKSPACE/ci_payload/b127_merged_integrity/chunks"
+          test "$(find "$CHUNKS" -maxdepth 1 -type f -name 'part_*' | wc -l | tr -d ' ')" = "8"
+          cat "$CHUNKS"/part_* > /tmp/b127.patch.gz.b64
+          echo 'fba98420c44d795db64d89783a8f102d4b00d209504dd9937a7961faee1d7f15  /tmp/b127.patch.gz.b64' | sha256sum -c -
+          base64 -d /tmp/b127.patch.gz.b64 > /tmp/b127.patch.gz
+          echo '6e09592bb56eee6ed512745a3ef096c9b60f7ccfd8e6c22aaf2578da873e1444  /tmp/b127.patch.gz' | sha256sum -c -
           gzip -dc /tmp/b127.patch.gz > /tmp/b127.patch
-          echo '1a904b8ae646d7da801bc88b52e7727bab9143e643df10c728a2a16e60c9eb55  /tmp/b127.patch' | sha256sum -c -
+          echo '59f74ed2f4405833f8aaccdf3845feeab2c431e4f7dc3cf2af92bb0e7d5fd418  /tmp/b127.patch' | sha256sum -c -
           cd /tmp/src
           patch -p1 --batch --forward < /tmp/b127.patch
           grep -F 'versionCode = 127' app/build.gradle.kts
@@ -64,6 +67,10 @@ jobs:
           grep -F 'loadViopHistory(c.symbol).getOrThrow()' app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt
           ! grep -Fq 'loadViopHistory(c.symbol).getOrElse { emptyList() }' app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt
           ! grep -Fq '@+id/addContract' app/src/main/res/layout/activity_viop.xml
+          grep -F 'VİOP BACKEND YAPILANDIRILMAMIŞ' app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt
+          ! grep -Fq 'runUnderlyingScan(' app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt
+          grep -F 'Backend API Key / Bearer Token (zorunlu)' app/src/main/res/values/strings.xml
+          grep -F 'API Key / Bearer Token zorunludur' app/src/main/java/tr/borsatakip/v5/ui/SettingsActivity.kt
           cp /tmp/b127.patch /tmp/out/B127-SOURCE.patch
           sha256sum /tmp/b127.patch > /tmp/out/B127-SOURCE.patch.sha256
 
@@ -168,6 +175,9 @@ jobs:
             echo 'scan_orchestrator=PRESERVED'
             echo 'scan_telemetry=PRESERVED'
             echo 'provider_error_underlying_fallback=DISABLED'
+            echo 'provider_not_configured_underlying_autoscan=DISABLED'
+            echo 'api_key_ui_contract=MANDATORY'
+            echo 'viop_missing_backend_signal=NONE'
             echo 'fallback_fake_exchange_symbol=REMOVED'
             echo 'blank_manual_button=REMOVED'
             cat /tmp/test-summary.txt
