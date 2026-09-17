@@ -4,7 +4,7 @@ on:
     branches: [v525-b124-viop-scan-recovery]
     paths:
       - '.github/workflows/build-b124-viop-scan-recovery.yml'
-      - 'ci_payload/b124_viop_scan_recovery/exact-*.b64'
+      - 'ci_payload/b124_viop_scan_recovery/**'
   workflow_dispatch:
 permissions:
   contents: read
@@ -29,29 +29,29 @@ jobs:
           echo '25e50aeb742e12b3e56bd2211a73f517df7856537c886bea476cde664a66bb78  '"$SRCZIP" | sha256sum -c -
           unzip -q "$SRCZIP" -d /tmp/src
           grep -F 'versionCode = 123' /tmp/src/app/build.gradle.kts
-      - name: Reconstruct and apply exact B124 VIOP scan recovery patch
+      - name: Apply final B124 VIOP scan recovery patches
         shell: bash
         run: |
           set -euo pipefail
-          echo '2a14add61cf70e57430ab952d01be51afbb6da2e42393e7ded3bd8f330cb703d  ci_payload/b124_viop_scan_recovery/exact-00.b64' | sha256sum -c -
-          echo '0e9faeeb14bbf8b65e9560136a8bb7390136d6032387b679d69bff31f197511c  ci_payload/b124_viop_scan_recovery/exact-01.b64' | sha256sum -c -
-          echo '2b50aa4dcdc575bae6895ba0c414bdab68dbd9358c217700e195803c9fd29019  ci_payload/b124_viop_scan_recovery/exact-02.b64' | sha256sum -c -
-          cat ci_payload/b124_viop_scan_recovery/exact-00.b64 ci_payload/b124_viop_scan_recovery/exact-01.b64 ci_payload/b124_viop_scan_recovery/exact-02.b64 > /tmp/b124.b64
-          test "$(wc -c < /tmp/b124.b64 | tr -d ' ')" = '8380'
-          base64 -d /tmp/b124.b64 > /tmp/b124.patch.gz
-          echo '77643466e641c50be6267feeeb8c22d3967bc4e2aacd7ac6549f1da383f0bf9f  /tmp/b124.patch.gz' | sha256sum -c -
-          gzip -dc /tmp/b124.patch.gz > /tmp/b124.patch
-          echo 'c0be5f5508724cb037c9645186ea1f247dd21784e6b01f5a6918a180f7939ffd  /tmp/b124.patch' | sha256sum -c -
+          cp ci_payload/b124_viop_scan_recovery/b124_final.patch /tmp/b124.patch
+          cp ci_payload/b124_viop_scan_recovery/b124_runtime_followup.patch /tmp/b124-followup.patch
+          echo '9b66b1dd84a5bfb72a22c067d89af66e64b31e38da3683c9caff6a1395b3e7f1  /tmp/b124.patch' | sha256sum -c -
+          echo '779c4760fd20f88128f4882eae340894e52c13129420e4fd2df7a884d42cb35d  /tmp/b124-followup.patch' | sha256sum -c -
           cd /tmp/src
           git apply --check /tmp/b124.patch
           git apply /tmp/b124.patch
+          git apply --check /tmp/b124-followup.patch
+          git apply /tmp/b124-followup.patch
           grep -F 'versionCode = 124' app/build.gradle.kts
           grep -F 'class ViopUnderlyingScanner' app/src/main/java/tr/borsatakip/v5/analysis/ViopUnderlyingScanner.kt
-          grep -F 'runUnderlyingScan' app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt
-          grep -F 'DAYANAK TARAMASINI BAŞLAT' app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt
+          grep -F 'ProviderState.PROVIDER_NOT_CONFIGURED -> runUnderlyingScan' app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt
+          grep -F 'underlyingScanCompleted' app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt
+          grep -F 'BU DEĞER VİOP KONTRAT FİYATI DEĞİLDİR' app/src/main/java/tr/borsatakip/v5/ui/MarketInstrumentDetailActivity.kt
           grep -F 'VİOP taraması BIST sonucundan bağımsızdır' app/src/main/java/tr/borsatakip/v5/worker/OpportunityWorker.kt
           cp /tmp/b124.patch /tmp/out/B124-VIOP-SCAN-RECOVERY.patch
+          cp /tmp/b124-followup.patch /tmp/out/B124-RUNTIME-FOLLOWUP.patch
           sha256sum /tmp/b124.patch > /tmp/out/B124-VIOP-SCAN-RECOVERY.patch.sha256
+          sha256sum /tmp/b124-followup.patch > /tmp/out/B124-RUNTIME-FOLLOWUP.patch.sha256
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -108,13 +108,16 @@ jobs:
           {
             echo 'B124 VIOP SCAN RECOVERY VERIFIED BUILD'
             echo 'applicationId=tr.borsatakip.v5'; echo 'versionCode=124'; echo 'versionName=5.2.5'
-            echo 'b124_patch_sha256=c0be5f5508724cb037c9645186ea1f247dd21784e6b01f5a6918a180f7939ffd'
-            echo 'viop_production_scan=UNCHANGED_REQUIRES_REAL_BACKEND'
-            echo 'viop_underlying_scan=AVAILABLE_WITHOUT_VIOP_BACKEND'
-            echo 'viop_underlying_scan_fake_contract_quote=NONE'
-            echo 'viop_worker_independent_from_bist_empty=YES'
+            echo 'b124_patch_sha256=9b66b1dd84a5bfb72a22c067d89af66e64b31e38da3683c9caff6a1395b3e7f1'
+            echo 'b124_followup_sha256=779c4760fd20f88128f4882eae340894e52c13129420e4fd2df7a884d42cb35d'
+            echo 'viop_production_scan=UNCHANGED_WHEN_PROVIDER_READY'
+            echo 'viop_underlying_scan=AUTO_AVAILABLE_WITHOUT_VIOP_BACKEND'
+            echo 'viop_underlying_scan_fake_contract_price=NONE'
+            echo 'viop_background_scan_independent_from_empty_bist=YES'
+            echo 'viop_contract_watchlist_underlying_reference=YES'
+            echo 'viop30_detail_underlying_reference=EXPLICIT_NOT_CONTRACT_PRICE'
             cat /tmp/test-summary.txt
-            echo 'production_live_e2e=NOT_RUN'; echo 'physical_device_test=NOT_RUN'; echo 'signing=DEBUG'
+            echo 'production_viop_live_e2e=NOT_RUN'; echo 'yahoo_live_e2e=NOT_RUN'; echo 'physical_device_test=NOT_RUN'; echo 'signing=DEBUG'
           } > /tmp/out/PROVENANCE.txt
       - uses: actions/upload-artifact@v4
         with:
