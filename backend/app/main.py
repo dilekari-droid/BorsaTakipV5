@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import math
 import os
+import re
 import time
+from datetime import datetime, timezone
 from typing import Any
 from urllib.parse import quote
 
@@ -9,12 +12,14 @@ import httpx
 from fastapi import FastAPI, Header, HTTPException, Query
 from pydantic import BaseModel
 
-app = FastAPI(title="BorsaTakip Backend", version="1.1.0")
+app = FastAPI(title="BorsaTakip Backend", version="1.2.0")
 
 API_KEY = os.getenv("BORSA_BACKEND_API_KEY", "").strip()
+APP_ENV = os.getenv("BORSA_APP_ENV", "production").strip().lower()
 UPSTREAM_TOKEN = os.getenv("BORSA_UPSTREAM_TOKEN", "").strip()
 SYMBOLS_URL = os.getenv("BORSA_SYMBOLS_URL", "").strip()
 HISTORY_URL_TEMPLATE = os.getenv("BORSA_HISTORY_URL_TEMPLATE", "").strip()
+QUOTE_URL_TEMPLATE = os.getenv("BORSA_QUOTE_URL_TEMPLATE", "").strip()
 VIOP_URL = os.getenv("BORSA_VIOP_URL", "").strip()
 UPSTREAM_NAME = os.getenv("BORSA_UPSTREAM_NAME", "licensed-upstream").strip() or "licensed-upstream"
 MAX_REALTIME_AGE_MS = int(os.getenv("BORSA_MAX_REALTIME_AGE_MS", "60000"))
@@ -52,21 +57,57 @@ class HistoryResponse(BaseModel):
     candles: list[Candle]
     source: str
     dataTimestamp: int
+    candleCount: int
+    dataMode: str = "HISTORICAL"
+
+
+class QuoteResponse(BaseModel):
+    symbol: str
+    price: float
+    bid: float | None = None
+    ask: float | None = None
+    source: str
+    providerId: str
+    exchangeTimestamp: int
     realtime: bool
     delaySeconds: int
     currentSessionIncluded: bool
+    dataMode: str = "REALTIME"
+
+
+class PreflightResponse(BaseModel):
+    ok: bool
+    backendConfig: bool
+    authentication: bool
+    symbols: bool
+    quote: bool
+    history: bool
+    symbolCount: int = 0
+    sampleSymbol: str | None = None
+    message: str
 
 
 class ViopContract(BaseModel):
     symbol: str
-    name: str | None = None
-    expiry: str | None = None
-    last: float | None = None
-    changePct: float | None = None
+    underlying: str
+    expiry: str
+    contractType: str = "Vadeli İşlem"
+    lastPrice: float | None = None
+    bid: float | None = None
+    ask: float | None = None
+    dailyChangePct: float | None = None
+    tickSize: float
+    multiplier: float
+    openInterest: int | None = None
     volume: float | None = None
-    openInterest: float | None = None
+    liquidity: str | None = None
+    rollover: str | None = None
+    currency: str | None = None
     source: str
     dataTimestamp: int
+    realtime: bool
+    delaySeconds: int
+    currentSessionIncluded: bool
 
 
 class ViopResponse(BaseModel):
@@ -76,10 +117,11 @@ class ViopResponse(BaseModel):
 
 
 def _require_client_auth(authorization: str | None) -> None:
+    if APP_ENV == "production" and not API_KEY:
+        raise HTTPException(status_code=503, detail="Production backend API key is not configured")
     if not API_KEY:
         return
-    expected = f"Bearer {API_KEY}"
-    if authorization != expected:
+    if authorization != f"Bearer {API_KEY}":
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
@@ -126,10 +168,10 @@ def _require_realtime_metadata(payload: dict[str, Any]) -> tuple[int, int]:
     if payload.get("realtime") is not True:
         raise HTTPException(status_code=409, detail="Upstream did not certify data as real-time")
     if payload.get("currentSessionIncluded") is not True:
-        raise HTTPException(status_code=409, detail="Current trading session is not included in OHLCV")
+        raise HTTPException(status_code=409, detail="Current trading session is not included in quote")
     try:
         delay_seconds = int(payload["delaySeconds"])
-        data_ts = int(payload["dataTimestamp"])
+        data_ts = int(payload.get("exchangeTimestamp", payload.get("dataTimestamp")))
     except (KeyError, TypeError, ValueError) as exc:
         raise HTTPException(status_code=409, detail="Real-time provenance metadata is incomplete") from exc
     if delay_seconds < 0 or delay_seconds > MAX_DECLARED_DELAY_SECONDS:
@@ -146,7 +188,6 @@ def _require_realtime_metadata(payload: dict[str, Any]) -> tuple[int, int]:
 def _normalize_candles(payload: Any, requested_symbol: str) -> HistoryResponse:
     if not isinstance(payload, dict):
         raise HTTPException(status_code=502, detail="Upstream history response must be an object")
-    delay_seconds, data_ts = _require_realtime_metadata(payload)
     rows = payload.get("candles")
     if not isinstance(rows, list):
         raise HTTPException(status_code=502, detail="Upstream history response must contain candles")
@@ -165,19 +206,138 @@ def _normalize_candles(payload: Any, requested_symbol: str) -> HistoryResponse:
             )
         except (KeyError, TypeError, ValueError):
             continue
-        if candle.timestamp <= 0 or candle.high < candle.low or candle.volume < 0:
+        if not all(math.isfinite(v) for v in [candle.open, candle.high, candle.low, candle.close, candle.volume]):
+            continue
+        if (candle.timestamp <= 0 or min(candle.open, candle.high, candle.low, candle.close) <= 0 or
+                candle.high < max(candle.open, candle.low, candle.close) or
+                candle.low > min(candle.open, candle.high, candle.close) or candle.volume < 0):
             continue
         candles.append(candle)
     candles.sort(key=lambda c: c.timestamp)
+    if any(candles[i].timestamp <= candles[i - 1].timestamp for i in range(1, len(candles))):
+        raise HTTPException(status_code=422, detail="OHLCV timestamps must be unique and strictly increasing")
     if len(candles) < 220:
         raise HTTPException(status_code=422, detail=f"Insufficient OHLCV history: {len(candles)} candles; minimum 220")
     symbol = str(payload.get("symbol") or requested_symbol).strip().upper()
+    if symbol != requested_symbol:
+        raise HTTPException(status_code=409, detail="Upstream history symbol does not match request")
+    data_ts = int(payload.get("dataTimestamp") or candles[-1].timestamp)
+    if data_ts <= 0:
+        raise HTTPException(status_code=409, detail="Historical data timestamp is missing")
     name = payload.get("name")
     return HistoryResponse(
         symbol=symbol,
         name=str(name).strip() if name else None,
         candles=candles,
         source=UPSTREAM_NAME,
+        dataTimestamp=data_ts,
+        candleCount=len(candles),
+    )
+
+
+def _normalize_quote(payload: Any, requested_symbol: str) -> QuoteResponse:
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=502, detail="Upstream quote response must be an object")
+    delay_seconds, data_ts = _require_realtime_metadata(payload)
+    symbol = str(payload.get("symbol") or requested_symbol).strip().upper()
+    if symbol != requested_symbol:
+        raise HTTPException(status_code=409, detail="Upstream quote symbol does not match request")
+    price = _finite_optional(payload.get("price", payload.get("last")), positive=True)
+    if price is None:
+        raise HTTPException(status_code=422, detail="Upstream quote price is missing or invalid")
+    return QuoteResponse(
+        symbol=symbol, price=price,
+        bid=_finite_optional(payload.get("bid"), nonnegative=True),
+        ask=_finite_optional(payload.get("ask"), nonnegative=True),
+        source=str(payload.get("source") or UPSTREAM_NAME).strip() or UPSTREAM_NAME,
+        providerId=str(payload.get("providerId") or UPSTREAM_NAME).strip() or UPSTREAM_NAME,
+        exchangeTimestamp=data_ts, realtime=True, delaySeconds=delay_seconds,
+        currentSessionIncluded=True,
+    )
+
+
+def _finite_optional(value: Any, *, positive: bool = False, nonnegative: bool = False) -> float | None:
+    if value is None:
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(number):
+        return None
+    if positive and number <= 0:
+        return None
+    if nonnegative and number < 0:
+        return None
+    return number
+
+
+def _expiry_is_current_or_future(expiry: str) -> bool:
+    if not re.fullmatch(r"\d{4}-\d{2}", expiry):
+        return False
+    try:
+        year, month = [int(x) for x in expiry.split("-")]
+        if month < 1 or month > 12:
+            return False
+        now = datetime.now(timezone.utc)
+        return (year, month) >= (now.year, now.month)
+    except ValueError:
+        return False
+
+
+def _normalize_viop_row(row: dict[str, Any]) -> ViopContract | None:
+    symbol = str(row.get("symbol") or "").strip().upper()
+    underlying = str(row.get("underlying") or "").strip().upper()
+    expiry = str(row.get("expiry") or "").strip()
+    if not symbol or not underlying or not _expiry_is_current_or_future(expiry):
+        return None
+
+    tick_size = _finite_optional(row.get("tickSize"), positive=True)
+    multiplier = _finite_optional(row.get("multiplier"), positive=True)
+    if tick_size is None or multiplier is None:
+        return None
+
+    try:
+        delay_seconds = int(row["delaySeconds"])
+        data_ts = int(row["dataTimestamp"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    if row.get("realtime") is not True or row.get("currentSessionIncluded") is not True:
+        return None
+    if delay_seconds < 0 or delay_seconds > MAX_DECLARED_DELAY_SECONDS:
+        return None
+    now = int(time.time() * 1000)
+    age = now - data_ts
+    if data_ts <= 0 or age > MAX_REALTIME_AGE_MS or age < -15_000:
+        return None
+
+    open_interest_raw = row.get("openInterest")
+    open_interest: int | None = None
+    if open_interest_raw is not None:
+        try:
+            parsed_oi = int(open_interest_raw)
+            if parsed_oi >= 0:
+                open_interest = parsed_oi
+        except (TypeError, ValueError):
+            pass
+
+    return ViopContract(
+        symbol=symbol,
+        underlying=underlying,
+        expiry=expiry,
+        contractType=str(row.get("contractType") or "Vadeli İşlem").strip() or "Vadeli İşlem",
+        lastPrice=_finite_optional(row.get("lastPrice", row.get("last")), positive=True),
+        bid=_finite_optional(row.get("bid"), nonnegative=True),
+        ask=_finite_optional(row.get("ask"), nonnegative=True),
+        dailyChangePct=_finite_optional(row.get("dailyChangePct", row.get("changePct"))),
+        tickSize=tick_size,
+        multiplier=multiplier,
+        openInterest=open_interest,
+        volume=_finite_optional(row.get("volume"), nonnegative=True),
+        liquidity=str(row.get("liquidity")).strip() if row.get("liquidity") else None,
+        rollover=str(row.get("rollover")).strip() if row.get("rollover") else None,
+        currency=str(row.get("currency")).strip() if row.get("currency") else None,
+        source=str(row.get("source") or UPSTREAM_NAME).strip() or UPSTREAM_NAME,
         dataTimestamp=data_ts,
         realtime=True,
         delaySeconds=delay_seconds,
@@ -189,8 +349,12 @@ def _normalize_candles(payload: Any, requested_symbol: str) -> HistoryResponse:
 async def health(authorization: str | None = Header(default=None)) -> Health:
     _require_client_auth(authorization)
     configured = all([
+        bool(API_KEY) or APP_ENV != "production",
         SYMBOLS_URL.startswith("https://"),
         HISTORY_URL_TEMPLATE.startswith("https://"),
+        "{symbol}" in HISTORY_URL_TEMPLATE,
+        QUOTE_URL_TEMPLATE.startswith("https://"),
+        "{symbol}" in QUOTE_URL_TEMPLATE,
     ])
     return Health(
         ok=configured,
@@ -207,6 +371,7 @@ async def bist_symbols(authorization: str | None = Header(default=None)) -> Symb
     _require_client_auth(authorization)
     payload = await _get_json(SYMBOLS_URL)
     items = _normalize_symbols(payload)
+    # This timestamp is response-generation metadata only; it is not reused as a market timestamp.
     return SymbolsResponse(items=items, source=UPSTREAM_NAME, dataTimestamp=int(time.time() * 1000))
 
 
@@ -225,9 +390,38 @@ async def bist_history(
         raise HTTPException(status_code=400, detail="Only range=1y&interval=1d is supported by the mobile contract")
     if "{symbol}" not in HISTORY_URL_TEMPLATE:
         raise HTTPException(status_code=503, detail="BORSA_HISTORY_URL_TEMPLATE must contain {symbol}")
-    url = HISTORY_URL_TEMPLATE.replace("{symbol}", quote(normalized, safe=""))
-    payload = await _get_json(url)
+    payload = await _get_json(HISTORY_URL_TEMPLATE.replace("{symbol}", quote(normalized, safe="")))
     return _normalize_candles(payload, normalized)
+
+
+@app.get("/v1/bist/quote/{symbol}", response_model=QuoteResponse)
+async def bist_quote(symbol: str, authorization: str | None = Header(default=None)) -> QuoteResponse:
+    _require_client_auth(authorization)
+    normalized = symbol.strip().upper()
+    if not (3 <= len(normalized) <= 12 and normalized.replace("_", "").isalnum()):
+        raise HTTPException(status_code=400, detail="Invalid symbol")
+    if "{symbol}" not in QUOTE_URL_TEMPLATE:
+        raise HTTPException(status_code=503, detail="BORSA_QUOTE_URL_TEMPLATE must contain {symbol}")
+    payload = await _get_json(QUOTE_URL_TEMPLATE.replace("{symbol}", quote(normalized, safe="")))
+    return _normalize_quote(payload, normalized)
+
+
+@app.get("/v1/preflight", response_model=PreflightResponse)
+async def preflight(authorization: str | None = Header(default=None)) -> PreflightResponse:
+    _require_client_auth(authorization)
+    configured = all([SYMBOLS_URL.startswith("https://"), QUOTE_URL_TEMPLATE.startswith("https://"),
+                      HISTORY_URL_TEMPLATE.startswith("https://"), "{symbol}" in QUOTE_URL_TEMPLATE,
+                      "{symbol}" in HISTORY_URL_TEMPLATE])
+    if not configured:
+        return PreflightResponse(ok=False, backendConfig=False, authentication=True, symbols=False,
+                                 quote=False, history=False, message="Licensed upstream endpoints are not configured")
+    symbols = _normalize_symbols(await _get_json(SYMBOLS_URL))
+    sample = symbols[0]
+    quote_result = _normalize_quote(await _get_json(QUOTE_URL_TEMPLATE.replace("{symbol}", quote(sample, safe=""))), sample)
+    history_result = _normalize_candles(await _get_json(HISTORY_URL_TEMPLATE.replace("{symbol}", quote(sample, safe=""))), sample)
+    return PreflightResponse(ok=True, backendConfig=True, authentication=True, symbols=True,
+                             quote=quote_result.realtime, history=history_result.candleCount >= 220,
+                             symbolCount=len(symbols), sampleSymbol=sample, message="Production provider contract verified")
 
 
 @app.get("/v1/viop/contracts", response_model=ViopResponse)
@@ -239,25 +433,9 @@ async def viop_contracts(authorization: str | None = Header(default=None)) -> Vi
     rows = payload.get("items") if isinstance(payload, dict) else payload
     if not isinstance(rows, list):
         raise HTTPException(status_code=502, detail="Upstream VIOP response must contain an items array")
-    now = int(time.time() * 1000)
-    items: list[ViopContract] = []
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        symbol = str(row.get("symbol") or "").strip().upper()
-        if not symbol:
-            continue
-        items.append(ViopContract(
-            symbol=symbol,
-            name=str(row.get("name")).strip() if row.get("name") else None,
-            expiry=str(row.get("expiry")).strip() if row.get("expiry") else None,
-            last=float(row["last"]) if row.get("last") is not None else None,
-            changePct=float(row["changePct"]) if row.get("changePct") is not None else None,
-            volume=float(row["volume"]) if row.get("volume") is not None else None,
-            openInterest=float(row["openInterest"]) if row.get("openInterest") is not None else None,
-            source=UPSTREAM_NAME,
-            dataTimestamp=int(row.get("dataTimestamp") or now),
-        ))
-    if not items:
-        raise HTTPException(status_code=502, detail="Upstream returned no valid VIOP contracts")
-    return ViopResponse(items=items, source=UPSTREAM_NAME, dataTimestamp=now)
+    items = [_normalize_viop_row(row) for row in rows if isinstance(row, dict)]
+    valid_items = [item for item in items if item is not None]
+    if not valid_items:
+        raise HTTPException(status_code=422, detail="No VIOP contract passed expiry, parameter and real-time provenance validation")
+    latest_ts = max(item.dataTimestamp for item in valid_items)
+    return ViopResponse(items=valid_items, source=UPSTREAM_NAME, dataTimestamp=latest_ts)

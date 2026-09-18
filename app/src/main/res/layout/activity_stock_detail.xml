@@ -10,18 +10,40 @@
             <TextView android:id="@+id/title" style="@style/Title" />
             <TextView android:id="@+id/subtitle" style="@style/Sub" android:layout_marginTop="2dp" />
 
-            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="14dp" android:orientation="vertical" android:background="@drawable/bg_card_blue" android:padding="16dp" android:elevation="5dp">
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Fiyat ve sinyal özeti" android:textColor="@color/white" android:textStyle="bold" android:textSize="15sp" />
-                <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:text="Kaynak ve veri zamanı aşağıdaki ayrıntıda açıkça gösterilir." android:textColor="#D9EDFF" android:textSize="12sp" />
+            <TextView android:id="@+id/scoreSummary" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="14dp" android:background="@drawable/bg_card_blue" android:padding="16dp" android:textColor="@color/white" android:textStyle="bold" android:textSize="15sp" />
+
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="Genel Görünüm" android:textColor="@color/blue" android:textStyle="bold" />
+            <TextView android:id="@+id/overview" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:background="@drawable/bg_card" android:padding="14dp" android:textColor="@color/text_primary" android:lineSpacingExtra="4dp" />
+
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="Sinyal Nedenleri" android:textColor="@color/blue" android:textStyle="bold" />
+            <TextView android:id="@+id/trendCard" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:background="@drawable/bg_card" android:padding="14dp" android:textColor="@color/text_primary" />
+            <TextView android:id="@+id/momentumCard" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:background="@drawable/bg_card" android:padding="14dp" android:textColor="@color/text_primary" />
+            <TextView android:id="@+id/macdCard" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:background="@drawable/bg_card" android:padding="14dp" android:textColor="@color/text_primary" />
+            <TextView android:id="@+id/volumeCard" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:background="@drawable/bg_card" android:padding="14dp" android:textColor="@color/text_primary" />
+            <TextView android:id="@+id/extraCard" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:background="@drawable/bg_card" android:padding="14dp" android:textColor="@color/text_primary" />
+
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="Teknik Göstergeler" android:textColor="@color/blue" android:textStyle="bold" />
+            <TextView android:id="@+id/technicalDetails" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:background="@drawable/bg_card" android:padding="14dp" android:textColor="@color/text_primary" android:lineSpacingExtra="4dp" />
+
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="Gerçek OHLCV Grafik" android:textColor="@color/blue" android:textStyle="bold" />
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginTop="8dp">
+                <Button android:id="@+id/btnRange1D" android:layout_width="0dp" android:layout_weight="1" android:layout_height="42dp" android:text="1G" />
+                <Button android:id="@+id/btnRange1W" android:layout_width="0dp" android:layout_weight="1" android:layout_height="42dp" android:text="1H" />
+                <Button android:id="@+id/btnRange1M" android:layout_width="0dp" android:layout_weight="1" android:layout_height="42dp" android:text="1A" />
+                <Button android:id="@+id/btnRange3M" android:layout_width="0dp" android:layout_weight="1" android:layout_height="42dp" android:text="3A" />
+                <Button android:id="@+id/btnRange1Y" android:layout_width="0dp" android:layout_weight="1" android:layout_height="42dp" android:text="1Y" />
             </LinearLayout>
+            <tr.borsatakip.v5.ui.PriceChartView android:id="@+id/chart" android:layout_width="match_parent" android:layout_height="520dp" android:layout_marginTop="8dp" android:background="@drawable/bg_card" android:padding="8dp" />
+            <TextView android:id="@+id/chartStatus" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:textColor="@color/text_secondary" android:textSize="12sp" />
 
-            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="Fiyat Grafiği" android:textColor="@color/blue" android:textStyle="bold" />
-            <tr.borsatakip.v5.ui.PriceChartView android:id="@+id/chart" android:layout_width="match_parent" android:layout_height="220dp" android:layout_marginTop="8dp" android:background="@drawable/bg_card" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="Veri Kalitesi" android:textColor="@color/blue" android:textStyle="bold" />
+            <TextView android:id="@+id/dataQuality" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:background="@drawable/bg_card" android:padding="14dp" android:textColor="@color/text_primary" android:lineSpacingExtra="4dp" />
 
-            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="Sinyaller ve Teknik Analiz" android:textColor="@color/blue" android:textStyle="bold" />
-            <TextView android:id="@+id/details" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:background="@drawable/bg_card" android:padding="16dp" android:textColor="@color/text_primary" android:lineSpacingExtra="5dp" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="Veri Durumu" android:textColor="@color/blue" android:textStyle="bold" />
+            <TextView android:id="@+id/dataStatus" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:background="@drawable/bg_card" android:padding="14dp" android:textColor="@color/text_primary" android:lineSpacingExtra="4dp" />
 
-            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:background="@drawable/bg_card" android:padding="12dp" android:textColor="@color/yellow" android:text="Önemli: Eksik destek, direnç, VWAP veya tarihsel veri uydurulmaz; veri yoksa açıkça belirtilir." android:textSize="12sp" />
+            <TextView android:id="@+id/validity" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:background="@drawable/bg_card" android:padding="14dp" android:textColor="@color/yellow" android:textStyle="bold" />
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:background="@drawable/bg_card" android:padding="12dp" android:textColor="@color/text_secondary" android:text="Bu ekran yatırım tavsiyesi değildir. Eksik/veri-yok alanları uydurulmaz; Nihai Sinyal puanı başarı olasılığı olarak yorumlanmamalıdır." android:textSize="12sp" />
         </LinearLayout>
     </ScrollView>
 

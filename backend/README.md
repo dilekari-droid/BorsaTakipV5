@@ -8,7 +8,9 @@ Android tarafı şu uçları kullanır:
 
 - `GET /v1/health`
 - `GET /v1/bist/symbols`
+- `GET /v1/bist/quote/{symbol}` — lisanslı anlık fiyat ve gerçek exchange timestamp
 - `GET /v1/bist/history/{symbol}?range=1y&interval=1d`
+- `GET /v1/preflight` — config/auth/symbol/quote/history zinciri
 - `GET /v1/viop/contracts`
 
 İstemci `BORSA_BACKEND_API_KEY` tanımlıysa `Authorization: Bearer <key>` gönderir.
@@ -73,7 +75,7 @@ veya
 }
 ```
 
-Android analiz motoru için **en az 220 geçerli günlük mum** gerekir. Backend daha az veri gelirse `422` döndürür; veri uydurmaz.
+Android analiz motoru için **en az 220 geçerli günlük mum** gerekir. Backend daha az veri gelirse `422` döndürür; veri uydurmaz. Tarihsel mum tazeliği anlık quote tazeliğiyle karıştırılmaz; gerçek zaman kontrolü quote endpointindeki `exchangeTimestamp`, `realtime`, `delaySeconds` ve `currentSessionIncluded` alanlarında yapılır.
 
 ### VİOP sözleşmeleri
 
