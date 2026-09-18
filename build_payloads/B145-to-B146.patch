@@ -1,0 +1,121 @@
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+index 14e4433..dd408f6 100644
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -25,7 +25,7 @@ android {
+         applicationId = "tr.borsatakip.v5"
+         minSdk = 26
+         targetSdk = 35
+-        versionCode = 145
++        versionCode = 146
+         versionName = "5.2.5"
+         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+         // Backend URL gizli değildir; CI/repository variable ile sağlanabilir.
+diff --git a/app/src/main/java/tr/borsatakip/v5/ui/BistScanActivity.kt b/app/src/main/java/tr/borsatakip/v5/ui/BistScanActivity.kt
+index 26553a4..e61e75a 100644
+--- a/app/src/main/java/tr/borsatakip/v5/ui/BistScanActivity.kt
++++ b/app/src/main/java/tr/borsatakip/v5/ui/BistScanActivity.kt
+@@ -150,12 +150,17 @@ class BistScanActivity : BaseActivity() {
+         findViewById<View>(R.id.quickSaved).setOnClickListener { startActivity(Intent(this, FavoritesActivity::class.java)) }
+         findViewById<View>(R.id.btnAllTools).setOnClickListener { startActivity(Intent(this, OpportunityActivity::class.java)) }
+ 
+-        configure.setOnClickListener { startActivity(Intent(this, SettingsActivity::class.java)) }
++        configure.setOnClickListener { openProviderSetup() }
+ 
+-        // B144: Hero kartındaki mercek, ana CTA ile birebir aynı tarama komutunu kullanır.
+-        // Böylece iki ayrı tarama kod yolu oluşmaz; provider/preflight/fail-closed kuralları aynen korunur.
++        // B146: Mercek gerçek bir veri kaynağı yoksa kullanıcıyı doğrudan eksik provider ayarına götürür.
++        // Kullanıcı fallback'i açıkça etkinleştirmişse veya production kimliği yapılandırılmışsa
++        // mevcut ana tarama komutu kullanılır; fail-closed/provider preflight kuralları korunur.
+         findViewById<View>(R.id.btnScanHeroLens).setOnClickListener {
+-            btn.performClick()
++            if (hasConfiguredScanSource()) {
++                btn.performClick()
++            } else {
++                openProviderSetup()
++            }
+         }
+ 
+         btn.setOnClickListener {
+@@ -602,6 +607,25 @@ class BistScanActivity : BaseActivity() {
+     private fun productionBackendConfigured(): Boolean =
+         BackendUrlPolicy.isValidHttps(settings.baseUrl) && settings.apiKey.isNotBlank()
+ 
++    private fun hasConfiguredScanSource(): Boolean =
++        productionBackendConfigured() || userFallbackEnabled()
++
++    /**
++     * B146: Veri kaynağı yokken mercek/CTA kullanıcıyı kör bir Settings ana ekranına değil,
++     * eksik yapılandırmanın doğrudan düzenlenebildiği provider detayına götürür.
++     */
++    private fun openProviderSetup() {
++        val mode = if (BackendUrlPolicy.isValidHttps(settings.baseUrl) && settings.apiKey.isBlank()) {
++            SettingsDetailActivity.MODE_API_KEYS
++        } else {
++            SettingsDetailActivity.MODE_DATA_CONNECTION
++        }
++        startActivity(
++            Intent(this, SettingsDetailActivity::class.java)
++                .putExtra(SettingsDetailActivity.EXTRA_MODE, mode)
++        )
++    }
++
+     private fun refreshAutoScanUi() {
+         if (!::settings.isInitialized || !::autoScanSwitch.isInitialized || !::autoScanStatus.isInitialized) return
+         val tf = ScanTimeframe.fromStored(settings.analysisTimeframeMinutes)
+diff --git a/app/src/main/res/layout/activity_bist_scan.xml b/app/src/main/res/layout/activity_bist_scan.xml
+index dc62e65..77d8be2 100644
+--- a/app/src/main/res/layout/activity_bist_scan.xml
++++ b/app/src/main/res/layout/activity_bist_scan.xml
+@@ -272,7 +272,7 @@
+                     android:layout_height="84dp"
+                     android:background="@drawable/bg_card_blue"
+                     android:clickable="true"
+-                    android:contentDescription="Mercek ile BIST taramasını başlat veya durdur"
++                    android:contentDescription="Mercek ile BIST taramasını başlat; veri kaynağı yoksa sağlayıcı ayarlarını aç"
+                     android:focusable="true"
+                     android:foreground="?attr/selectableItemBackground"
+                     android:gravity="center"
+diff --git a/app/src/test/java/tr/borsatakip/v5/ui/B146ProviderSetupRedirectSourceTest.kt b/app/src/test/java/tr/borsatakip/v5/ui/B146ProviderSetupRedirectSourceTest.kt
+new file mode 100644
+index 0000000..5c49fbf
+--- /dev/null
++++ b/app/src/test/java/tr/borsatakip/v5/ui/B146ProviderSetupRedirectSourceTest.kt
+@@ -0,0 +1,37 @@
++package tr.borsatakip.v5.ui
++
++import org.junit.Assert.assertTrue
++import org.junit.Test
++import java.io.File
++
++class B146ProviderSetupRedirectSourceTest {
++    private fun source(path: String): String {
++        val candidates = listOf(File("src/main/$path"), File("app/src/main/$path"), File("../app/src/main/$path"))
++        return candidates.firstOrNull { it.exists() }?.readText()
++            ?: error("Source not found: $path")
++    }
++
++    @Test
++    fun lensStartsScanOnlyWhenAConfiguredSourceExists() {
++        val src = source("java/tr/borsatakip/v5/ui/BistScanActivity.kt")
++        assertTrue(src.contains("if (hasConfiguredScanSource())"))
++        assertTrue(src.contains("btn.performClick()"))
++        assertTrue(src.contains("openProviderSetup()"))
++        assertTrue(src.contains("productionBackendConfigured() || userFallbackEnabled()"))
++    }
++
++    @Test
++    fun missingProviderOpensTheSpecificProviderDetail() {
++        val src = source("java/tr/borsatakip/v5/ui/BistScanActivity.kt")
++        assertTrue(src.contains("SettingsDetailActivity.MODE_DATA_CONNECTION"))
++        assertTrue(src.contains("SettingsDetailActivity.MODE_API_KEYS"))
++        assertTrue(src.contains("SettingsDetailActivity.EXTRA_MODE"))
++        assertTrue(src.contains("configure.setOnClickListener { openProviderSetup() }"))
++    }
++
++    @Test
++    fun lensAccessibilityExplainsProviderRedirect() {
++        val layout = source("res/layout/activity_bist_scan.xml")
++        assertTrue(layout.contains("veri kaynağı yoksa sağlayıcı ayarlarını aç"))
++    }
++}
