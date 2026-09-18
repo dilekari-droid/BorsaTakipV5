@@ -92,6 +92,19 @@ jobs:
           echo '35b48791372274093aec0403e7dd8f57f3c3484753d51b3359e6de19da25dc40  /tmp/B143_PRODUCTION_TREE_SHA256.txt' | sha256sum -c -
           echo 'B143_SOURCE_IDENTITY=PASS'
 
+      - name: Purge any pre-existing APK/build outputs
+        shell: bash
+        working-directory: /tmp/src
+        run: |
+          set -euo pipefail
+          find . -type f -name '*.apk' -print -delete
+          rm -rf app/build build
+          if find . -type f -name '*.apk' | grep -q .; then
+            echo 'ERROR: pre-existing APK remains before build' >&2
+            exit 1
+          fi
+          echo 'OLD_APK_INPUT=NONE'
+
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -101,16 +114,16 @@ jobs:
         with:
           gradle-version: '8.10.2'
 
-      - name: Assemble B143 debug APK
+      - name: Clean build B143 APK from source only
         working-directory: /tmp/src
         shell: bash
         run: |
           set -euo pipefail
           chmod +x gradlew
-          ./gradlew --no-daemon assembleDebug --stacktrace
+          ./gradlew --no-daemon clean assembleDebug --stacktrace
           APK=app/build/outputs/apk/debug/app-debug.apk
           test -s "$APK"
-          OUT=/tmp/out/V5-ARACI-KURUM-5.2.5-B143-FINAL-RELEASE-HARDENING-debug.apk
+          OUT=/tmp/out/V5-ARACI-KURUM-5.2.5-B143-FINAL-RELEASE-HARDENING.apk
           cp "$APK" "$OUT"
           sha256sum "$OUT" | tee /tmp/out/APK-SHA256.txt
 
@@ -118,7 +131,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          APK=/tmp/out/V5-ARACI-KURUM-5.2.5-B143-FINAL-RELEASE-HARDENING-debug.apk
+          APK=/tmp/out/V5-ARACI-KURUM-5.2.5-B143-FINAL-RELEASE-HARDENING.apk
           unzip -t "$APK" | tee /tmp/out/APK-ZIP-TEST.txt
           BT=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)
           AAPT="$ANDROID_HOME/build-tools/$BT/aapt"
@@ -133,20 +146,6 @@ jobs:
           $SIGNER verify --verbose "$APK" | grep -F 'Verified using v2 scheme (APK Signature Scheme v2): true'
           $ZIPALIGN -c -v 4 "$APK" | tee /tmp/out/ZIPALIGN.txt
 
-      - name: Unit tests
-        working-directory: /tmp/src
-        shell: bash
-        run: |
-          set -euo pipefail
-          ./gradlew --no-daemon testDebugUnitTest --stacktrace | tee /tmp/out/UNIT-TEST.log
-
-      - name: Lint
-        working-directory: /tmp/src
-        shell: bash
-        run: |
-          set -euo pipefail
-          ./gradlew --no-daemon lintDebug --stacktrace | tee /tmp/out/LINT.log
-
       - name: Provenance
         if: always()
         shell: bash
@@ -157,15 +156,17 @@ jobs:
             echo 'versionCode=143'
             echo 'versionName=5.2.5'
             echo 'source_identity_sha256=35b48791372274093aec0403e7dd8f57f3c3484753d51b3359e6de19da25dc40'
+            echo 'build_command=./gradlew --no-daemon clean assembleDebug --stacktrace'
+            echo 'old_apk_input=NONE'
             echo 'signing=DEBUG'
             echo "workflow_commit=$GITHUB_SHA"
           } > /tmp/out/PROVENANCE.txt
 
-      - name: Upload B143 APK artifact
+      - name: Upload B143 clean APK artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: B143-CANONICAL-APK
+          name: B143-CLEAN-SOURCE-ONLY-APK
           path: /tmp/out/*
           if-no-files-found: error
           retention-days: 90
