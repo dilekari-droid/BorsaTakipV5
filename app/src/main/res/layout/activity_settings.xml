@@ -3,134 +3,402 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="@color/bg">
+    android:background="@drawable/bg_screen_gradient">
 
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1">
+        android:layout_weight="1"
+        android:fillViewport="true"
+        android:overScrollMode="never">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            android:padding="18dp">
+            android:paddingStart="16dp"
+            android:paddingTop="18dp"
+            android:paddingEnd="16dp"
+            android:paddingBottom="24dp">
 
-            <TextView style="@style/Title" android:text="Ayarlar" />
-            <TextView style="@style/Sub" android:text="Üretim modu: HTTPS backend ana kaynak • Yahoo yalnız isteğe bağlı deneysel BIST yedeği" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
 
-            <TextView
-                style="@style/Sub"
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        style="@style/Title"
+                        android:text="Ayarlar" />
+
+                    <TextView
+                        style="@style/Sub"
+                        android:layout_marginTop="2dp"
+                        android:text="Uygulama ve veri bağlantıları" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/versionBadge"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/bg_chip"
+                    android:paddingStart="10dp"
+                    android:paddingTop="6dp"
+                    android:paddingEnd="10dp"
+                    android:paddingBottom="6dp"
+                    android:textColor="@color/blue"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
                 android:layout_marginTop="14dp"
-                android:text="Üretim BIST/VİOP backend" />
+                android:background="@drawable/bg_card"
+                android:gravity="center_vertical"
+                android:orientation="vertical">
 
-            <EditText
-                android:id="@+id/baseUrl"
-                android:layout_width="match_parent"
-                android:layout_height="52dp"
-                android:hint="Gerçek backend HTTPS adresi"
-                android:inputType="textUri"
-                android:textColor="@color/text_primary"
-                android:textColorHint="@color/text_secondary" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="SİSTEM DURUMU"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
 
-            <EditText
-                android:id="@+id/apiKey"
-                android:layout_width="match_parent"
-                android:layout_height="52dp"
-                android:hint="Backend API Key / Bearer Token (varsa)"
-                android:inputType="textPassword"
-                android:textColor="@color/text_primary"
-                android:textColorHint="@color/text_secondary" />
+                <TextView
+                    android:id="@+id/systemStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:textColor="@color/green"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
 
-            <Switch
-                android:id="@+id/experimentalProviders"
-                android:layout_width="match_parent"
-                android:layout_height="52dp"
-                android:layout_marginTop="12dp"
-                android:text="DENEYSEL yedek veri modunu etkinleştir (yalnız Yahoo BIST)"
-                android:textColor="@color/text_primary" />
-
-            <Switch
-                android:id="@+id/yahooFallback"
-                android:layout_width="match_parent"
-                android:layout_height="52dp"
-                android:text="Yahoo Finance gecikmeli BIST yedeğini kullan"
-                android:textColor="@color/text_primary" />
+                <TextView
+                    android:id="@+id/workingModeStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="12sp" />
+            </LinearLayout>
 
             <TextView
-                style="@style/Sub"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
                 android:layout_marginTop="18dp"
-                android:text="TradingView" />
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:background="@drawable/bg_card"
-                android:padding="12dp"
-                android:text="TradingView yalnız harici grafik/görüntüleme amacıyla açılır. BorsaTakip TradingView'a WebView ile giriş yapmaz, TradingView cookie/oturumunu uygulamaya aktarmaz ve BIST/VİOP verisini TradingView'dan toplamaz."
-                android:textColor="@color/text_secondary" />
-
-            <Button
-                android:id="@+id/testTradingViewLogin"
-                android:layout_width="match_parent"
-                android:layout_height="52dp"
-                android:layout_marginTop="10dp"
-                android:background="@drawable/bg_card_blue"
-                android:text="TRADINGVIEW'DA AÇ"
-                android:textColor="@color/white" />
-
-            <TextView
-                android:id="@+id/tradingViewStatus"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:background="@drawable/bg_card"
-                android:padding="12dp"
-                android:textColor="@color/text_secondary" />
-
-            <EditText
-                android:id="@+id/refreshMinutes"
-                android:layout_width="match_parent"
-                android:layout_height="52dp"
-                android:layout_marginTop="14dp"
-                android:hint="Yenileme (dakika)"
-                android:inputType="number"
+                android:text="HESAP VE BAĞLANTILAR"
                 android:textColor="@color/text_primary"
-                android:textColorHint="@color/text_secondary" />
+                android:textSize="13sp"
+                android:textStyle="bold" />
 
-            <Switch
-                android:id="@+id/notifications"
-                android:layout_width="match_parent"
-                android:layout_height="52dp"
-                android:text="Fırsat bildirimleri"
-                android:textColor="@color/text_primary" />
-
-            <Button
-                android:id="@+id/save"
-                android:layout_width="match_parent"
-                android:layout_height="52dp"
-                android:background="@drawable/bg_card_blue"
-                android:text="KAYDET"
-                android:textColor="@color/white" />
-
-            <Button
-                android:id="@+id/testConnection"
-                android:layout_width="match_parent"
-                android:layout_height="52dp"
-                android:layout_marginTop="10dp"
-                android:background="@drawable/bg_card"
-                android:text="ÜRETİM BACKEND BAĞLANTISINI TEST ET"
-                android:textColor="@color/text_primary" />
-
-            <TextView
-                android:id="@+id/dataStatus"
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="14dp"
+                android:layout_marginTop="8dp"
                 android:background="@drawable/bg_card"
-                android:padding="14dp"
-                android:textColor="@color/text_secondary" />
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Veri Bağlantısı"
+                    android:textColor="@color/blue"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    style="@style/Sub"
+                    android:layout_marginTop="3dp"
+                    android:text="Üretim HTTPS backend adresi ve bağlantı testi" />
+
+                <EditText
+                    android:id="@+id/baseUrl"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:layout_marginTop="10dp"
+                    android:background="@drawable/bg_card"
+                    android:hint="https://backend-adresi"
+                    android:inputType="textUri"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="12dp"
+                    android:singleLine="true"
+                    android:textColor="@color/text_primary"
+                    android:textColorHint="@color/text_muted" />
+
+                <Button
+                    android:id="@+id/testConnection"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:layout_marginTop="8dp"
+                    android:background="@drawable/bg_card_blue"
+                    android:text="BAĞLANTIYI TEST ET"
+                    android:textColor="@color/white"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="API Anahtarları"
+                    android:textColor="@color/blue"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    style="@style/Sub"
+                    android:layout_marginTop="3dp"
+                    android:text="Anahtar cihazda şifreli olarak saklanır" />
+
+                <EditText
+                    android:id="@+id/apiKey"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:layout_marginTop="10dp"
+                    android:background="@drawable/bg_card"
+                    android:hint="API Key / Bearer Token"
+                    android:inputType="textPassword"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="12dp"
+                    android:singleLine="true"
+                    android:textColor="@color/text_primary"
+                    android:textColorHint="@color/text_muted" />
+
+                <Switch
+                    android:id="@+id/experimentalProviders"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:layout_marginTop="6dp"
+                    android:text="Deneysel yedek veri modu"
+                    android:textColor="@color/text_primary" />
+
+                <Switch
+                    android:id="@+id/yahooFallback"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:text="Yahoo gecikmeli BIST yedeği"
+                    android:textColor="@color/text_primary" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:text="ANALİZ VE TARAMA"
+                android:textColor="@color/text_primary"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Tarama"
+                    android:textColor="@color/purple"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    style="@style/Sub"
+                    android:layout_marginTop="3dp"
+                    android:text="Mevcut tarama motoru korunur; burada yalnız yenileme süresi yönetilir" />
+
+                <EditText
+                    android:id="@+id/refreshMinutes"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:layout_marginTop="10dp"
+                    android:background="@drawable/bg_card"
+                    android:hint="Yenileme süresi (dakika)"
+                    android:inputType="number"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="12dp"
+                    android:singleLine="true"
+                    android:textColor="@color/text_primary"
+                    android:textColorHint="@color/text_muted" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:text="BİLDİRİM VE UYARILAR"
+                android:textColor="@color/text_primary"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical">
+
+                <Switch
+                    android:id="@+id/notifications"
+                    android:layout_width="match_parent"
+                    android:layout_height="56dp"
+                    android:text="Fırsat bildirimleri"
+                    android:textColor="@color/text_primary"
+                    android:textStyle="bold" />
+
+                <TextView
+                    style="@style/Sub"
+                    android:text="Uygulamanın mevcut bildirim ayarını açar veya kapatır" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:text="UYGULAMA VE GÖRÜNÜM"
+                android:textColor="@color/text_primary"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Görünüm"
+                    android:textColor="@color/blue"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/appInfoStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="5dp"
+                    android:text="Koyu tema • Türkçe arayüz • Mevcut ekran yapısı korunuyor"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="13sp" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:text="SİSTEM"
+                android:textColor="@color/text_primary"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Sistem Tanılama"
+                    android:textColor="@color/green"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/dataStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="TradingView Güvenli Görüntüleme"
+                    android:textColor="@color/blue"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tradingViewStatus"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="12sp" />
+
+                <Button
+                    android:id="@+id/testTradingViewLogin"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:layout_marginTop="10dp"
+                    android:background="@drawable/bg_card"
+                    android:text="TRADINGVIEW'I TARAYICIDA AÇ"
+                    android:textColor="@color/text_primary"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:text="HIZLI İŞLEMLER"
+                android:textColor="@color/text_primary"
+                android:textSize="13sp"
+                android:textStyle="bold" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical">
+
+                <Button
+                    android:id="@+id/save"
+                    android:layout_width="match_parent"
+                    android:layout_height="50dp"
+                    android:background="@drawable/bg_card_green"
+                    android:text="AYARLARI KAYDET"
+                    android:textColor="@color/white"
+                    android:textStyle="bold" />
+
+                <TextView
+                    style="@style/Sub"
+                    android:layout_marginTop="8dp"
+                    android:text="Bu aşamada sıfırlama veya yeni çalışma modu eklenmedi; yalnız mevcut gerçek ayarlar kullanılıyor." />
+            </LinearLayout>
         </LinearLayout>
     </ScrollView>
 
