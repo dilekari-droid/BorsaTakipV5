@@ -47,6 +47,9 @@ jobs:
           cd /tmp/src
           git init -q && git add . && git -c user.email=ci@example.invalid -c user.name=CI commit -qm baseline
           git apply --check /tmp/b136.patch && git apply /tmp/b136.patch
+          cp "$GITHUB_WORKSPACE/ci_payload/b136_extra/B136_CHANGES.md" B136_CHANGES.md
+          mkdir -p app/src/test/java/tr/borsatakip/v5/ui
+          cp "$GITHUB_WORKSPACE/ci_payload/b136_extra/B136BistScanUiConsistencySourceTest.kt" app/src/test/java/tr/borsatakip/v5/ui/B136BistScanUiConsistencySourceTest.kt
           grep -F 'applicationId = "tr.borsatakip.v5"' app/build.gradle.kts
           grep -F 'versionCode = 136' app/build.gradle.kts
           grep -F 'versionName = "5.2.5"' app/build.gradle.kts
