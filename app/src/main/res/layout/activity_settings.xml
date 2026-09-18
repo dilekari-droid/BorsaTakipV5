@@ -21,74 +21,34 @@
             android:paddingEnd="16dp"
             android:paddingBottom="24dp">
 
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="center_vertical"
-                android:orientation="horizontal">
+            <TextView
+                style="@style/Title"
+                android:text="Ayarlar" />
 
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:orientation="vertical">
-
-                    <TextView
-                        style="@style/Title"
-                        android:text="Ayarlar" />
-
-                    <TextView
-                        style="@style/Sub"
-                        android:layout_marginTop="2dp"
-                        android:text="Uygulama ve veri bağlantıları" />
-                </LinearLayout>
-
-                <TextView
-                    android:id="@+id/versionBadge"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:background="@drawable/bg_chip"
-                    android:paddingStart="10dp"
-                    android:paddingTop="6dp"
-                    android:paddingEnd="10dp"
-                    android:paddingBottom="6dp"
-                    android:textColor="@color/blue"
-                    android:textSize="12sp"
-                    android:textStyle="bold" />
-            </LinearLayout>
+            <TextView
+                style="@style/Sub"
+                android:layout_marginTop="2dp"
+                android:text="Uygulama, veri bağlantıları, tarama ve sistem kontrolleri" />
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="14dp"
                 android:background="@drawable/bg_card"
-                android:gravity="center_vertical"
                 android:orientation="vertical">
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="SİSTEM DURUMU"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="11sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/systemStatus"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp"
                     android:textColor="@color/green"
-                    android:textSize="15sp"
+                    android:textSize="13sp"
                     android:textStyle="bold" />
 
                 <TextView
-                    android:id="@+id/workingModeStatus"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
+                    style="@style/Sub"
                     android:layout_marginTop="4dp"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="12sp" />
+                    android:text="Production backend, bildirim, tarama ve VİOP doğrulama kontrolleri aktif yapı üzerinden çalışır." />
             </LinearLayout>
 
             <TextView
@@ -118,7 +78,7 @@
                 <TextView
                     style="@style/Sub"
                     android:layout_marginTop="3dp"
-                    android:text="Üretim HTTPS backend adresi ve bağlantı testi" />
+                    android:text="Production HTTPS backend ve erişim anahtarı" />
 
                 <EditText
                     android:id="@+id/baseUrl"
@@ -134,44 +94,13 @@
                     android:textColor="@color/text_primary"
                     android:textColorHint="@color/text_muted" />
 
-                <Button
-                    android:id="@+id/testConnection"
-                    android:layout_width="match_parent"
-                    android:layout_height="48dp"
-                    android:layout_marginTop="8dp"
-                    android:background="@drawable/bg_card_blue"
-                    android:text="BAĞLANTIYI TEST ET"
-                    android:textColor="@color/white"
-                    android:textStyle="bold" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:background="@drawable/bg_card"
-                android:orientation="vertical">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="API Anahtarları"
-                    android:textColor="@color/blue"
-                    android:textSize="16sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    style="@style/Sub"
-                    android:layout_marginTop="3dp"
-                    android:text="Anahtar cihazda şifreli olarak saklanır" />
-
                 <EditText
                     android:id="@+id/apiKey"
                     android:layout_width="match_parent"
                     android:layout_height="52dp"
-                    android:layout_marginTop="10dp"
+                    android:layout_marginTop="8dp"
                     android:background="@drawable/bg_card"
-                    android:hint="API Key / Bearer Token"
+                    android:hint="API erişim anahtarı"
                     android:inputType="textPassword"
                     android:paddingStart="12dp"
                     android:paddingEnd="12dp"
@@ -193,6 +122,16 @@
                     android:layout_height="52dp"
                     android:text="Yahoo gecikmeli BIST yedeği"
                     android:textColor="@color/text_primary" />
+
+                <Button
+                    android:id="@+id/testConnection"
+                    android:layout_width="match_parent"
+                    android:layout_height="50dp"
+                    android:layout_marginTop="8dp"
+                    android:background="@drawable/bg_card_blue"
+                    android:text="ÜRETİM BACKEND BAĞLANTISINI TEST ET"
+                    android:textColor="@color/white"
+                    android:textStyle="bold" />
             </LinearLayout>
 
             <TextView
@@ -214,15 +153,10 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Tarama"
+                    android:text="Tarama Ayarları"
                     android:textColor="@color/purple"
                     android:textSize="16sp"
                     android:textStyle="bold" />
-
-                <TextView
-                    style="@style/Sub"
-                    android:layout_marginTop="3dp"
-                    android:text="Mevcut tarama motoru korunur; burada yalnız yenileme süresi yönetilir" />
 
                 <EditText
                     android:id="@+id/refreshMinutes"
@@ -235,6 +169,73 @@
                     android:paddingStart="12dp"
                     android:paddingEnd="12dp"
                     android:singleLine="true"
+                    android:textColor="@color/text_primary"
+                    android:textColorHint="@color/text_muted" />
+
+                <Switch
+                    android:id="@+id/forwardOutcome"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:text="İleri sonuç / doğrulama takibini etkinleştir"
+                    android:textColor="@color/text_primary" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_card"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="İşlem Simülasyonu"
+                    android:textColor="@color/orange"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    style="@style/Sub"
+                    android:layout_marginTop="3dp"
+                    android:text="Miktar, komisyon ve kayma değerleri mevcut hesaplama mantığında kullanılır" />
+
+                <EditText
+                    android:id="@+id/tradeQuantity"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:layout_marginTop="10dp"
+                    android:background="@drawable/bg_card"
+                    android:hint="Miktar / adet"
+                    android:inputType="numberDecimal"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="12dp"
+                    android:textColor="@color/text_primary"
+                    android:textColorHint="@color/text_muted" />
+
+                <EditText
+                    android:id="@+id/tradeCommission"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:layout_marginTop="8dp"
+                    android:background="@drawable/bg_card"
+                    android:hint="Tek yön komisyon tutarı"
+                    android:inputType="numberDecimal"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="12dp"
+                    android:textColor="@color/text_primary"
+                    android:textColorHint="@color/text_muted" />
+
+                <EditText
+                    android:id="@+id/tradeSlippage"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:layout_marginTop="8dp"
+                    android:background="@drawable/bg_card"
+                    android:hint="Tek yön slippage (bps)"
+                    android:inputType="numberDecimal"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="12dp"
                     android:textColor="@color/text_primary"
                     android:textColorHint="@color/text_muted" />
             </LinearLayout>
@@ -265,41 +266,7 @@
 
                 <TextView
                     style="@style/Sub"
-                    android:text="Uygulamanın mevcut bildirim ayarını açar veya kapatır" />
-            </LinearLayout>
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="18dp"
-                android:text="UYGULAMA VE GÖRÜNÜM"
-                android:textColor="@color/text_primary"
-                android:textSize="13sp"
-                android:textStyle="bold" />
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:background="@drawable/bg_card"
-                android:orientation="vertical">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Görünüm"
-                    android:textColor="@color/blue"
-                    android:textSize="16sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/appInfoStatus"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="5dp"
-                    android:text="Koyu tema • Türkçe arayüz • Mevcut ekran yapısı korunuyor"
-                    android:textColor="@color/text_secondary"
-                    android:textSize="13sp" />
+                    android:text="Android 13+ bildirim izni ve mevcut canlı/yedek görevler otomatik uzlaştırılır." />
             </LinearLayout>
 
             <TextView
@@ -333,6 +300,37 @@
                     android:layout_marginTop="6dp"
                     android:textColor="@color/text_secondary"
                     android:textSize="12sp" />
+
+                <Button
+                    android:id="@+id/runRuntimeDiagnostics"
+                    android:layout_width="match_parent"
+                    android:layout_height="50dp"
+                    android:layout_marginTop="10dp"
+                    android:background="@drawable/bg_card_blue"
+                    android:text="PRODUCTION HAZIRLIK TESTİNİ ÇALIŞTIR"
+                    android:textColor="@color/white"
+                    android:textStyle="bold" />
+
+                <Button
+                    android:id="@+id/openBatteryOptimization"
+                    android:layout_width="match_parent"
+                    android:layout_height="50dp"
+                    android:layout_marginTop="8dp"
+                    android:background="@drawable/bg_card"
+                    android:text="PİL OPTİMİZASYONU AYARLARINI AÇ"
+                    android:textColor="@color/text_primary"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/runtimeDiagnostics"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:background="@drawable/bg_card"
+                    android:padding="12dp"
+                    android:text="Henüz cihaz/production tanısı çalıştırılmadı."
+                    android:textColor="@color/text_secondary"
+                    android:textSize="12sp" />
             </LinearLayout>
 
             <LinearLayout
@@ -361,7 +359,7 @@
                 <Button
                     android:id="@+id/testTradingViewLogin"
                     android:layout_width="match_parent"
-                    android:layout_height="48dp"
+                    android:layout_height="50dp"
                     android:layout_marginTop="10dp"
                     android:background="@drawable/bg_card"
                     android:text="TRADINGVIEW'I TARAYICIDA AÇ"
@@ -378,27 +376,20 @@
                 android:textSize="13sp"
                 android:textStyle="bold" />
 
-            <LinearLayout
+            <Button
+                android:id="@+id/save"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
+                android:layout_height="52dp"
                 android:layout_marginTop="8dp"
-                android:background="@drawable/bg_card"
-                android:orientation="vertical">
+                android:background="@drawable/bg_card_green"
+                android:text="AYARLARI KAYDET"
+                android:textColor="@color/white"
+                android:textStyle="bold" />
 
-                <Button
-                    android:id="@+id/save"
-                    android:layout_width="match_parent"
-                    android:layout_height="50dp"
-                    android:background="@drawable/bg_card_green"
-                    android:text="AYARLARI KAYDET"
-                    android:textColor="@color/white"
-                    android:textStyle="bold" />
-
-                <TextView
-                    style="@style/Sub"
-                    android:layout_marginTop="8dp"
-                    android:text="Bu aşamada sıfırlama veya yeni çalışma modu eklenmedi; yalnız mevcut gerçek ayarlar kullanılıyor." />
-            </LinearLayout>
+            <TextView
+                style="@style/Sub"
+                android:layout_marginTop="8dp"
+                android:text="VİOP provider doğrulaması, otomatik tarama, bildirim ve üretim tanılama davranışları B132 çalışma mantığıyla korunur." />
         </LinearLayout>
     </ScrollView>
 
