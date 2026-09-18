@@ -1,0 +1,150 @@
+name: B136 Final APK
+
+on:
+  push:
+    branches: [v525-b136-bist-scan-state-ui-fix]
+    paths: ['.github/workflows/build-b136-final.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore B135 and apply B136
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/src /tmp/base /tmp/out /tmp/b135
+          mkdir -p /tmp/src /tmp/base /tmp/out /tmp/b135
+          curl -fL --retry 3 -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "https://api.github.com/repos/dilekari-droid/BorsaTakipV5/actions/artifacts/10546269205/zip" -o /tmp/b135.zip
+          unzip -q /tmp/b135.zip -d /tmp/b135
+          SRCZIP=$(find /tmp/b135 -type f -name '*B135*Kaynak-Kod.zip' | head -n1)
+          echo '110706b00a9e8747c80dd830554080498e2e89aa1487fe0d2ef9ac352f2dce68  '"$SRCZIP" | sha256sum -c -
+          unzip -q "$SRCZIP" -d /tmp/src
+          cp -a /tmp/src/. /tmp/base/
+          D2="$GITHUB_WORKSPACE/ci_payload/b136_bist_scan_state_ui_fix_v2"
+          D3="$GITHUB_WORKSPACE/ci_payload/b136_bist_scan_state_ui_fix_v3"
+          echo '499332cddc7071331f0566fdf4b96e0efb242ed50e56406b59b7b039b6f44757  '"$D2/part00.b64" | sha256sum -c -
+          echo '2e4df533828d03650c18f27b313ec80cc169444cfc05c7802e6e8f7e96d09426  '"$D2/part01.b64" | sha256sum -c -
+          echo '1aacd74e22838c8fb3000901c13d65c2e1ccec784fc16ea2722661e05dab900a  '"$D3/tail00.b64" | sha256sum -c -
+          echo 'edaaa8a069e2c51689e40053c93b12b6da1ffcf58cdda10e06f1796ee9ab2bc8  '"$D3/tail01.b64" | sha256sum -c -
+          echo 'd80b4098428408a283829791af915f6c73980f47daaf69ec41cf2565148768eb  '"$D3/tail02.b64" | sha256sum -c -
+          echo 'dcc6f132760e6f2154f9f4cca432e88e24c6a464f23d17e327926b7b23136e55  '"$D3/tail03.b64" | sha256sum -c -
+          cat "$D2/part00.b64" "$D2/part01.b64" "$D3/tail00.b64" "$D3/tail01.b64" "$D3/tail02.b64" "$D3/tail03.b64" > /tmp/b136.b64
+          echo '69750a54d0bc63a22a9c2689e7c12e6d56342940d5219a98fc83b85baae580cf  /tmp/b136.b64' | sha256sum -c -
+          base64 -d /tmp/b136.b64 > /tmp/b136.gz
+          echo '5528ba504f2e67bb2bf9f659308b4e16a50adf3b4d48408b6c732242bd284a1b  /tmp/b136.gz' | sha256sum -c -
+          gzip -dc /tmp/b136.gz > /tmp/b136.patch
+          echo 'bfba864bb28f7b4dca0fed239bb57e87c807f77ad48ed148b600aab1f1e3afec  /tmp/b136.patch' | sha256sum -c -
+          cd /tmp/src
+          git init -q && git add . && git -c user.email=ci@example.invalid -c user.name=CI commit -qm baseline
+          git apply --check /tmp/b136.patch && git apply /tmp/b136.patch
+          grep -F 'applicationId = "tr.borsatakip.v5"' app/build.gradle.kts
+          grep -F 'versionCode = 136' app/build.gradle.kts
+          grep -F 'versionName = "5.2.5"' app/build.gradle.kts
+
+      - name: Static integrity
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib,xml.etree.ElementTree as ET
+          A=Path('/tmp/base'); B=Path('/tmp/src'); ex={'.git','.gradle','.kotlin','build'}
+          def hs(root):
+            d={}
+            for p in root.rglob('*'):
+              if p.is_file():
+                r=p.relative_to(root)
+                if not any(x in ex for x in r.parts): d[r.as_posix()]=hashlib.sha256(p.read_bytes()).hexdigest()
+            return d
+          a,b=hs(A),hs(B); changed={k for k in set(a)|set(b) if a.get(k)!=b.get(k)}
+          allowed={'B136_CHANGES.md','app/build.gradle.kts','app/src/androidTest/kotlin/tr/borsatakip/v5/ui/BistScanActivityRuntimeTest.kt','app/src/main/java/tr/borsatakip/v5/ui/BistScanActivity.kt','app/src/main/res/layout/activity_bist_scan.xml','app/src/test/java/tr/borsatakip/v5/ui/B136BistScanUiConsistencySourceTest.kt'}
+          print('\n'.join(sorted(changed)))
+          assert changed==allowed,(changed^allowed)
+          for p in list((B/'app/src/main/res').rglob('*.xml'))+[B/'app/src/main/AndroidManifest.xml']: ET.parse(p)
+          kt=(B/'app/src/main/java/tr/borsatakip/v5/ui/BistScanActivity.kt').read_text(); xml=(B/'app/src/main/res/layout/activity_bist_scan.xml').read_text()
+          assert 'status.text = "STOPPED"' not in kt
+          assert 'text = "⌕\\nBIST Tarama"' not in kt
+          assert 'android:text="BIST hisseleri taranıyor"' not in xml
+          assert '@+id/txtScanStatusDot' in xml
+          for r in ['app/src/main/java/tr/borsatakip/v5/analysis/MultiTimeframeSignalAnalyzer.kt','app/src/main/java/tr/borsatakip/v5/data/ProviderRouter.kt','app/src/main/java/tr/borsatakip/v5/analysis/ViopScanner.kt','app/src/main/java/tr/borsatakip/v5/data/ViopRepository.kt']: assert a.get(r)==b.get(r),r
+          print('STATIC_INTEGRITY=PASS')
+          PY
+
+      - uses: actions/setup-java@v5
+        with: {distribution: temurin, java-version: '17'}
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: '8.10.2'}
+
+      - name: Unit lint assemble
+        working-directory: /tmp/src
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          D=$(grep -Rho '@Test' app/src/test --include='*.kt' | wc -l | tr -d ' '); export D
+          echo "UNIT_TEST_DISCOVERED=$D" | tee /tmp/test-summary.txt
+          ./gradlew --no-daemon testDebugUnitTest lintDebug assembleDebug --stacktrace
+          python3 - <<'PY'
+          import glob,os,xml.etree.ElementTree as ET
+          t=f=e=s=0
+          for p in glob.glob('/tmp/src/app/build/test-results/testDebugUnitTest/*.xml'):
+            r=ET.parse(p).getroot(); t+=int(r.attrib.get('tests',0)); f+=int(r.attrib.get('failures',0)); e+=int(r.attrib.get('errors',0)); s+=int(r.attrib.get('skipped',0))
+          d=int(os.environ['D']); line=f'UNIT_TEST_EXECUTED={t} UNIT_TEST_PASSED={t-f-e-s} UNIT_TEST_FAILURES={f} UNIT_TEST_ERRORS={e} UNIT_TEST_SKIPPED={s}'
+          print(line); open('/tmp/test-summary.txt','a').write(line+'\nLINT_DEBUG=PASS\nASSEMBLE_DEBUG=PASS\n')
+          if t!=d or f or e or s: raise SystemExit(line)
+          PY
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+      - name: Emulator tests
+        uses: ReactiveCircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          script: |
+            /tmp/src/gradlew -p /tmp/src --no-daemon connectedDebugAndroidTest --stacktrace
+            adb shell am start -n tr.borsatakip.v5/.ui.BistScanActivity || true
+            sleep 2
+            adb exec-out screencap -p > /tmp/out/B136-BIST-SCAN.png || true
+      - name: Count emulator tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          D=$(grep -Rho '@Test' /tmp/src/app/src/androidTest --include='*.kt' | wc -l | tr -d ' '); E=$(grep -Rho '<testcase ' /tmp/src/app/build/outputs/androidTest-results/connected | wc -l | tr -d ' ')
+          echo "INSTRUMENTATION_TEST_DISCOVERED=$D" | tee -a /tmp/test-summary.txt; echo "INSTRUMENTATION_TEST_EXECUTED=$E" | tee -a /tmp/test-summary.txt; test "$E" -ge "$D"; echo 'INSTRUMENTATION_TESTS=PASS' >> /tmp/test-summary.txt
+
+      - name: Verify and export APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=/tmp/src/app/build/outputs/apk/debug/app-debug.apk; test -s "$APK"; unzip -t "$APK" | tee /tmp/out/APK-ZIP-TEST.txt
+          BT=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1); AAPT="$ANDROID_HOME/build-tools/$BT/aapt"; SIGNER="$ANDROID_HOME/build-tools/$BT/apksigner"; ZA="$ANDROID_HOME/build-tools/$BT/zipalign"
+          BADGING=$($AAPT dump badging "$APK" | head -n1); echo "$BADGING" | tee /tmp/out/BADGING.txt; echo "$BADGING" | grep -F "name='tr.borsatakip.v5'"; echo "$BADGING" | grep -F "versionCode='136'"; echo "$BADGING" | grep -F "versionName='5.2.5'"
+          $SIGNER verify --verbose --print-certs "$APK" | tee /tmp/out/APKSIGNER.txt; $SIGNER verify --verbose "$APK" | grep -F 'Verified using v2 scheme (APK Signature Scheme v2): true'; $ZA -c -v 4 "$APK" | tee /tmp/out/ZIPALIGN.txt
+          OUT=/tmp/out/V5-ARACI-KURUM-5.2.5-B136-BIST-SCAN-STATE-UI-FIX-debug.apk; cp "$APK" "$OUT"; sha256sum "$OUT" | tee "$OUT.sha256"
+          python3 - <<'PY'
+          from pathlib import Path
+          import zipfile
+          src=Path('/tmp/src'); out=Path('/tmp/out/V5-ARACI-KURUM-5.2.5-B136-BIST-SCAN-STATE-UI-FIX-Kaynak-Kod.zip'); ex={'.git','.gradle','.kotlin','build'}
+          with zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED) as z:
+            for p in src.rglob('*'):
+              if p.is_file() and not any(x in ex for x in p.relative_to(src).parts): z.write(p,p.relative_to(src).as_posix())
+          PY
+          sha256sum /tmp/out/*Kaynak-Kod.zip | tee /tmp/out/V5-ARACI-KURUM-5.2.5-B136-BIST-SCAN-STATE-UI-FIX-Kaynak-Kod.zip.sha256; cp /tmp/test-summary.txt /tmp/out/TEST-SUMMARY.txt; cp /tmp/src/B136_CHANGES.md /tmp/out/
+          printf 'applicationId=tr.borsatakip.v5\nversionCode=136\nversionName=5.2.5\nsigning=DEBUG\nsource_commit=%s\n' "$GITHUB_SHA" > /tmp/out/PROVENANCE.txt
+      - uses: actions/upload-artifact@v4
+        with: {name: B136-BIST-SCAN-STATE-UI-FIX-FINAL, path: '/tmp/out/*', retention-days: 90}
