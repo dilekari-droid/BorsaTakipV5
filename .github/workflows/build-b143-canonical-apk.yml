@@ -123,7 +123,7 @@ jobs:
           ./gradlew --no-daemon clean assembleDebug --stacktrace
           APK=app/build/outputs/apk/debug/app-debug.apk
           test -s "$APK"
-          OUT=/tmp/out/V5-ARACI-KURUM-5.2.5-B143-FINAL-RELEASE-HARDENING.apk
+          OUT=/tmp/out/V5-2.143.apk
           cp "$APK" "$OUT"
           sha256sum "$OUT" | tee /tmp/out/APK-SHA256.txt
 
@@ -131,7 +131,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          APK=/tmp/out/V5-ARACI-KURUM-5.2.5-B143-FINAL-RELEASE-HARDENING.apk
+          APK=/tmp/out/V5-2.143.apk
           unzip -t "$APK" | tee /tmp/out/APK-ZIP-TEST.txt
           BT=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)
           AAPT="$ANDROID_HOME/build-tools/$BT/aapt"
@@ -152,6 +152,7 @@ jobs:
         run: |
           {
             echo 'B143 FINAL RELEASE HARDENING'
+            echo 'apk_filename=V5-2.143.apk'
             echo 'applicationId=tr.borsatakip.v5'
             echo 'versionCode=143'
             echo 'versionName=5.2.5'
@@ -162,11 +163,11 @@ jobs:
             echo "workflow_commit=$GITHUB_SHA"
           } > /tmp/out/PROVENANCE.txt
 
-      - name: Upload B143 clean APK artifact
+      - name: Upload V5-2.143 APK artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: B143-CLEAN-SOURCE-ONLY-APK
+          name: V5-2.143-B143-SOURCE-ONLY
           path: /tmp/out/*
           if-no-files-found: error
           retention-days: 90
