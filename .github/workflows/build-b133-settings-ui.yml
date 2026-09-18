@@ -1,0 +1,249 @@
+name: B133 Settings UI APK
+
+on:
+  push:
+    branches: [v525-b133-settings-ui-source]
+    paths:
+      - '.github/workflows/build-b133-settings-ui.yml'
+      - 'app/src/main/java/tr/borsatakip/v5/ui/SettingsActivity.kt'
+      - 'app/src/main/res/layout/activity_settings.xml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore verified B132 source
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/src /tmp/base /tmp/out /tmp/b132
+          mkdir -p /tmp/src /tmp/base /tmp/out /tmp/b132
+          curl -fL --retry 3 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/dilekari-droid/BorsaTakipV5/actions/artifacts/10537365850/zip" \
+            -o /tmp/b132-artifact.zip
+          unzip -q /tmp/b132-artifact.zip -d /tmp/b132
+          SRCZIP=$(find /tmp/b132 -type f -name '*B132*Kaynak-Kod.zip' | head -n1)
+          test -n "$SRCZIP" -a -s "$SRCZIP"
+          echo 'ba41241a2e73e0f87e90571fc87ba0deff1ba3fa351c716927f3049b61363874  '"$SRCZIP" | sha256sum -c -
+          unzip -q "$SRCZIP" -d /tmp/src
+          cp -a /tmp/src/. /tmp/base/
+          grep -F 'applicationId = "tr.borsatakip.v5"' /tmp/src/app/build.gradle.kts
+          grep -F 'versionCode = 132' /tmp/src/app/build.gradle.kts
+          grep -F 'versionName = "5.2.5"' /tmp/src/app/build.gradle.kts
+
+      - name: Apply B133 Settings UI source overlay
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp "$GITHUB_WORKSPACE/app/src/main/java/tr/borsatakip/v5/ui/SettingsActivity.kt" \
+             /tmp/src/app/src/main/java/tr/borsatakip/v5/ui/SettingsActivity.kt
+          cp "$GITHUB_WORKSPACE/app/src/main/res/layout/activity_settings.xml" \
+             /tmp/src/app/src/main/res/layout/activity_settings.xml
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          gradle = Path('/tmp/src/app/build.gradle.kts')
+          text = gradle.read_text(encoding='utf-8')
+          old = 'versionCode = 132'
+          assert text.count(old) == 1, f'unexpected versionCode occurrence count: {text.count(old)}'
+          gradle.write_text(text.replace(old, 'versionCode = 133'), encoding='utf-8')
+
+          test = Path('/tmp/src/app/src/test/java/tr/borsatakip/v5/data/B117EngineIntegritySourceTest.kt')
+          t = test.read_text(encoding='utf-8')
+          old_test = 'versionCode = 132'
+          assert old_test in t, 'B132 version assertion not found'
+          test.write_text(t.replace(old_test, 'versionCode = 133'), encoding='utf-8')
+          PY
+
+          grep -F 'versionCode = 133' /tmp/src/app/build.gradle.kts
+          grep -F 'versionName = "5.2.5"' /tmp/src/app/build.gradle.kts
+          grep -F 'versionCode = 133' /tmp/src/app/src/test/java/tr/borsatakip/v5/data/B117EngineIntegritySourceTest.kt
+
+      - name: Scope lock and static checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+          import re
+          import xml.etree.ElementTree as ET
+
+          base = Path('/tmp/base')
+          src = Path('/tmp/src')
+          excluded = {'.gradle', '.kotlin', 'build'}
+
+          def files(root):
+              out = {}
+              for p in root.rglob('*'):
+                  if not p.is_file():
+                      continue
+                  rel = p.relative_to(root)
+                  if any(part in excluded for part in rel.parts):
+                      continue
+                  out[rel.as_posix()] = hashlib.sha256(p.read_bytes()).hexdigest()
+              return out
+
+          a = files(base)
+          b = files(src)
+          changed = sorted(set(a) | set(b))
+          changed = [p for p in changed if a.get(p) != b.get(p)]
+          expected = sorted([
+              'app/build.gradle.kts',
+              'app/src/main/java/tr/borsatakip/v5/ui/SettingsActivity.kt',
+              'app/src/main/res/layout/activity_settings.xml',
+              'app/src/test/java/tr/borsatakip/v5/data/B117EngineIntegritySourceTest.kt',
+          ])
+          print('CHANGED_FILES=', changed)
+          if changed != expected:
+              raise SystemExit(f'SCOPE_MISMATCH expected={expected} actual={changed}')
+          print('SCOPE_LOCK=PASS')
+
+          xmls = list((src / 'app/src/main/res').rglob('*.xml'))
+          for p in xmls:
+              ET.parse(p)
+
+          ids = set()
+          for p in xmls:
+              t = p.read_text(encoding='utf-8')
+              ids.update(re.findall(r'@\+id/([A-Za-z0-9_]+)', t))
+              ids.update(re.findall(r'@id/([A-Za-z0-9_]+)', t))
+
+          settings = (src / 'app/src/main/java/tr/borsatakip/v5/ui/SettingsActivity.kt').read_text(encoding='utf-8')
+          refs = set(re.findall(r'R\.id\.([A-Za-z0-9_]+)', settings))
+          missing = sorted(refs - ids)
+          if missing:
+              raise SystemExit(f'MISSING_RESOURCE_IDS={missing}')
+
+          print(f'XML_PARSE=PASS files={len(xmls)}')
+          print('RESOURCE_ID_CHECK=PASS')
+          PY
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Run all unit tests
+        working-directory: /tmp/src
+        shell: bash
+        run: |
+          set -euo pipefail
+          DISCOVERED=$(grep -Rho '@Test' app/src/test --include='*.kt' | wc -l | tr -d ' ')
+          export DISCOVERED
+          echo "TEST_DISCOVERED=$DISCOVERED" | tee /tmp/test-summary.txt
+          gradle --no-daemon testDebugUnitTest --stacktrace
+          python3 - <<'PY'
+          import glob, os, xml.etree.ElementTree as ET
+          discovered=int(os.environ['DISCOVERED'])
+          tests=failures=errors=skipped=0
+          for path in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
+              root=ET.parse(path).getroot()
+              tests += int(root.attrib.get('tests',0))
+              failures += int(root.attrib.get('failures',0))
+              errors += int(root.attrib.get('errors',0))
+              skipped += int(root.attrib.get('skipped',0))
+          passed=tests-failures-errors-skipped
+          line=f'TEST_EXECUTED={tests} TEST_PASSED={passed} TEST_FAILURES={failures} TEST_ERRORS={errors} TEST_SKIPPED={skipped}'
+          print(line)
+          with open('/tmp/test-summary.txt','a',encoding='utf-8') as f: f.write(line+'\n')
+          if tests != discovered or failures or errors or skipped:
+              raise SystemExit(line)
+          PY
+
+      - name: Lint debug
+        working-directory: /tmp/src
+        run: gradle --no-daemon lintDebug --stacktrace
+
+      - name: Assemble debug APK
+        working-directory: /tmp/src
+        run: gradle --no-daemon assembleDebug --stacktrace
+
+      - name: Verify and export B133
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=/tmp/src/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" > /tmp/out/APK-ZIP-TEST.txt
+
+          BT="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)"
+          AAPT="$ANDROID_HOME/build-tools/$BT/aapt"
+          APKSIGNER="$ANDROID_HOME/build-tools/$BT/apksigner"
+          ZIPALIGN="$ANDROID_HOME/build-tools/$BT/zipalign"
+
+          BADGING="$($AAPT dump badging "$APK" | head -n1)"
+          echo "$BADGING" | tee /tmp/out/BADGING.txt
+          echo "$BADGING" | grep -F "name='tr.borsatakip.v5'"
+          echo "$BADGING" | grep -F "versionCode='133'"
+          echo "$BADGING" | grep -F "versionName='5.2.5'"
+
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee /tmp/out/APKSIGNER.txt
+          "$APKSIGNER" verify --verbose "$APK" | grep -F 'Verified using v2 scheme (APK Signature Scheme v2): true'
+          "$ZIPALIGN" -c -v 4 "$APK" | tee /tmp/out/ZIPALIGN.txt
+
+          OUT=/tmp/out/V5-ARACI-KURUM-5.2.5-B133-SETTINGS-UI-debug.apk
+          cp "$APK" "$OUT"
+          sha256sum "$OUT" | tee "$OUT.sha256"
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import zipfile
+          src=Path('/tmp/src')
+          out=Path('/tmp/out/V5-ARACI-KURUM-5.2.5-B133-SETTINGS-UI-Kaynak-Kod.zip')
+          excluded={'.git','.gradle','.kotlin','build'}
+          with zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED) as z:
+              for p in src.rglob('*'):
+                  if p.is_file() and not any(part in excluded for part in p.relative_to(src).parts):
+                      z.write(p,p.relative_to(src).as_posix())
+          PY
+          sha256sum /tmp/out/V5-ARACI-KURUM-5.2.5-B133-SETTINGS-UI-Kaynak-Kod.zip | tee /tmp/out/V5-ARACI-KURUM-5.2.5-B133-SETTINGS-UI-Kaynak-Kod.zip.sha256
+
+          cp /tmp/test-summary.txt /tmp/out/TEST-SUMMARY.txt
+          cp "$GITHUB_WORKSPACE/B133_SETTINGS_UI_NOTES.md" /tmp/out/B133_SETTINGS_UI_NOTES.md
+
+          {
+            echo 'B133 SETTINGS UI'
+            echo 'applicationId=tr.borsatakip.v5'
+            echo 'versionCode=133'
+            echo 'versionName=5.2.5'
+            echo 'base=B132-HISSELER-VIOP-UI-FINAL'
+            echo 'settings_ui=REDESIGNED'
+            echo 'hisseler_viop_b132=PRESERVED'
+            echo 'backend_api_repository_database=UNCHANGED'
+            echo 'navigation_architecture=UNCHANGED'
+            echo 'test_compatibility_only=versionCode_132_to_133'
+            cat /tmp/test-summary.txt
+            echo 'lint_debug=PASS'
+            echo 'apk_zip_integrity=PASS'
+            echo 'aapt_badging=PASS'
+            echo 'apksigner=PASS'
+            echo 'zipalign=PASS'
+            echo 'physical_device_test=NOT_RUN'
+            echo 'instrumentation_test=NOT_RUN'
+            echo 'signing=DEBUG'
+          } > /tmp/out/PROVENANCE.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: B133-SETTINGS-UI-FINAL
+          path: /tmp/out/*
+          retention-days: 90
