@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/build-b132-hisseler-viop-ui.yml'
       - 'ci_payload/b132_hisseler_viop_ui/chunks/**'
+      - 'ci_payload/b132_hisseler_viop_ui/B132-TEST-COMPAT.patch'
   workflow_dispatch:
 
 permissions:
@@ -96,6 +97,19 @@ jobs:
           grep -F 'holder.price.text = "VİOP —"' app/src/main/java/tr/borsatakip/v5/ui/ViopUnderlyingOpportunityAdapter.kt
           cp /tmp/B132.patch /tmp/out/B132-HISSELER-VIOP-UI.patch
           sha256sum /tmp/B132.patch > /tmp/out/B132-HISSELER-VIOP-UI.patch.sha256
+
+      - name: Apply non-runtime version-test compatibility
+        working-directory: /tmp/src
+        shell: bash
+        run: |
+          set -euo pipefail
+          TEST_PATCH="$GITHUB_WORKSPACE/ci_payload/b132_hisseler_viop_ui/B132-TEST-COMPAT.patch"
+          echo '0709ac854eb3cf62f8d9b88bdef679639b31cd0852e1e1cf1a90bc0967b70a97  '"$TEST_PATCH" | sha256sum -c -
+          grep -F 'app/src/test/java/tr/borsatakip/v5/data/B117EngineIntegritySourceTest.kt' "$TEST_PATCH"
+          ! grep -E '^diff .*app/src/main/' "$TEST_PATCH"
+          patch -p1 --batch --forward < "$TEST_PATCH"
+          grep -F 'versionCode = 132' app/src/test/java/tr/borsatakip/v5/data/B117EngineIntegritySourceTest.kt
+          cp "$TEST_PATCH" /tmp/out/B132-TEST-COMPAT.patch
 
       - name: Static XML and resource-id checks
         working-directory: /tmp/src
@@ -227,6 +241,7 @@ jobs:
             echo 'backend_api_repository_database=UNCHANGED'
             echo 'mock_market_data=NOT_ADDED'
             echo 'navigation_architecture=UNCHANGED'
+            echo 'test_compatibility_only=versionCode_131_to_132'
             cat /tmp/test-summary.txt
             echo 'lint_debug=PASS'
             echo 'apk_zip_integrity=PASS'
