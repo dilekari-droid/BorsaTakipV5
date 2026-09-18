@@ -2,6 +2,7 @@ package tr.borsatakip.v5.ui
 
 import android.content.Intent
 import android.os.Bundle
+import android.view.View
 import android.widget.Button
 import android.widget.ProgressBar
 import android.widget.TextView
@@ -27,24 +28,31 @@ class BistScanActivity : BaseActivity() {
         val txt = findViewById<TextView>(R.id.txtProgress)
         val status = findViewById<TextView>(R.id.txtStatus)
         val btn = findViewById<Button>(R.id.btnStartScan)
+        val technicalBtn = findViewById<Button>(R.id.btnTechnical)
         val source = findViewById<TextView>(R.id.txtSource)
         val debug = findViewById<TextView>(R.id.txtDebugState)
         val settings = SettingsStore(this)
 
         fun refreshSourceLabel() {
             source.text = if (settings.baseUrl.startsWith("https://")) {
-                "Kaynak: HTTPS BorsaTakip backend • Yahoo yalnız açıkça etkinse yedek"
+                "● CANLI VERİ KAYNAĞI HAZIR"
             } else if (settings.experimentalProvidersEnabled && settings.yahooFallbackEnabled) {
-                "Kaynak: Backend yapılandırılmamış • Yahoo deneysel/gecikmeli yedek"
+                "● YEDEK / GECİKMELİ VERİ MODU"
             } else {
-                "Kaynak: Üretim backend yapılandırılmamış"
+                "● VERİ KAYNAĞI AYARLANMAMIŞ"
             }
         }
 
+        technicalBtn.setOnClickListener {
+            val show = debug.visibility != View.VISIBLE
+            debug.visibility = if (show) View.VISIBLE else View.GONE
+            technicalBtn.text = if (show) "TEKNİK VERİ DETAYINI GİZLE" else "TEKNİK VERİ DETAYI"
+        }
+
         refreshSourceLabel()
-        status.text = "Hazır"
+        status.text = "Hazır • Tarama başlatılabilir"
         txt.text = "0 / 0 • %0"
-        debug.text = "TradingView BIST veri sağlayıcısı değildir. Tarama ProviderRouter üzerinden yürütülür."
+        debug.text = "Motor: HAZIR\nProvider: ${settings.lastProviderLabel}\nTarama: 0/0\nHata: 0"
 
         btn.setOnClickListener {
             if (scanJob?.isActive == true) {
@@ -54,7 +62,7 @@ class BistScanActivity : BaseActivity() {
 
             progress.progress = 0
             btn.text = "DURDUR"
-            status.text = "BIST veri kaynağına bağlanılıyor..."
+            status.text = "Veri kaynağına bağlanılıyor..."
             AppSession.lastOpportunities = emptyList()
             refreshSourceLabel()
 
@@ -68,11 +76,11 @@ class BistScanActivity : BaseActivity() {
                             when (state.status) {
                                 ScanStatus.IDLE -> status.text = "Hazır"
                                 ScanStatus.RUNNING -> {
-                                    status.text = "BIST taraması çalışıyor"
-                                    debug.text = "ProviderRouter • İşlenen ${state.processed}/${state.total} • Atlanan ${state.skipped}"
+                                    status.text = "Tarama çalışıyor • Başarılı ${state.results.size} • Atlanan ${state.skipped}"
+                                    debug.text = "Provider: ${settings.lastProviderLabel}\nİşlenen: ${state.processed}/${state.total}\nBaşarılı: ${state.results.size}\nAtlanan: ${state.skipped}"
                                 }
-                                ScanStatus.COMPLETED -> status.text = "BIST taraması tamamlandı • ${state.results.size} sonuç"
-                                ScanStatus.ERROR -> status.text = "BIST taraması başarısız • ${state.errorMessage ?: "Veri alınamadı"}"
+                                ScanStatus.COMPLETED -> status.text = "Tarama tamamlandı • ${state.results.size} fırsat"
+                                ScanStatus.ERROR -> status.text = "Tarama tamamlanamadı • ${state.errorMessage ?: "Veri alınamadı"}"
                                 ScanStatus.CANCELLED -> status.text = "Tarama durduruldu"
                             }
                         }
@@ -82,16 +90,16 @@ class BistScanActivity : BaseActivity() {
                         AppSession.lastOpportunities = finalState.results.sortedByDescending { it.finalSignalScore }
                         progress.progress = 100
                         txt.text = "${finalState.processed} / ${finalState.total} • %100"
-                        status.text = "BIST taraması tamamlandı • ${finalState.results.size} sonuç • Atlanan ${finalState.skipped}"
-                        debug.text = "Aktif kaynak: ${settings.lastProviderLabel}\nTradingView veri kaynağı kullanılmadı."
+                        status.text = "Tarama tamamlandı • ${finalState.results.size} fırsat • Atlanan ${finalState.skipped}"
+                        debug.text = "Aktif kaynak: ${settings.lastProviderLabel}\nİşlenen: ${finalState.processed}/${finalState.total}\nBaşarılı fırsat: ${finalState.results.size}\nAtlanan: ${finalState.skipped}"
                         startActivity(Intent(this@BistScanActivity, OpportunityActivity::class.java))
                     }
                 } catch (ce: CancellationException) {
                     status.text = "Tarama durduruldu"
                     throw ce
                 } catch (t: Throwable) {
-                    status.text = "BIST taraması başarısız • ${t.message ?: "Beklenmeyen hata"}"
-                    debug.text = "Sahte/demo/TradingView verisine geçilmedi."
+                    status.text = "CANLI VERİ DOĞRULANAMADI\nBu taramada fırsat üretilmedi. Veri kaynağını Ayarlar bölümünden kontrol edin."
+                    debug.text = "Hata: ${t.message ?: "Beklenmeyen hata"}\nSahte/demo verisine geçilmedi."
                 } finally {
                     btn.text = "BIST TARAMASINI BAŞLAT"
                     refreshSourceLabel()

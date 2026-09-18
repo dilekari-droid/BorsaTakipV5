@@ -17,12 +17,9 @@ import java.net.URL
 import java.net.URLEncoder
 
 /**
- * Yalnızca yedek/gecikmeli veri sağlayıcısıdır. Ana sağlayıcı başarısız olduğunda ve kullanıcı
- * Ayarlar'da yedeği açık bıraktığında devreye girer. Canlı veri olarak etiketlenmez.
- *
- * Önemli: Sabit 28 hisselik bir evren kullanmaz. Yalnızca ana sağlayıcıdan daha önce başarıyla
- * alınmış dinamik BIST sembol önbelleğini kullanır. Böylece yedek kaynak da ana sağlayıcının
- * gerçek sembol evrenine bağlı kalır.
+ * Deneysel yedek/gecikmeli veri sağlayıcısıdır. Hiçbir zaman REALTIME olarak etiketlenmez.
+ * Production backend yapılandırılmamışsa ve sembol önbelleği boşsa yalnız sembol evrenini
+ * oluşturmak için herkese açık BIST hisse listesinden best-effort ticker keşfi yapar.
  */
 class YahooFallbackProvider(context: Context) : MarketDataProvider {
     private val settings = SettingsStore(context)
@@ -30,9 +27,9 @@ class YahooFallbackProvider(context: Context) : MarketDataProvider {
     override val displayName = "Yahoo Finance • YEDEK / GECİKMELİ"
 
     override suspend fun scan(onProgress: (done: Int, total: Int) -> Unit): List<Stock> = coroutineScope {
-        val symbols = settings.cachedBistSymbols.toList().sorted()
+        val symbols = loadSymbols()
         require(symbols.isNotEmpty()) {
-            "Dinamik BIST sembol önbelleği boş. Önce ana mobil veri sağlayıcısından /v1/bist/symbols alınmalıdır."
+            "BIST sembol evreni alınamadı. İnternet bağlantısını kontrol edin veya Production backend yapılandırın."
         }
 
         val semaphore = Semaphore(6)
@@ -51,6 +48,48 @@ class YahooFallbackProvider(context: Context) : MarketDataProvider {
 
     override suspend fun fetchOne(symbol: String): Stock? = withContext(Dispatchers.IO) {
         fetch(symbol.trim().uppercase())
+    }
+
+    private suspend fun loadSymbols(): List<String> = withContext(Dispatchers.IO) {
+        val cached = settings.cachedBistSymbols
+            .map { it.trim().uppercase() }
+            .filter { it.matches(SYMBOL_REGEX) }
+            .distinct()
+            .sorted()
+        if (cached.isNotEmpty()) return@withContext cached
+
+        val discovered = discoverBistSymbols()
+        if (discovered.isNotEmpty()) settings.cachedBistSymbols = discovered.toSet()
+        discovered
+    }
+
+    /**
+     * Bu sayfadan fiyat/sinyal alınmaz; yalnız ticker kodları keşfedilir.
+     * Fiyat geçmişi Yahoo chart endpoint'inden alınır ve gecikmeli/deneysel olarak etiketlenir.
+     */
+    private fun discoverBistSymbols(): List<String> {
+        var con: HttpURLConnection? = null
+        return try {
+            con = URL("https://m.doviz.com/borsa/hisseler").openConnection() as HttpURLConnection
+            con.requestMethod = "GET"
+            con.connectTimeout = 8_000
+            con.readTimeout = 12_000
+            con.instanceFollowRedirects = true
+            con.setRequestProperty("Accept", "text/html,application/xhtml+xml")
+            con.setRequestProperty("User-Agent", "Mozilla/5.0 BorsaTakip/${BuildConfig.VERSION_NAME} Android")
+            if (con.responseCode !in 200..299) return emptyList()
+            val html = con.inputStream.bufferedReader().use { it.readText() }
+            val regex = Regex("(?:https://borsa\\.doviz\\.com)?/hisseler/([a-z0-9_]{3,12})-", RegexOption.IGNORE_CASE)
+            regex.findAll(html)
+                .mapNotNull { it.groupValues.getOrNull(1)?.trim()?.uppercase()?.takeIf { s -> s.matches(SYMBOL_REGEX) } }
+                .distinct()
+                .sorted()
+                .toList()
+        } catch (_: Exception) {
+            emptyList()
+        } finally {
+            runCatching { con?.disconnect() }
+        }
     }
 
     private fun fetch(symbol: String): Stock? {
@@ -82,16 +121,27 @@ class YahooFallbackProvider(context: Context) : MarketDataProvider {
         val candles = mutableListOf<Candle>()
         for (i in 0 until ts.length()) {
             if (o.isNull(i) || h.isNull(i) || l.isNull(i) || c.isNull(i) || v.isNull(i)) continue
-            candles += Candle(ts.getLong(i) * 1000, o.getDouble(i), h.getDouble(i), l.getDouble(i), c.getDouble(i), v.getDouble(i))
+            val candle = Candle(ts.getLong(i) * 1000, o.getDouble(i), h.getDouble(i), l.getDouble(i), c.getDouble(i), v.getDouble(i))
+            if (listOf(candle.open, candle.high, candle.low, candle.close, candle.volume).any { !it.isFinite() }) continue
+            if (candle.high < candle.low || candle.close <= 0.0 || candle.volume < 0.0) continue
+            candles += candle
         }
         if (candles.size < 220) return null
+        val sorted = candles.sortedBy { it.timestamp }
         val meta = r.optJSONObject("meta")
         return Stock(
             symbol = fallback,
             companyName = meta?.optString("longName")?.takeIf { it.isNotBlank() },
-            candles = candles,
+            candles = sorted,
             source = displayName,
-            dataTimestamp = candles.last().timestamp
+            dataTimestamp = sorted.last().timestamp,
+            isRealtime = false,
+            delaySeconds = null,
+            currentSessionIncluded = false
         )
+    }
+
+    companion object {
+        private val SYMBOL_REGEX = Regex("[A-Z0-9_]{3,12}")
     }
 }
