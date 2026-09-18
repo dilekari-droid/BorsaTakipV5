@@ -1,0 +1,276 @@
+diff --git a/B145_CHANGES.md b/B145_CHANGES.md
+new file mode 100644
+index 0000000..9870fc0
+--- /dev/null
++++ b/B145_CHANGES.md
+@@ -0,0 +1,12 @@
++# B145 — AUTO SCAN STATE CONSISTENCY
++
++- versionCode: 145
++- versionName: 5.2.5
++
++## Düzeltmeler
++1. Otomatik tarama switch'i değiştiğinde üst timeframe özeti artık anında yenilenir; `AÇIK/KAPALI` çelişkisi giderildi.
++2. Production backend yok ve Yahoo/deneysel fallback kapalıysa kart artık yanlış biçimde `Yahoo YEDEK/GECİKMELİ` göstermez; `VERİ KAYNAĞI YOK • bekliyor` gösterir.
++3. Otomatik tarama tercihi AÇIK olsa bile kullanılabilir provider yoksa foreground servis veya WorkManager işi başlatılmaz. Tercih korunur; provider hazır olduğunda reconcile ile devam edebilir.
++4. Foreground servis kaynak etiketi fallback gerçekten açık değilse Yahoo yazmaz.
++5. B144 mercek -> ana tarama komutu davranışı korunmuştur.
++6. Fail-closed veri politikası korunmuştur; provider olmadan sahte/boş tarama başlatılmaz.
+diff --git a/app/build.gradle.kts b/app/build.gradle.kts
+index 8425f7d..14e4433 100644
+--- a/app/build.gradle.kts
++++ b/app/build.gradle.kts
+@@ -25,7 +25,7 @@ android {
+         applicationId = "tr.borsatakip.v5"
+         minSdk = 26
+         targetSdk = 35
+-        versionCode = 144
++        versionCode = 145
+         versionName = "5.2.5"
+         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+         // Backend URL gizli değildir; CI/repository variable ile sağlanabilir.
+diff --git a/app/src/main/java/tr/borsatakip/v5/ui/BistAutoScanUiPolicy.kt b/app/src/main/java/tr/borsatakip/v5/ui/BistAutoScanUiPolicy.kt
+new file mode 100644
+index 0000000..633b7c2
+--- /dev/null
++++ b/app/src/main/java/tr/borsatakip/v5/ui/BistAutoScanUiPolicy.kt
+@@ -0,0 +1,58 @@
++package tr.borsatakip.v5.ui
++
++/**
++ * B145: BIST otomatik tarama görünümündeki tüm durum metinlerini tek kaynaktan üretir.
++ * Böylece switch, timeframe özeti ve provider etiketi birbiriyle çelişmez.
++ */
++data class BistAutoScanUiState(
++    val detailsLine: String,
++    val statusLine: String,
++    val waitingForProvider: Boolean
++)
++
++object BistAutoScanUiPolicy {
++    fun resolve(
++        enabled: Boolean,
++        productionBackendReady: Boolean,
++        fallbackEnabled: Boolean,
++        timeframeLabel: String,
++        useForegroundService: Boolean,
++        isDaily: Boolean
++    ): BistAutoScanUiState {
++        if (!enabled) {
++            return BistAutoScanUiState(
++                detailsLine = "Otomatik tarama: KAPALI",
++                statusLine = "Kapalı • manuel tarama",
++                waitingForProvider = false
++            )
++        }
++
++        val detailsBase = "Otomatik tarama: AÇIK • Her $timeframeLabel"
++        if (!productionBackendReady && !fallbackEnabled) {
++            return BistAutoScanUiState(
++                detailsLine = "$detailsBase • VERİ KAYNAĞI YOK",
++                statusLine = "Açık • $timeframeLabel • VERİ KAYNAĞI YOK • bekliyor",
++                waitingForProvider = true
++            )
++        }
++
++        if (!productionBackendReady && fallbackEnabled) {
++            return BistAutoScanUiState(
++                detailsLine = "$detailsBase • Yahoo YEDEK/GECİKMELİ",
++                statusLine = "Açık • $timeframeLabel • Yahoo YEDEK/GECİKMELİ",
++                waitingForProvider = false
++            )
++        }
++
++        val status = when {
++            isDaily -> "Açık • gerçek 1 GÜN OHLCV • yaklaşık 24 saatte bir"
++            useForegroundService -> "Açık • $timeframeLabel OHLCV • her $timeframeLabel • foreground servis"
++            else -> "Açık • $timeframeLabel OHLCV • her $timeframeLabel • WorkManager"
++        }
++        return BistAutoScanUiState(
++            detailsLine = detailsBase,
++            statusLine = status,
++            waitingForProvider = false
++        )
++    }
++}
+diff --git a/app/src/main/java/tr/borsatakip/v5/ui/BistScanActivity.kt b/app/src/main/java/tr/borsatakip/v5/ui/BistScanActivity.kt
+index 803dc75..26553a4 100644
+--- a/app/src/main/java/tr/borsatakip/v5/ui/BistScanActivity.kt
++++ b/app/src/main/java/tr/borsatakip/v5/ui/BistScanActivity.kt
+@@ -506,12 +506,12 @@ class BistScanActivity : BaseActivity() {
+         } else {
+             "Aktif teknik analiz periyodu ${tf.label}; otomatik tarama kapalı"
+         }
+-        val autoLine = if (settings.autoScanEnabled) "\nOtomatik tarama: AÇIK • Her ${tf.label}" else "\nOtomatik tarama: KAPALI"
++        val autoUi = currentAutoScanUi(tf)
+         findViewById<TextView>(R.id.txtActiveTimeframeDetails)?.text =
+             "BIST hisseleri ${tf.label} verileri üzerinden taranacak\n" +
+             "OHLCV: ${tf.label}   •   Teknik analiz: ${tf.label}\n" +
+             "Trend: ${tf.label}   •   Momentum: ${tf.label}\n" +
+-            "Hacim: ${tf.label}   •   Kırılım: ${tf.label}" + autoLine
++            "Hacim: ${tf.label}   •   Kırılım: ${tf.label}\n" + autoUi.detailsLine
+     }
+ 
+     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+@@ -608,15 +608,23 @@ class BistScanActivity : BaseActivity() {
+         suppressAutoScanListener = true
+         autoScanSwitch.isChecked = settings.autoScanEnabled
+         suppressAutoScanListener = false
+-        autoScanStatus.text = when {
+-            !settings.autoScanEnabled -> "Kapalı • manuel tarama"
+-            !productionBackendConfigured() -> "Açık • ${tf.label} • Yahoo YEDEK/GECİKMELİ"
+-            tf.storedMinutes < AutoScanScheduler.WORK_MANAGER_MINUTES -> "Açık • ${tf.label} OHLCV • her ${tf.label} • foreground servis"
+-            tf.isDaily -> "Açık • gerçek 1 GÜN OHLCV • yaklaşık 24 saatte bir"
+-            else -> "Açık • ${tf.label} OHLCV • her ${tf.label} • WorkManager"
+-        }
++        val autoUi = currentAutoScanUi(tf)
++        autoScanStatus.text = autoUi.statusLine
++        // B145: Switch değişikliği timeframe özetindeki otomatik tarama satırını da anında yeniler.
++        refreshScanTimeUi()
+     }
+ 
++
++    private fun currentAutoScanUi(tf: ScanTimeframe): BistAutoScanUiState =
++        BistAutoScanUiPolicy.resolve(
++            enabled = settings.autoScanEnabled,
++            productionBackendReady = productionBackendConfigured(),
++            fallbackEnabled = userFallbackEnabled(),
++            timeframeLabel = tf.label,
++            useForegroundService = tf.storedMinutes < AutoScanScheduler.WORK_MANAGER_MINUTES,
++            isDaily = tf.isDaily
++        )
++
+     private fun providerStatusLabel(code: ProviderFailureCode, timeframe: ScanTimeframe): String = when (code) {
+         ProviderFailureCode.BACKEND_URL_MISSING, ProviderFailureCode.API_KEY_MISSING, ProviderFailureCode.INVALID_HTTPS -> "VERİ SERVİSİ YAPILANDIRILMAMIŞ"
+         ProviderFailureCode.AUTH_ERROR -> "KİMLİK DOĞRULAMA HATASI"
+diff --git a/app/src/main/java/tr/borsatakip/v5/worker/AutoScanForegroundService.kt b/app/src/main/java/tr/borsatakip/v5/worker/AutoScanForegroundService.kt
+index 5e9fe10..0cb632d 100644
+--- a/app/src/main/java/tr/borsatakip/v5/worker/AutoScanForegroundService.kt
++++ b/app/src/main/java/tr/borsatakip/v5/worker/AutoScanForegroundService.kt
+@@ -61,10 +61,12 @@ class AutoScanForegroundService : Service() {
+             val timeframe = ScanTimeframe.fromStored(settings.analysisTimeframeMinutes)
+             val cadence = timeframe.storedMinutes.coerceIn(1, 1440)
+             if (cadence >= AutoScanScheduler.WORK_MANAGER_MINUTES) break
+-            val sourceMode = if (BackendUrlPolicy.isValidHttps(settings.baseUrl) && settings.apiKey.isNotBlank()) {
+-                "Production Backend"
+-            } else {
+-                "Yahoo YEDEK/GECİKMELİ"
++            val productionReady = BackendUrlPolicy.isValidHttps(settings.baseUrl) && settings.apiKey.isNotBlank()
++            val fallbackReady = settings.experimentalProvidersEnabled && settings.yahooFallbackEnabled
++            val sourceMode = when {
++                productionReady -> "Production Backend"
++                fallbackReady -> "Yahoo YEDEK/GECİKMELİ"
++                else -> "Veri kaynağı yok • bekliyor"
+             }
+             updateForeground("${timeframe.label} • $sourceMode • otomatik tarama çalışıyor")
+             val result = AutomaticScanRunner.runOnce(this)
+diff --git a/app/src/main/java/tr/borsatakip/v5/worker/AutoScanScheduler.kt b/app/src/main/java/tr/borsatakip/v5/worker/AutoScanScheduler.kt
+index 44ca6fa..a12af6b 100644
+--- a/app/src/main/java/tr/borsatakip/v5/worker/AutoScanScheduler.kt
++++ b/app/src/main/java/tr/borsatakip/v5/worker/AutoScanScheduler.kt
+@@ -8,6 +8,7 @@ import androidx.work.NetworkType
+ import androidx.work.PeriodicWorkRequestBuilder
+ import androidx.work.OneTimeWorkRequestBuilder
+ import androidx.work.WorkManager
++import tr.borsatakip.v5.data.BackendUrlPolicy
+ import tr.borsatakip.v5.data.ScanTimeframe
+ import tr.borsatakip.v5.data.SettingsStore
+ import java.util.concurrent.TimeUnit
+@@ -37,6 +38,17 @@ object AutoScanScheduler {
+         val cadence = timeframe.storedMinutes.coerceIn(1, 1440)
+         settings.scanCadenceMinutes = cadence
+ 
++        // B145: Tercih AÇIK kalabilir; fakat veri sağlayıcı yokken worker/foreground servis
++        // başlatılmaz. Provider daha sonra hazır olduğunda reconcile yeniden çağrılarak devam eder.
++        val productionReady = BackendUrlPolicy.isValidHttps(settings.baseUrl) && settings.apiKey.isNotBlank()
++        val fallbackReady = settings.experimentalProvidersEnabled && settings.yahooFallbackEnabled
++        if (!productionReady && !fallbackReady) {
++            wm.cancelUniqueWork(UNIQUE_WORK)
++            wm.cancelUniqueWork(IMMEDIATE_WORK)
++            AutoScanForegroundService.stop(app)
++            return
++        }
++
+         if (cadence < WORK_MANAGER_MINUTES) {
+             wm.cancelUniqueWork(UNIQUE_WORK)
+             wm.cancelUniqueWork(IMMEDIATE_WORK)
+diff --git a/app/src/test/java/tr/borsatakip/v5/ui/B145AutoScanStateSourceTest.kt b/app/src/test/java/tr/borsatakip/v5/ui/B145AutoScanStateSourceTest.kt
+new file mode 100644
+index 0000000..a148bb0
+--- /dev/null
++++ b/app/src/test/java/tr/borsatakip/v5/ui/B145AutoScanStateSourceTest.kt
+@@ -0,0 +1,29 @@
++package tr.borsatakip.v5.ui
++
++import org.junit.Assert.assertTrue
++import org.junit.Test
++import java.io.File
++
++class B145AutoScanStateSourceTest {
++    private fun source(path: String): String {
++        val candidates = listOf(File("src/main/$path"), File("app/src/main/$path"))
++        return candidates.firstOrNull { it.exists() }?.readText()
++            ?: error("Source not found: $path")
++    }
++
++    @Test
++    fun activityUsesSingleAutoScanUiPolicyAndRefreshesDetails() {
++        val src = source("java/tr/borsatakip/v5/ui/BistScanActivity.kt")
++        assertTrue(src.contains("BistAutoScanUiPolicy.resolve("))
++        assertTrue(src.contains("autoScanStatus.text = autoUi.statusLine"))
++        assertTrue(src.contains("refreshScanTimeUi()"))
++    }
++
++    @Test
++    fun schedulerDoesNotStartWithoutAnyProvider() {
++        val src = source("java/tr/borsatakip/v5/worker/AutoScanScheduler.kt")
++        assertTrue(src.contains("if (!productionReady && !fallbackReady)"))
++        assertTrue(src.contains("AutoScanForegroundService.stop(app)"))
++        assertTrue(src.contains("wm.cancelUniqueWork(IMMEDIATE_WORK)"))
++    }
++}
+diff --git a/app/src/test/java/tr/borsatakip/v5/ui/B145AutoScanUiPolicyTest.kt b/app/src/test/java/tr/borsatakip/v5/ui/B145AutoScanUiPolicyTest.kt
+new file mode 100644
+index 0000000..37b0c67
+--- /dev/null
++++ b/app/src/test/java/tr/borsatakip/v5/ui/B145AutoScanUiPolicyTest.kt
+@@ -0,0 +1,39 @@
++package tr.borsatakip.v5.ui
++
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertTrue
++import org.junit.Test
++
++class B145AutoScanUiPolicyTest {
++    @Test
++    fun enabledWithoutProviderShowsWaitingNotYahoo() {
++        val ui = BistAutoScanUiPolicy.resolve(
++            enabled = true,
++            productionBackendReady = false,
++            fallbackEnabled = false,
++            timeframeLabel = "5 DK",
++            useForegroundService = true,
++            isDaily = false
++        )
++        assertTrue(ui.detailsLine.contains("AÇIK"))
++        assertTrue(ui.detailsLine.contains("VERİ KAYNAĞI YOK"))
++        assertTrue(ui.statusLine.contains("VERİ KAYNAĞI YOK"))
++        assertFalse(ui.statusLine.contains("Yahoo"))
++        assertTrue(ui.waitingForProvider)
++    }
++
++    @Test
++    fun enabledFallbackExplicitlyShowsYahoo() {
++        val ui = BistAutoScanUiPolicy.resolve(true, false, true, "5 DK", true, false)
++        assertTrue(ui.statusLine.contains("Yahoo YEDEK/GECİKMELİ"))
++        assertFalse(ui.waitingForProvider)
++    }
++
++    @Test
++    fun disabledStateIsConsistent() {
++        val ui = BistAutoScanUiPolicy.resolve(false, false, false, "5 DK", true, false)
++        assertEquals("Otomatik tarama: KAPALI", ui.detailsLine)
++        assertEquals("Kapalı • manuel tarama", ui.statusLine)
++    }
++}
