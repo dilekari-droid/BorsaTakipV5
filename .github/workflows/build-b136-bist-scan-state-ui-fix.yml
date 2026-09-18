@@ -40,11 +40,11 @@ jobs:
           cp -a /tmp/src/. /tmp/base/
 
           cat "$GITHUB_WORKSPACE"/ci_payload/b136_bist_scan_state_ui_fix/part*.b64 > /tmp/b136.b64
-          echo 'd3a8bb7a6ad82b942a8a4dfc861efcabb4f3c4cc6ac0c5ea8a388f438cf47033  /tmp/b136.b64' | sha256sum -c -
+          echo '69750a54d0bc63a22a9c2689e7c12e6d56342940d5219a98fc83b85baae580cf  /tmp/b136.b64' | sha256sum -c -
           base64 -d /tmp/b136.b64 > /tmp/b136.gz
-          echo '2b32b1c21f65e4d5390c3af18f078a52c60a9a4ed6b977053cebd9d56292e413  /tmp/b136.gz' | sha256sum -c -
+          echo '5528ba504f2e67bb2bf9f659308b4e16a50adf3b4d48408b6c732242bd284a1b  /tmp/b136.gz' | sha256sum -c -
           gzip -dc /tmp/b136.gz > /tmp/b136.patch
-          echo '27dd36110815c78e6f524865700c971116587e06903299cabb0a63274371af70  /tmp/b136.patch' | sha256sum -c -
+          echo 'bfba864bb28f7b4dca0fed239bb57e87c807f77ad48ed148b600aab1f1e3afec  /tmp/b136.patch' | sha256sum -c -
 
           cd /tmp/src
           git init -q
