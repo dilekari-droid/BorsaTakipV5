@@ -1,0 +1,132 @@
+name: B143 Final Release APK
+
+on:
+  push:
+    branches:
+      - chatgpt/b143-final-release
+  workflow_dispatch:
+
+jobs:
+  build-b143:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout B143 build branch
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle 8.10.2
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Reconstruct B137 overlay
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat \
+            build_payloads/b143_overlay_part00.b64 \
+            build_payloads/b143_overlay_part01.b64 \
+            build_payloads/b143_overlay_part02.b64 \
+            build_payloads/b143_overlay_part03a.b64 \
+            build_payloads/b143_overlay_part03b.b64 \
+            build_payloads/b143_overlay_part04.b64 \
+            build_payloads/b143_overlay_part05.b64 \
+            > /tmp/b137_overlay.tar.xz.b64
+          base64 --decode /tmp/b137_overlay.tar.xz.b64 > /tmp/b137_overlay.tar.xz
+          echo 'ac989f9710e46344d59b9be15a884daab0b104d1742a93fb62903656ea232e00  /tmp/b137_overlay.tar.xz' | sha256sum -c -
+          tar -xJf /tmp/b137_overlay.tar.xz -C .
+
+      - name: Reconstruct and apply B137 to B143 delta
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat \
+            build_payloads/b143_patch_part00.b64 \
+            build_payloads/b143_patch_part01.b64 \
+            build_payloads/b143_patch_part02.b64 \
+            build_payloads/b143_patch_part03.b64 \
+            build_payloads/b143_patch_part04.b64 \
+            build_payloads/b143_patch_part05.b64 \
+            build_payloads/b143_patch_part06.b64 \
+            > /tmp/b143.patch.xz.b64
+          base64 --decode /tmp/b143.patch.xz.b64 > /tmp/b143.patch.xz
+          echo '7f0bfdb270247d275452f11fe355f27458e47afd9fb9a514f8f752212daafb29  /tmp/b143.patch.xz' | sha256sum -c -
+          xz -dc /tmp/b143.patch.xz > /tmp/b143.patch
+          git apply --check /tmp/b143.patch
+          git apply /tmp/b143.patch
+
+      - name: Verify exact B143 critical source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'versionCode = 143' app/build.gradle.kts
+          grep -Fq 'versionName = "5.2.5"' app/build.gradle.kts
+          cat > /tmp/b143-critical.sha256 <<'EOF'
+          4db3c9584d749640681f74321dd1a3e10f861ebe3f89b584e816294352c72ab3  app/build.gradle.kts
+          afa7881c5c1198ff317b63fe67e28c24a260ae54bd37dbb1872d870a6d1a4fb0  app/src/main/java/tr/borsatakip/v5/model/Models.kt
+          b077d87bb38c328610cf189003d48146d5c3dab07930531f5c41585abd4acf0a  app/src/main/java/tr/borsatakip/v5/data/BackendProvider.kt
+          e2c51e16e9763dd15db8cbea803ad0251ae1e4512aadb5da9a713990c2d63496  app/src/main/java/tr/borsatakip/v5/analysis/ChartTimeframe.kt
+          c2e9ce8ee475eb0a0c1b8ac611c922908b7318a3eb54d7722eeea2ae80d268de  app/src/main/java/tr/borsatakip/v5/ui/ViopDetailActivity.kt
+          f1d182108574219a19a8ef1cabcb88ef81075ef52731db2d346dc6f583072d30  app/src/main/java/tr/borsatakip/v5/data/BistAlertEligibilityPolicy.kt
+          e81afe1099f28bda459132c96fe612dc6ee3f4270cb0e9f496cb428a7a3700be  app/src/main/java/tr/borsatakip/v5/data/AlertEventStore.kt
+          72cde4675e2855cbd827aff9615f4588385368acc6c49716c844c8118e693634  app/src/main/java/tr/borsatakip/v5/ui/TechnicalAnalysisActivity.kt
+          b3b07a9b0e83828bf92646e9de500afb68fa561fed743711d0e9c148c2d31c92  app/src/test/java/tr/borsatakip/v5/analysis/B143ExchangeSessionCalendarTest.kt
+          bd5468e1f847138ecf818db17c2d3876695d7b0b7c24e395f0d117f4fafbde22  app/src/test/java/tr/borsatakip/v5/data/B143FinalHardeningSourceTest.kt
+          EOF
+          sed -i 's/^          //' /tmp/b143-critical.sha256
+          sha256sum -c /tmp/b143-critical.sha256
+
+      - name: Unit tests
+        run: gradle :app:testDebugUnitTest --no-daemon --stacktrace
+
+      - name: Lint debug
+        run: gradle :app:lintDebug --no-daemon --stacktrace
+
+      - name: Assemble B143 debug APK
+        run: gradle :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Verify APK and prepare artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -f "$APK"
+          unzip -t "$APK" >/tmp/apk-unzip.txt
+          tail -n 1 /tmp/apk-unzip.txt
+          AAPT=$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)
+          test -x "$AAPT"
+          "$AAPT" dump badging "$APK" > /tmp/b143-badging.txt
+          cat /tmp/b143-badging.txt | head -n 1
+          grep -Fq "versionCode='143'" /tmp/b143-badging.txt
+          grep -Fq "versionName='5.2.5'" /tmp/b143-badging.txt
+          mkdir -p dist
+          cp "$APK" dist/V5-ARACI-KURUM-5.2.5-B143-FINAL-RELEASE-HARDENING-debug.apk
+          sha256sum dist/V5-ARACI-KURUM-5.2.5-B143-FINAL-RELEASE-HARDENING-debug.apk | tee dist/B143-APK-SHA256.txt
+          {
+            echo 'source_versionName=5.2.5'
+            echo 'source_versionCode=143'
+            echo 'source_zip_sha256=55007a90ef1eb52018bf972adc2892c4de8a696376731f5c0979061fb0ee98a7'
+            echo 'base_branch=v525-b135-mtf-cache-fix'
+            echo 'b137_overlay_sha256=ac989f9710e46344d59b9be15a884daab0b104d1742a93fb62903656ea232e00'
+            echo 'b137_to_b143_patch_sha256=7f0bfdb270247d275452f11fe355f27458e47afd9fb9a514f8f752212daafb29'
+            echo 'unit_tests=PASS'
+            echo 'lint_debug=PASS'
+            echo 'assemble_debug=PASS'
+          } > dist/B143-BUILD-PROVENANCE.txt
+
+      - name: Upload B143 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: V5-ARACI-KURUM-5.2.5-B143-APK
+          path: |
+            dist/V5-ARACI-KURUM-5.2.5-B143-FINAL-RELEASE-HARDENING-debug.apk
+            dist/B143-APK-SHA256.txt
+            dist/B143-BUILD-PROVENANCE.txt
+          if-no-files-found: error
+          retention-days: 30
