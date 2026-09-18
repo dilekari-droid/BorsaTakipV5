@@ -1,0 +1,243 @@
+name: B132 Hisseler + VIOP UI Redesign
+
+on:
+  push:
+    branches: [v525-b132-hisseler-viop-ui]
+    paths:
+      - '.github/workflows/build-b132-hisseler-viop-ui.yml'
+      - 'ci_payload/b132_hisseler_viop_ui/B132-HISSELER-VIOP-UI.patch.gz.b64'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore verified B131 source
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/src /tmp/out /tmp/b131
+          mkdir -p /tmp/src /tmp/out /tmp/b131
+          curl -fL --retry 3 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/dilekari-droid/BorsaTakipV5/actions/artifacts/10533765440/zip" \
+            -o /tmp/b131-artifact.zip
+          unzip -q /tmp/b131-artifact.zip -d /tmp/b131
+          SRCZIP=$(find /tmp/b131 -type f -name '*B131*Kaynak-Kod.zip' | head -n1)
+          test -n "$SRCZIP" -a -s "$SRCZIP"
+          echo '755b5a14713f661e01c8a1855c898d4be259bb821824e056d7919d5cfe546371  '"$SRCZIP" | sha256sum -c -
+          unzip -q "$SRCZIP" -d /tmp/src
+          grep -F 'applicationId = "tr.borsatakip.v5"' /tmp/src/app/build.gradle.kts
+          grep -F 'versionCode = 131' /tmp/src/app/build.gradle.kts
+          grep -F 'versionName = "5.2.5"' /tmp/src/app/build.gradle.kts
+
+      - name: Apply scope-locked B132 UI patch
+        working-directory: /tmp/src
+        shell: bash
+        run: |
+          set -euo pipefail
+          PAYLOAD="$GITHUB_WORKSPACE/ci_payload/b132_hisseler_viop_ui/B132-HISSELER-VIOP-UI.patch.gz.b64"
+          base64 -d "$PAYLOAD" > /tmp/B132.patch.gz
+          gzip -t /tmp/B132.patch.gz
+          gzip -dc /tmp/B132.patch.gz > /tmp/B132.patch
+          echo '5fc8ad817b33336c8162ca1f5c14fd51b93bc8825898feee329f93da90672557  /tmp/B132.patch' | sha256sum -c -
+
+          python3 - <<'PY'
+          from pathlib import Path
+          expected = {
+              'B132_CHANGES.md',
+              'app/build.gradle.kts',
+              'app/src/main/java/tr/borsatakip/v5/ui/StockSparklineView.kt',
+              'app/src/main/java/tr/borsatakip/v5/ui/StocksActivity.kt',
+              'app/src/main/java/tr/borsatakip/v5/ui/StocksCompactAdapter.kt',
+              'app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt',
+              'app/src/main/java/tr/borsatakip/v5/ui/ViopOpportunityAdapter.kt',
+              'app/src/main/java/tr/borsatakip/v5/ui/ViopSparklineView.kt',
+              'app/src/main/java/tr/borsatakip/v5/ui/ViopUnderlyingOpportunityAdapter.kt',
+              'app/src/main/res/layout/activity_stocks.xml',
+              'app/src/main/res/layout/activity_viop.xml',
+              'app/src/main/res/layout/item_stock_compact.xml',
+              'app/src/main/res/layout/item_viop_opportunity.xml',
+          }
+          actual = []
+          for line in Path('/tmp/B132.patch').read_text(encoding='utf-8').splitlines():
+              if line.startswith('diff --git a/'):
+                  actual.append(line.split()[2][2:])
+          if set(actual) != expected or len(actual) != len(expected):
+              raise SystemExit(f'SCOPE_MISMATCH actual={actual}')
+          forbidden = ('/data/', '/analysis/', '/repository/', '/backend/', 'AndroidManifest.xml', 'navigation')
+          bad = [p for p in actual if any(x in p for x in forbidden)]
+          if bad:
+              raise SystemExit(f'FORBIDDEN_SCOPE={bad}')
+          print('SCOPE_LOCK=PASS')
+          print('PATCH_FILE_COUNT=', len(actual))
+          PY
+
+          patch -p1 --batch --forward < /tmp/B132.patch
+          grep -F 'versionCode = 132' app/build.gradle.kts
+          grep -F 'versionName = "5.2.5"' app/build.gradle.kts
+          grep -F '@+id/stocksSearch' app/src/main/res/layout/activity_stocks.xml
+          grep -F '@+id/stockList' app/src/main/res/layout/activity_stocks.xml
+          grep -F '@+id/summaryLong' app/src/main/res/layout/activity_viop.xml
+          grep -F '@+id/viopSearch' app/src/main/res/layout/activity_viop.xml
+          grep -F 'holder.price.text = "VİOP —"' app/src/main/java/tr/borsatakip/v5/ui/ViopUnderlyingOpportunityAdapter.kt
+          cp /tmp/B132.patch /tmp/out/B132-HISSELER-VIOP-UI.patch
+          sha256sum /tmp/B132.patch > /tmp/out/B132-HISSELER-VIOP-UI.patch.sha256
+
+      - name: Static XML and resource-id checks
+        working-directory: /tmp/src
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          import xml.etree.ElementTree as ET
+          xmls = list(Path('app/src/main/res').rglob('*.xml'))
+          for p in xmls:
+              ET.parse(p)
+          ids = set()
+          for p in xmls:
+              t = p.read_text(encoding='utf-8')
+              ids.update(re.findall(r'@\+id/([A-Za-z0-9_]+)', t))
+              ids.update(re.findall(r'@id/([A-Za-z0-9_]+)', t))
+          changed = [
+              Path('app/src/main/java/tr/borsatakip/v5/ui/StocksActivity.kt'),
+              Path('app/src/main/java/tr/borsatakip/v5/ui/StocksCompactAdapter.kt'),
+              Path('app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt'),
+              Path('app/src/main/java/tr/borsatakip/v5/ui/ViopOpportunityAdapter.kt'),
+              Path('app/src/main/java/tr/borsatakip/v5/ui/ViopUnderlyingOpportunityAdapter.kt'),
+          ]
+          missing = {}
+          for p in changed:
+              refs = set(re.findall(r'R\.id\.([A-Za-z0-9_]+)', p.read_text(encoding='utf-8')))
+              bad = sorted(refs - ids)
+              if bad:
+                  missing[str(p)] = bad
+          if missing:
+              raise SystemExit(f'MISSING_RESOURCE_IDS={missing}')
+          print(f'XML_PARSE=PASS files={len(xmls)}')
+          print('RESOURCE_ID_CHECK=PASS')
+          PY
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Run all unit tests
+        working-directory: /tmp/src
+        shell: bash
+        run: |
+          set -euo pipefail
+          DISCOVERED=$(grep -Rho '@Test' app/src/test --include='*.kt' | wc -l | tr -d ' ')
+          export DISCOVERED
+          echo "TEST_DISCOVERED=$DISCOVERED" | tee /tmp/test-summary.txt
+          gradle --no-daemon testDebugUnitTest --stacktrace
+          python3 - <<'PY'
+          import glob, os, xml.etree.ElementTree as ET
+          discovered=int(os.environ['DISCOVERED'])
+          tests=failures=errors=skipped=0
+          for path in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
+              root=ET.parse(path).getroot()
+              tests += int(root.attrib.get('tests',0))
+              failures += int(root.attrib.get('failures',0))
+              errors += int(root.attrib.get('errors',0))
+              skipped += int(root.attrib.get('skipped',0))
+          passed=tests-failures-errors-skipped
+          line=f'TEST_EXECUTED={tests} TEST_PASSED={passed} TEST_FAILURES={failures} TEST_ERRORS={errors} TEST_SKIPPED={skipped}'
+          print(line)
+          with open('/tmp/test-summary.txt','a',encoding='utf-8') as f: f.write(line+'\n')
+          if tests != discovered or failures or errors or skipped:
+              raise SystemExit(line)
+          PY
+
+      - name: Lint debug
+        working-directory: /tmp/src
+        run: gradle --no-daemon lintDebug --stacktrace
+
+      - name: Assemble debug APK
+        working-directory: /tmp/src
+        run: gradle --no-daemon assembleDebug --stacktrace
+
+      - name: Verify and export B132
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=/tmp/src/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" > /tmp/out/APK-ZIP-TEST.txt
+          BT="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)"
+          AAPT="$ANDROID_HOME/build-tools/$BT/aapt"
+          APKSIGNER="$ANDROID_HOME/build-tools/$BT/apksigner"
+          ZIPALIGN="$ANDROID_HOME/build-tools/$BT/zipalign"
+          BADGING="$($AAPT dump badging "$APK" | head -n1)"
+          echo "$BADGING" | tee /tmp/out/BADGING.txt
+          echo "$BADGING" | grep -F "name='tr.borsatakip.v5'"
+          echo "$BADGING" | grep -F "versionCode='132'"
+          echo "$BADGING" | grep -F "versionName='5.2.5'"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee /tmp/out/APKSIGNER.txt
+          "$APKSIGNER" verify --verbose "$APK" | grep -F 'Verified using v2 scheme (APK Signature Scheme v2): true'
+          "$ZIPALIGN" -c -v 4 "$APK" | tee /tmp/out/ZIPALIGN.txt
+
+          OUT=/tmp/out/V5-ARACI-KURUM-5.2.5-B132-HISSELER-VIOP-UI-debug.apk
+          cp "$APK" "$OUT"
+          sha256sum "$OUT" | tee "$OUT.sha256"
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import zipfile
+          src=Path('/tmp/src')
+          out=Path('/tmp/out/V5-ARACI-KURUM-5.2.5-B132-HISSELER-VIOP-UI-Kaynak-Kod.zip')
+          excluded={'.git','.gradle','.kotlin','build'}
+          with zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED) as z:
+              for p in src.rglob('*'):
+                  if p.is_file() and not any(part in excluded for part in p.relative_to(src).parts):
+                      z.write(p,p.relative_to(src).as_posix())
+          PY
+          sha256sum /tmp/out/V5-ARACI-KURUM-5.2.5-B132-HISSELER-VIOP-UI-Kaynak-Kod.zip | tee /tmp/out/V5-ARACI-KURUM-5.2.5-B132-HISSELER-VIOP-UI-Kaynak-Kod.zip.sha256
+          cp /tmp/test-summary.txt /tmp/out/TEST-SUMMARY.txt
+          cp /tmp/src/B132_CHANGES.md /tmp/out/B132_CHANGES.md
+          {
+            echo 'B132 HISSELER + VIOP UI REDESIGN'
+            echo 'applicationId=tr.borsatakip.v5'
+            echo 'versionCode=132'
+            echo 'versionName=5.2.5'
+            echo 'base=B131-VIOP-MAIN-UI-REDESIGN-FINAL'
+            echo 'hisseler_main_ui=REDESIGNED'
+            echo 'viop_main_ui=REDESIGNED'
+            echo 'other_screen_designs=UNCHANGED'
+            echo 'backend_api_repository_database=UNCHANGED'
+            echo 'mock_market_data=NOT_ADDED'
+            echo 'navigation_architecture=UNCHANGED'
+            cat /tmp/test-summary.txt
+            echo 'lint_debug=PASS'
+            echo 'apk_zip_integrity=PASS'
+            echo 'aapt_badging=PASS'
+            echo 'apksigner=PASS'
+            echo 'zipalign=PASS'
+            echo 'physical_device_test=NOT_RUN'
+            echo 'instrumentation_test=NOT_RUN'
+            echo 'signing=DEBUG'
+          } > /tmp/out/PROVENANCE.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: B132-HISSELER-VIOP-UI-FINAL
+          path: /tmp/out/*
+          retention-days: 90
