@@ -1,0 +1,145 @@
+name: B135 APK FINAL
+
+on:
+  push:
+    branches: [v525-b135-mtf-cache-fix-build]
+    paths: ['.github/workflows/build-b135-apk-v3.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reconstruct exact B135 source
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/b134 /tmp/src /tmp/out
+          mkdir -p /tmp/b134 /tmp/src /tmp/out
+          curl -fL --retry 3 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/dilekari-droid/BorsaTakipV5/actions/artifacts/10543640533/zip" \
+            -o /tmp/b134-artifact.zip
+          unzip -q /tmp/b134-artifact.zip -d /tmp/b134
+          SRCZIP=$(find /tmp/b134 -type f -name '*B134*Kaynak-Kod.zip' | head -n1)
+          test -s "$SRCZIP"
+          echo 'f4762d15c48eed74e18164dc1e7d4d727783ee01d8eec833312fdb61121dafa5  '"$SRCZIP" | sha256sum -c -
+          unzip -q "$SRCZIP" -d /tmp/src
+
+          PAYLOAD="$GITHUB_WORKSPACE/ci_payload/b135_mtf_cache_fix/B135-MTF-CACHE-FIX.patch.gz"
+          test -s "$PAYLOAD"
+          echo '5df0ce7210fbc008d9b9ec5e836a8bf3e7753ff3e09995f7aa3d23cf60e5e421  '"$PAYLOAD" | sha256sum -c -
+          gzip -dc "$PAYLOAD" > /tmp/B135.patch
+          echo 'cd83cbeacf3a38b7dca2e645d17b5cdd08141591895a4e37bf7afbf4285faab9  /tmp/B135.patch' | sha256sum -c -
+
+          cd /tmp/src
+          git init -q
+          git add .
+          git -c user.email=ci@example.invalid -c user.name=CI commit -qm baseline
+          git apply --check /tmp/B135.patch
+          git apply /tmp/B135.patch
+
+          grep -F 'applicationId = "tr.borsatakip.v5"' app/build.gradle.kts
+          grep -F 'versionCode = 135' app/build.gradle.kts
+          grep -F 'versionName = "5.2.5"' app/build.gradle.kts
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+          root=Path('/tmp/src'); lines=[]
+          for p in sorted(x for x in root.rglob('*') if x.is_file() and '.git' not in x.parts):
+              rel=p.relative_to(root).as_posix(); lines.append(f'{hashlib.sha256(p.read_bytes()).hexdigest()}  {rel}')
+          digest=hashlib.sha256(('\n'.join(lines)+'\n').encode()).hexdigest()
+          print('SOURCE_FILE_COUNT=',len(lines)); print('SOURCE_TREE_SHA256=',digest)
+          assert len(lines)==299, len(lines)
+          assert digest=='001a545837d4be437c50956e82302c8e7beaea9e8680848df1b7222f6ed30354', digest
+          PY
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Unit tests, lint, assemble
+        working-directory: /tmp/src
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          D=$(grep -Rho '@Test' app/src/test --include='*.kt' | wc -l | tr -d ' ')
+          export D
+          echo "UNIT_TEST_DISCOVERED=$D" | tee /tmp/test-summary.txt
+          ./gradlew --no-daemon testDebugUnitTest lintDebug assembleDebug --stacktrace
+          python3 - <<'PY'
+          import glob,os,xml.etree.ElementTree as ET
+          t=f=e=s=0
+          for p in glob.glob('/tmp/src/app/build/test-results/testDebugUnitTest/*.xml'):
+              r=ET.parse(p).getroot(); t+=int(r.attrib.get('tests',0)); f+=int(r.attrib.get('failures',0)); e+=int(r.attrib.get('errors',0)); s+=int(r.attrib.get('skipped',0))
+          d=int(os.environ['D'])
+          line=f'UNIT_TEST_EXECUTED={t} UNIT_TEST_PASSED={t-f-e-s} UNIT_TEST_FAILURES={f} UNIT_TEST_ERRORS={e} UNIT_TEST_SKIPPED={s}'
+          print(line); open('/tmp/test-summary.txt','a').write(line+'\nLINT_DEBUG=PASS\nASSEMBLE_DEBUG=PASS\n')
+          if t!=d or f or e or s: raise SystemExit(line)
+          PY
+
+      - name: Verify and export APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=/tmp/src/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" | tee /tmp/out/APK-ZIP-TEST.txt
+          BT=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)
+          AAPT="$ANDROID_HOME/build-tools/$BT/aapt"
+          SIGNER="$ANDROID_HOME/build-tools/$BT/apksigner"
+          ZIPALIGN="$ANDROID_HOME/build-tools/$BT/zipalign"
+          B=$($AAPT dump badging "$APK" | head -n1)
+          echo "$B" | tee /tmp/out/BADGING.txt
+          echo "$B" | grep -F "name='tr.borsatakip.v5'"
+          echo "$B" | grep -F "versionCode='135'"
+          echo "$B" | grep -F "versionName='5.2.5'"
+          $SIGNER verify --verbose --print-certs "$APK" | tee /tmp/out/APKSIGNER.txt
+          $SIGNER verify --verbose "$APK" | grep -F 'Verified using v2 scheme (APK Signature Scheme v2): true'
+          $ZIPALIGN -c -v 4 "$APK" | tee /tmp/out/ZIPALIGN.txt
+          OUT=/tmp/out/V5-ARACI-KURUM-5.2.5-B135-MTF-CACHE-FIX-debug.apk
+          cp "$APK" "$OUT"
+          sha256sum "$OUT" | tee "$OUT.sha256"
+          cp /tmp/test-summary.txt /tmp/out/TEST-SUMMARY.txt
+          cp /tmp/B135.patch /tmp/out/B135-MTF-CACHE-FIX.patch
+          cp /tmp/src/B135_CHANGES.md /tmp/out/B135_CHANGES.md 2>/dev/null || true
+          {
+            echo 'B135 MTF CACHE FIX'
+            echo 'applicationId=tr.borsatakip.v5'
+            echo 'versionCode=135'
+            echo 'versionName=5.2.5'
+            cat /tmp/test-summary.txt
+            echo 'source_tree_sha256=001a545837d4be437c50956e82302c8e7beaea9e8680848df1b7222f6ed30354'
+            echo 'source_file_count=299'
+            echo 'apk_zip_integrity=PASS'
+            echo 'aapt_badging=PASS'
+            echo 'apksigner_v2=PASS'
+            echo 'zipalign=PASS'
+            echo 'instrumentation=NOT_RUN'
+            echo 'physical_device_test=NOT_RUN'
+            echo 'signing=DEBUG'
+            echo "source_commit=$GITHUB_SHA"
+          } > /tmp/out/PROVENANCE.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: B135-MTF-CACHE-FIX-APK-FINAL
+          path: /tmp/out/*
+          retention-days: 90
