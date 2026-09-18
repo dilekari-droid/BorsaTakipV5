@@ -1,0 +1,217 @@
+name: B134 Settings Control Center
+
+on:
+  push:
+    branches: [v525-b134-settings-control-center]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore verified B133 source
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/src /tmp/base /tmp/out /tmp/b133
+          mkdir -p /tmp/src /tmp/base /tmp/out /tmp/b133
+          curl -fL --retry 3 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/dilekari-droid/BorsaTakipV5/actions/artifacts/10538687420/zip" \
+            -o /tmp/b133-artifact.zip
+          unzip -q /tmp/b133-artifact.zip -d /tmp/b133
+          SRCZIP=$(find /tmp/b133 -type f -name '*B133*Kaynak-Kod.zip' | head -n1)
+          test -n "$SRCZIP" -a -s "$SRCZIP"
+          echo '30d235a41693fdaf1ef03901823e424b5aa5d7af2620b0af90168724bfdfb581  '"$SRCZIP" | sha256sum -c -
+          unzip -q "$SRCZIP" -d /tmp/src
+          cp -a /tmp/src/. /tmp/base/
+          grep -F 'applicationId = "tr.borsatakip.v5"' /tmp/src/app/build.gradle.kts
+          grep -F 'versionCode = 133' /tmp/src/app/build.gradle.kts
+          grep -F 'versionName = "5.2.5"' /tmp/src/app/build.gradle.kts
+
+      - name: Apply verified B134 source patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          PAYLOAD=/tmp/B134.patch.gz.b64
+          cat "$GITHUB_WORKSPACE"/ci_payload/b134/part0{0,1,2,3,4,5} > "$PAYLOAD"
+          test -s "$PAYLOAD"
+          echo 'f8db2d8a1f58fd07b3376102473f73bbcfaee332fac9ef65633fc6b2c74e06f9  '"$PAYLOAD" | sha256sum -c -
+          base64 -d "$PAYLOAD" > /tmp/B134.patch.gz
+          cd /tmp/src
+          gzip -dc /tmp/B134.patch.gz | git apply --check --whitespace=nowarn -
+          gzip -dc /tmp/B134.patch.gz | git apply --whitespace=nowarn -
+          mkdir -p /tmp/src/.github/workflows
+          cp "$GITHUB_WORKSPACE/.github/workflows/build-b134-settings-control-center.yml" /tmp/src/.github/workflows/build-b134-settings-control-center.yml
+          grep -F 'versionCode = 134' /tmp/src/app/build.gradle.kts
+          grep -F 'versionName = "5.2.5"' /tmp/src/app/build.gradle.kts
+          grep -F 'versionCode = 134' /tmp/src/app/src/test/java/tr/borsatakip/v5/data/B117EngineIntegritySourceTest.kt
+
+      - name: Scope lock and static integrity checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib, xml.etree.ElementTree as ET
+          base=Path('/tmp/base'); src=Path('/tmp/src'); excluded={'.gradle','.kotlin','build'}
+          def files(root):
+              out={}
+              for p in root.rglob('*'):
+                  if not p.is_file(): continue
+                  rel=p.relative_to(root)
+                  if any(x in excluded for x in rel.parts): continue
+                  out[rel.as_posix()]=hashlib.sha256(p.read_bytes()).hexdigest()
+              return out
+          a=files(base); b=files(src)
+          changed=sorted(k for k in set(a)|set(b) if a.get(k)!=b.get(k))
+          expected=sorted([
+            'app/build.gradle.kts','app/src/main/AndroidManifest.xml',
+            'app/src/main/java/tr/borsatakip/v5/analysis/TradeForwardEngine.kt',
+            'app/src/main/java/tr/borsatakip/v5/data/AlertEventStore.kt',
+            'app/src/main/java/tr/borsatakip/v5/data/SettingsStore.kt',
+            'app/src/main/java/tr/borsatakip/v5/ui/SettingsActivity.kt',
+            'app/src/main/java/tr/borsatakip/v5/ui/SettingsDetailActivity.kt',
+            'app/src/main/java/tr/borsatakip/v5/ui/SettingsSearchActivity.kt',
+            'app/src/main/java/tr/borsatakip/v5/worker/RealtimeAlertService.kt',
+            'app/src/main/res/layout/activity_settings.xml',
+            'app/src/main/res/layout/activity_settings_detail.xml',
+            'app/src/main/res/layout/activity_settings_search.xml',
+            'app/src/test/java/tr/borsatakip/v5/analysis/TradeSimulationEstimateTest.kt',
+            'app/src/test/java/tr/borsatakip/v5/data/B117EngineIntegritySourceTest.kt',
+            'app/src/test/java/tr/borsatakip/v5/data/B134SettingsControlCenterSourceTest.kt',
+            'B134_CHANGES.md','B134_SETTINGS_INVENTORY.md','SETTINGS_FUNCTION_MATRIX.md',
+            '.github/workflows/build-b134-settings-control-center.yml'])
+          print('CHANGED_FILES='); [print(' -',x) for x in changed]
+          if changed != expected: raise SystemExit(f'SCOPE_MISMATCH expected={expected} actual={changed}')
+          print('SCOPE_LOCK=PASS')
+          xmls=list((src/'app/src/main/res').rglob('*.xml'))+[src/'app/src/main/AndroidManifest.xml']
+          for p in xmls: ET.parse(p)
+          print(f'XML_PARSE=PASS files={len(xmls)}')
+          for rel in [
+              'app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt',
+              'app/src/main/java/tr/borsatakip/v5/ui/ViopDetailActivity.kt',
+              'app/src/main/java/tr/borsatakip/v5/analysis/ViopScanner.kt',
+              'app/src/main/java/tr/borsatakip/v5/data/ViopRepository.kt',
+              'app/src/main/java/tr/borsatakip/v5/data/ViopContractSelector.kt']:
+              if a.get(rel) != b.get(rel): raise SystemExit('VIOP_SCOPE_VIOLATION='+rel)
+          print('VIOP_PRESERVATION=PASS')
+          detail=(src/'app/src/main/java/tr/borsatakip/v5/ui/SettingsDetailActivity.kt').read_text(encoding='utf-8')
+          if 'setText(settingsStore.apiKey)' in detail: raise SystemExit('API_KEY_UI_LEAK')
+          if 'ProviderReadinessService.isValidHttps(typed)' not in detail: raise SystemExit('HTTPS_VALIDATION_MISSING')
+          if 'TradeForwardEngine.estimateRoundTrip' not in detail: raise SystemExit('REAL_SIMULATION_MISSING')
+          if 'AlertEventStore(this)' not in detail: raise SystemExit('REAL_NOTIFICATION_HISTORY_MISSING')
+          settings=(src/'app/src/main/java/tr/borsatakip/v5/ui/SettingsActivity.kt').read_text(encoding='utf-8')
+          for token in ['autoTestAfterSave()', 'VİOP BAĞLANTISI HAZIR', 'EXTRA_RETURN_TO_VIOP', 'BIST/VİOP veri kaynağı: HAYIR']:
+              if token not in settings: raise SystemExit('LEGACY_SETTINGS_CONTRACT_MISSING='+token)
+          print('SETTINGS_SECURITY_AND_REGRESSION_STATIC=PASS')
+          PY
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Run all unit tests
+        working-directory: /tmp/src
+        shell: bash
+        run: |
+          set -euo pipefail
+          DISCOVERED=$(grep -Rho '@Test' app/src/test --include='*.kt' | wc -l | tr -d ' ')
+          export DISCOVERED
+          echo "TEST_DISCOVERED=$DISCOVERED" | tee /tmp/test-summary.txt
+          gradle --no-daemon testDebugUnitTest --stacktrace
+          python3 - <<'PY'
+          import glob, os, xml.etree.ElementTree as ET
+          discovered=int(os.environ['DISCOVERED']); tests=failures=errors=skipped=0
+          for path in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
+              root=ET.parse(path).getroot(); tests+=int(root.attrib.get('tests',0)); failures+=int(root.attrib.get('failures',0)); errors+=int(root.attrib.get('errors',0)); skipped+=int(root.attrib.get('skipped',0))
+          passed=tests-failures-errors-skipped
+          line=f'TEST_EXECUTED={tests} TEST_PASSED={passed} TEST_FAILURES={failures} TEST_ERRORS={errors} TEST_SKIPPED={skipped}'
+          print(line)
+          with open('/tmp/test-summary.txt','a',encoding='utf-8') as f: f.write(line+'\n')
+          if tests != discovered or failures or errors or skipped: raise SystemExit(line)
+          PY
+
+      - name: Lint debug
+        working-directory: /tmp/src
+        run: gradle --no-daemon lintDebug --stacktrace
+      - name: Assemble debug APK
+        working-directory: /tmp/src
+        run: gradle --no-daemon assembleDebug --stacktrace
+
+      - name: Verify and export B134
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=/tmp/src/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK" | tee /tmp/out/APK-ZIP-TEST.txt
+          BT="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)"
+          AAPT="$ANDROID_HOME/build-tools/$BT/aapt"; APKSIGNER="$ANDROID_HOME/build-tools/$BT/apksigner"; ZIPALIGN="$ANDROID_HOME/build-tools/$BT/zipalign"
+          BADGING="$($AAPT dump badging "$APK" | head -n1)"
+          echo "$BADGING" | tee /tmp/out/BADGING.txt
+          echo "$BADGING" | grep -F "name='tr.borsatakip.v5'"
+          echo "$BADGING" | grep -F "versionCode='134'"
+          echo "$BADGING" | grep -F "versionName='5.2.5'"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee /tmp/out/APKSIGNER.txt
+          "$APKSIGNER" verify --verbose "$APK" | grep -F 'Verified using v2 scheme (APK Signature Scheme v2): true'
+          "$ZIPALIGN" -c -v 4 "$APK" | tee /tmp/out/ZIPALIGN.txt
+          OUT=/tmp/out/V5-ARACI-KURUM-5.2.5-B134-SETTINGS-CONTROL-CENTER-debug.apk
+          cp "$APK" "$OUT"; sha256sum "$OUT" | tee "$OUT.sha256"
+          python3 - <<'PY'
+          from pathlib import Path
+          import zipfile
+          src=Path('/tmp/src'); out=Path('/tmp/out/V5-ARACI-KURUM-5.2.5-B134-SETTINGS-CONTROL-CENTER-Kaynak-Kod.zip'); excluded={'.git','.gradle','.kotlin','build'}
+          with zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED) as z:
+              for p in src.rglob('*'):
+                  if p.is_file() and not any(x in excluded for x in p.relative_to(src).parts): z.write(p,p.relative_to(src).as_posix())
+          PY
+          sha256sum /tmp/out/V5-ARACI-KURUM-5.2.5-B134-SETTINGS-CONTROL-CENTER-Kaynak-Kod.zip | tee /tmp/out/V5-ARACI-KURUM-5.2.5-B134-SETTINGS-CONTROL-CENTER-Kaynak-Kod.zip.sha256
+          cp /tmp/test-summary.txt /tmp/out/TEST-SUMMARY.txt
+          cp /tmp/src/B134_CHANGES.md /tmp/out/B134_CHANGES.md
+          cp /tmp/src/B134_SETTINGS_INVENTORY.md /tmp/out/B134_SETTINGS_INVENTORY.md
+          cp /tmp/src/SETTINGS_FUNCTION_MATRIX.md /tmp/out/SETTINGS_FUNCTION_MATRIX.md
+          {
+            echo 'B134 SETTINGS CONTROL CENTER'
+            echo 'applicationId=tr.borsatakip.v5'
+            echo 'versionCode=134'
+            echo 'versionName=5.2.5'
+            echo 'base=B133-SETTINGS-UI-FINAL artifact=10538687420'
+            echo 'v131_v132_v133_viop_engine=PRESERVED'
+            echo 'provider_router_architecture=PRESERVED'
+            echo 'scan_algorithm=PRESERVED'
+            echo 'notification_engine=PRESERVED_EXTENDED_WITH_DIAGNOSTIC_STATE_ONLY'
+            cat /tmp/test-summary.txt
+            echo 'lint_debug=PASS'
+            echo 'assemble_debug=PASS'
+            echo 'apk_zip_integrity=PASS'
+            echo 'aapt_badging=PASS'
+            echo 'apksigner_v2=PASS'
+            echo 'zipalign=PASS'
+            echo 'instrumentation_test=NOT_RUN'
+            echo 'physical_device_visual_test=NOT_RUN'
+            echo 'network_negative_matrix=NOT_FULLY_AUTOMATED'
+            echo 'signing=DEBUG'
+            echo "source_commit=$GITHUB_SHA"
+          } > /tmp/out/PROVENANCE.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: B134-SETTINGS-CONTROL-CENTER-FINAL
+          path: /tmp/out/*
+          retention-days: 90
