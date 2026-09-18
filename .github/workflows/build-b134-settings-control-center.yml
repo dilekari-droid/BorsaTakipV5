@@ -64,8 +64,22 @@ jobs:
           git -c user.email=ci@example.invalid -c user.name=CI commit -qm baseline
           git apply --check /tmp/B134.patch
           git apply /tmp/B134.patch
-          mkdir -p /tmp/src/.github/workflows
-          cp "$GITHUB_WORKSPACE/.github/workflows/build-b134-settings-control-center.yml" /tmp/src/.github/workflows/build-b134-settings-control-center.yml
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/src/test/java/tr/borsatakip/v5/data/B134SettingsControlCenterSourceTest.kt')
+          lines = p.read_text(encoding='utf-8').splitlines()
+          out = []
+          fixed = False
+          for line in lines:
+              if 'assertFalse(details.contains("addEdit(\"Yeni API Key\"", InputType.TYPE_CLASS_TEXT' in line:
+                  out.append('        assertFalse(details.contains("InputType.TYPE_TEXT_VARIATION_PASSWORD, settingsStore.apiKey"))')
+                  fixed = True
+              else:
+                  out.append(line)
+          if not fixed:
+              raise SystemExit('B134_TEST_SYNTAX_FIX_TARGET_NOT_FOUND')
+          p.write_text('\n'.join(out) + '\n', encoding='utf-8')
+          PY
           grep -F 'versionCode = 134' app/build.gradle.kts
           grep -F 'versionName = "5.2.5"' app/build.gradle.kts
           grep -F 'applicationId = "tr.borsatakip.v5"' app/build.gradle.kts
@@ -76,7 +90,7 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          import hashlib, xml.etree.ElementTree as ET
+          import hashlib, re, xml.etree.ElementTree as ET
 
           base=Path('/tmp/base'); src=Path('/tmp/src')
           excluded={'.git','.gradle','.kotlin','build'}
