@@ -40,11 +40,11 @@ jobs:
           unzip -q "$SRCZIP" -d /tmp/src
 
           PAYLOAD="$GITHUB_WORKSPACE/ci_payload/b135_mtf_cache_fix/B135-MTF-CACHE-FIX.patch.gz.b64"
-          echo '65204697439b492e9491be86f5c9aa0ce05d2dda085ff74370fbca42a37e2f27  '"$PAYLOAD" | sha256sum -c -
+          echo 'b5ebb28b04bae6ce3416f444827768062d515a0a80b9c802da36accb1575069c  '"$PAYLOAD" | sha256sum -c -
           base64 -d "$PAYLOAD" > /tmp/B135.patch.gz
-          echo 'ff23f920b9fd55aa3f789fe8417e2505b2ed3b501894ba25f7c1d69ad89a8f60  /tmp/B135.patch.gz' | sha256sum -c -
+          echo '5df0ce7210fbc008d9b9ec5e836a8bf3e7753ff3e09995f7aa3d23cf60e5e421  /tmp/B135.patch.gz' | sha256sum -c -
           gzip -dc /tmp/B135.patch.gz > /tmp/B135.patch
-          echo '70bc3062b10c7e3014a4b20912fc6f817bbf7755303cc1e13b0a7482ea454140  /tmp/B135.patch' | sha256sum -c -
+          echo 'cd83cbeacf3a38b7dca2e645d17b5cdd08141591895a4e37bf7afbf4285faab9  /tmp/B135.patch' | sha256sum -c -
 
           cd /tmp/src
           git init -q
