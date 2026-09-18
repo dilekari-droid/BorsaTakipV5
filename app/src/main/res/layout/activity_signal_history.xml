@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@drawable/bg_screen_gradient">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="18dp">
+
+        <TextView style="@style/Title" android:text="Sinyal Geçmişi / Forward Test" />
+        <TextView
+            android:id="@+id/historyStatus"
+            style="@style/Sub"
+            android:layout_marginTop="4dp"
+            android:text="COMPLETE ve PARTIAL taramalardaki geçerli sinyaller gösterilir." />
+
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:scrollbars="none">
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+                <Button android:id="@+id/historyAll" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="TÜMÜ" />
+                <Button android:id="@+id/historyLong" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="LONG" />
+                <Button android:id="@+id/historyShort" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="SHORT" />
+                <Button android:id="@+id/history85" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="85+" />
+                <Button android:id="@+id/history75" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="75+" />
+            </LinearLayout>
+        </HorizontalScrollView>
+
+        <EditText
+            android:id="@+id/historySymbol"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:hint="Sembol filtresi (örn. THYAO)"
+            android:inputType="textCapCharacters" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+            <EditText
+                android:id="@+id/historyFrom"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:hint="Başlangıç dd.MM.yyyy"
+                android:inputType="date" />
+            <EditText
+                android:id="@+id/historyTo"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:hint="Bitiş dd.MM.yyyy"
+                android:inputType="date" />
+        </LinearLayout>
+        <Button
+            android:id="@+id/historyApply"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="FİLTREYİ UYGULA" />
+    </LinearLayout>
+
+    <ScrollView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1">
+        <TextView android:id="@+id/historyText" android:layout_width="match_parent" android:layout_height="wrap_content" android:padding="18dp" android:textColor="@color/text_primary" android:lineSpacingExtra="5dp" />
+    </ScrollView>
+
+    <include layout="@layout/include_bottom_nav" />
+</LinearLayout>

@@ -4,6 +4,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.widget.Button
 import android.widget.TextView
+import tr.borsatakip.v5.BuildConfig
 import tr.borsatakip.v5.R
 
 class MainActivity : BaseActivity() {
@@ -11,6 +12,11 @@ class MainActivity : BaseActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         setupBottomNav()
+
+        val versionName = BuildConfig.VERSION_NAME
+        findViewById<TextView>(R.id.txtVersionBadge).text = "V$versionName"
+        findViewById<TextView>(R.id.txtVersionSubtitle).text = "V$versionName • Profesyonel fırsat takibi"
+
         findViewById<Button>(R.id.btnBist).setOnClickListener { startActivity(Intent(this, BistScanActivity::class.java)) }
         findViewById<Button>(R.id.btnOpportunity).setOnClickListener {
             startActivity(Intent(this, OpportunityActivity::class.java))

@@ -40,10 +40,18 @@ jobs:
           mkdir -p app/build/outputs/final
           cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/final/BorsaTakipV5.1.27-debug.apk
 
+      - name: Verify debug APK signature
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/final/BorsaTakipV5.1.27-debug.apk
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)
+          test -x "$APKSIGNER"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee app/build/outputs/final/BorsaTakipV5.1.27-debug-apksigner.txt
+
       - name: Release R8 smoke build
         run: gradle :app:assembleRelease
 
-      - name: Verify APK and quality markers
+      - name: Verify APK and V5.1.27 quality markers
         run: |
           set -euo pipefail
           APK=app/build/outputs/final/BorsaTakipV5.1.27-debug.apk
@@ -81,21 +89,40 @@ jobs:
           }
 
           require_marker 'ProviderRouter(this@BistScanActivity)' app/src/main/java/tr/borsatakip/v5/ui/BistScanActivity.kt
-          require_marker 'BistScanner(ProviderRouter(this@OpportunityActivity))' app/src/main/java/tr/borsatakip/v5/ui/OpportunityActivity.kt
+          require_marker 'SignalHistoryRecorder(this@BistScanActivity)' app/src/main/java/tr/borsatakip/v5/ui/BistScanActivity.kt
+          require_marker 'ScanRunStatus.COMPLETE' app/src/main/java/tr/borsatakip/v5/ui/BistScanActivity.kt
+          require_marker 'ProviderRouter(this@OpportunityActivity)' app/src/main/java/tr/borsatakip/v5/ui/OpportunityActivity.kt
+          require_marker 'SignalHistoryRecorder(this@OpportunityActivity)' app/src/main/java/tr/borsatakip/v5/ui/OpportunityActivity.kt
+          require_marker 'OpportunityFilterPolicy.apply' app/src/main/java/tr/borsatakip/v5/ui/OpportunityActivity.kt
+          require_marker 'LastSuccessfulScanStore' app/src/main/java/tr/borsatakip/v5/ui/OpportunityActivity.kt
           require_marker 'CustomTabsIntent' app/src/main/java/tr/borsatakip/v5/ui/SettingsActivity.kt
+          require_marker 'ProviderReadinessService' app/src/main/java/tr/borsatakip/v5/ui/SettingsActivity.kt
+          require_marker 'ProviderReadinessService' app/src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt
           require_marker 'RealTimeIntegrityPolicy.validate' app/src/main/java/tr/borsatakip/v5/scan/BistScanner.kt
-          require_marker 'ANLIK VERİ DOĞRULANAMADI' app/src/main/java/tr/borsatakip/v5/scan/BistScanner.kt
+          require_marker 'historyRecorder.record' app/src/main/java/tr/borsatakip/v5/scan/BistScanner.kt
+          require_marker 'ScanRunStatus.PARTIAL' app/src/main/java/tr/borsatakip/v5/scan/BistScanner.kt
+          require_marker 'signal_history_v1.json' app/src/main/java/tr/borsatakip/v5/data/SignalHistoryStore.kt
+          require_marker 'VIOP_CONTRACTS_ERROR' app/src/main/java/tr/borsatakip/v5/data/BackendPreflightClient.kt
+          require_marker 'VIOP_HISTORY_ERROR' app/src/main/java/tr/borsatakip/v5/data/BackendPreflightClient.kt
           require_marker 'MAX_DATA_AGE_MS = 60_000L' app/src/main/java/tr/borsatakip/v5/data/RealTimeIntegrityPolicy.kt
           require_marker 'MAX_DECLARED_DELAY_SECONDS = 5' app/src/main/java/tr/borsatakip/v5/data/RealTimeIntegrityPolicy.kt
-          require_marker 'currentSessionIncluded' app/src/main/java/tr/borsatakip/v5/data/MobileMarketDataProvider.kt
-          require_marker 'realtime' backend/app/main.py
+          require_marker 'receivedElapsedRealtime' app/src/main/java/tr/borsatakip/v5/data/MobileMarketDataProvider.kt
+          require_marker 'DataMode.REALTIME' app/src/main/java/tr/borsatakip/v5/analysis/OpportunityEngine.kt
+          require_marker 'SignalValidity.VALID' app/src/main/java/tr/borsatakip/v5/analysis/OpportunityEngine.kt
+          require_marker 'DataSnapshot' app/src/main/java/tr/borsatakip/v5/model/Models.kt
+          require_marker 'OpportunitySnapshot' app/src/main/java/tr/borsatakip/v5/model/Models.kt
+          require_marker 'finalSignalScore.coerceIn(0, 100)' app/src/main/java/tr/borsatakip/v5/ui/OpportunityAdapter.kt
+          require_marker 'Nihai Sinyal' app/src/main/java/tr/borsatakip/v5/ui/OpportunityAdapter.kt
+          require_marker 'VERİ KAPSAMI' app/src/main/java/tr/borsatakip/v5/ui/OpportunityAdapter.kt
+          require_marker 'PriceChartView.Range.THREE_MONTHS' app/src/main/java/tr/borsatakip/v5/ui/StockDetailActivity.kt
+          require_marker 'last_successful_scan_v2.json' app/src/main/java/tr/borsatakip/v5/data/LastSuccessfulScanStore.kt
           require_marker 'currentSessionIncluded' backend/app/main.py
           require_marker 'strictRealtime' backend/app/main.py
-          require_marker 'ANLIK ✓' app/src/main/java/tr/borsatakip/v5/ui/OpportunityAdapter.kt
-          require_marker 'finalSignalScore.coerceIn(0, 100)' app/src/main/java/tr/borsatakip/v5/ui/OpportunityAdapter.kt
-          require_marker 'VERİ KAPSAMI' app/src/main/java/tr/borsatakip/v5/ui/OpportunityAdapter.kt
+          require_marker 'tickSize' backend/app/main.py
+          require_marker 'multiplier' backend/app/main.py
           require_marker 'WindowInsetsCompat.Type.systemBars()' app/src/main/java/tr/borsatakip/v5/ui/BaseActivity.kt
           require_marker 'bg_screen_gradient' app/src/main/res/layout/activity_main.xml
+          require_marker 'activityLoadsAndScanButtonClickDoesNotTriggerVerifierCrash' app/src/androidTest/java/tr/borsatakip/v5/ui/BistScanActivityRuntimeTest.kt
 
           if grep -R -E -q 'TradingViewAuthClient|TradingViewBrowserLoginActivity|TradingViewScannerOpportunityProvider|TradingViewViopProvider|TradingViewSnapshotScorer|android\.webkit\.WebView|WebView/OAuth|OTURUMU UYGULAMAYA AKTAR' app/src; then
             echo 'Legacy TradingView embedded-auth/WebView reference remains in app source.'
@@ -106,10 +133,39 @@ jobs:
           test -x "$AAPT"
           "$AAPT" dump badging "$APK" > /tmp/badging.txt
           grep -Fq "versionName='5.1.27'" /tmp/badging.txt
+          grep -Fq "versionCode='77'" /tmp/badging.txt
           "$AAPT" dump xmltree "$APK" AndroidManifest.xml > /tmp/manifest.txt
           grep -Fq 'android:allowBackup(0x01010280)=(type 0x12)0x0' /tmp/manifest.txt
           test -f app/build/outputs/mapping/release/mapping.txt
-          echo 'V5.1.27 strict real-time integrity, backend-first, browser-only TradingView, R8 checks passed.'
+          sha256sum "$APK" | tee app/build/outputs/final/BorsaTakipV5.1.27-debug.sha256
+          echo 'V5.1.27 source/build/static quality checks passed. Physical-device and live-market tests are not claimed by CI.'
+
+      - name: Package source snapshot with verified Gradle 8.9 wrapper
+        run: |
+          set -euo pipefail
+          gradle wrapper --gradle-version 8.9 --distribution-type bin
+          test -f gradlew
+          test -f gradlew.bat
+          test -f gradle/wrapper/gradle-wrapper.jar
+          test -f gradle/wrapper/gradle-wrapper.properties
+          chmod +x gradlew
+          ./gradlew --version | tee app/build/outputs/final/gradle-wrapper-version.txt
+          grep -Fq 'Gradle 8.9' app/build/outputs/final/gradle-wrapper-version.txt
+
+          rm -rf /tmp/borsatakip-source
+          mkdir -p /tmp/borsatakip-source
+          git archive HEAD | tar -x -C /tmp/borsatakip-source
+          cp gradlew gradlew.bat /tmp/borsatakip-source/
+          mkdir -p /tmp/borsatakip-source/gradle/wrapper
+          cp gradle/wrapper/gradle-wrapper.jar gradle/wrapper/gradle-wrapper.properties /tmp/borsatakip-source/gradle/wrapper/
+
+          (
+            cd /tmp/borsatakip-source
+            zip -qr "$GITHUB_WORKSPACE/app/build/outputs/final/BorsaTakipV5.1.27-source.zip" .
+          )
+          unzip -l app/build/outputs/final/BorsaTakipV5.1.27-source.zip | grep -Fq 'gradlew'
+          unzip -l app/build/outputs/final/BorsaTakipV5.1.27-source.zip | grep -Fq 'gradle/wrapper/gradle-wrapper.jar'
+          sha256sum app/build/outputs/final/BorsaTakipV5.1.27-source.zip | tee app/build/outputs/final/BorsaTakipV5.1.27-source.sha256
 
       - name: Check release secrets
         if: github.event_name != 'pull_request'
@@ -145,10 +201,43 @@ jobs:
           APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)
           test -x "$APKSIGNER"
           "$APKSIGNER" verify --verbose --print-certs app/build/outputs/final/BorsaTakipV5.1.27-release.apk
+          sha256sum app/build/outputs/final/BorsaTakipV5.1.27-release.apk | tee app/build/outputs/final/BorsaTakipV5.1.27-release.sha256
 
-      - name: Upload APK artifacts
+      - name: Upload V5.1.27 deliverables
         uses: actions/upload-artifact@v4
         with:
-          name: BorsaTakipV5.1.27-apk
-          path: app/build/outputs/final/*.apk
+          name: BorsaTakipV5.1.27-deliverables
+          path: |
+            app/build/outputs/final/*.apk
+            app/build/outputs/final/*.zip
+            app/build/outputs/final/*.sha256
+            app/build/outputs/final/*.txt
           if-no-files-found: error
+
+  runtime-verifier:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Emulator runtime verifier regression
+        uses: ReactiveCircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          script: gradle :app:connectedDebugAndroidTest

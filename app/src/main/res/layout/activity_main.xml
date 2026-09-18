@@ -27,12 +27,17 @@
                     android:layout_weight="1"
                     android:orientation="vertical">
                     <TextView style="@style/Title" android:text="BORSA TAKİP" />
-                    <TextView style="@style/Sub" android:text="V5.1.21 • Profesyonel fırsat takibi" android:layout_marginTop="2dp" />
+                    <TextView
+                        android:id="@+id/txtVersionSubtitle"
+                        style="@style/Sub"
+                        android:text="Profesyonel fırsat takibi"
+                        android:layout_marginTop="2dp" />
                 </LinearLayout>
                 <TextView
+                    android:id="@+id/txtVersionBadge"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="V5.1.21"
+                    android:text="V"
                     android:textStyle="bold"
                     android:textColor="@color/blue"
                     android:background="@drawable/bg_card"

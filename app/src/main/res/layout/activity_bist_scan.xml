@@ -19,19 +19,21 @@
                 android:padding="18dp"
                 android:elevation="5dp">
                 <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="⌕  BIST hisseleri taranıyor" android:textColor="@color/white" android:textStyle="bold" android:textSize="16sp" />
-                <TextView android:id="@+id/txtProgress" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:textColor="@color/white" android:textSize="24sp" android:textStyle="bold" android:text="0 / 0 • %0" />
-                <ProgressBar android:id="@+id/progress" style="?android:attr/progressBarStyleHorizontal" android:layout_width="match_parent" android:layout_height="10dp" android:layout_marginTop="10dp" android:max="100" />
+                <TextView android:id="@+id/txtProgress" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:textColor="@color/white" android:textSize="24sp" android:textStyle="bold" android:text="TARAMA BAŞLAMADI" />
+                <ProgressBar android:id="@+id/progress" style="?android:attr/progressBarStyleHorizontal" android:layout_width="match_parent" android:layout_height="10dp" android:layout_marginTop="10dp" android:max="100" android:progress="0" />
             </LinearLayout>
 
             <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="Tarama Durumu" android:textColor="@color/blue" android:textStyle="bold" android:textSize="15sp" />
 
-            <TextView android:id="@+id/txtStatus" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:background="@drawable/bg_card" android:padding="14dp" android:textColor="@color/text_primary" android:text="Hazır" />
+            <TextView android:id="@+id/txtStatus" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:background="@drawable/bg_card" android:padding="14dp" android:textColor="@color/text_primary" android:text="Hazır • tarama başlatılmadı" />
 
-            <TextView android:id="@+id/txtDebugState" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:background="@drawable/bg_card" android:padding="14dp" android:textColor="@color/text_secondary" android:lineSpacingExtra="4dp" android:text="Motor: HAZIR\nProvider: -\nTarama: 0/0\nSon işlenen: -\nHata: 0" />
+            <TextView android:id="@+id/txtDebugState" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:background="@drawable/bg_card" android:padding="14dp" android:textColor="@color/text_secondary" android:lineSpacingExtra="4dp" android:text="Tarama ancak veri sağlayıcısı hazır olduğunda başlar. 0/0 başarılı tarama olarak gösterilmez." />
 
             <Button android:id="@+id/btnStartScan" android:layout_width="match_parent" android:layout_height="58dp" android:layout_marginTop="16dp" android:background="@drawable/bg_card_blue" android:textColor="@color/white" android:textStyle="bold" android:text="BIST TARAMASINI BAŞLAT" />
 
-            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:padding="12dp" android:background="@drawable/bg_card" android:textColor="@color/text_muted" android:text="İlerleme yalnız gerçek işlem durumundan hesaplanır. Veri bulunmayan alanlar tamamlandı olarak gösterilmez." android:textSize="12sp" />
+            <Button android:id="@+id/btnConfigureProvider" android:layout_width="match_parent" android:layout_height="50dp" android:layout_marginTop="10dp" android:textStyle="bold" android:text="VERİ SAĞLAYICIYI AYARLA" />
+
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp" android:padding="12dp" android:background="@drawable/bg_card" android:textColor="@color/text_muted" android:text="İlerleme yalnız gerçek işlem durumundan hesaplanır. Provider hazır değilse tarama başlamaz; gerçek sembol listesi doğrulandığında 0 / GERÇEK_TOPLAM ile başlar." android:textSize="12sp" />
         </LinearLayout>
     </ScrollView>
     <include layout="@layout/include_bottom_nav" />
