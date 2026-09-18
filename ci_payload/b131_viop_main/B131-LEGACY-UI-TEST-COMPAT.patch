@@ -1,0 +1,28 @@
+diff --git a/app/src/test/java/tr/borsatakip/v5/data/B125ViopConfigAndUiFixTest.kt b/app/src/test/java/tr/borsatakip/v5/data/B125ViopConfigAndUiFixTest.kt
+index d236aa2..1a9f0a0 100644
+--- a/app/src/test/java/tr/borsatakip/v5/data/B125ViopConfigAndUiFixTest.kt
++++ b/app/src/test/java/tr/borsatakip/v5/data/B125ViopConfigAndUiFixTest.kt
+@@ -19,9 +19,12 @@ class B125ViopConfigAndUiFixTest {
+ 
+     @Test fun viopActionsAndStrongSignalsHeaderDoNotDependOnHorizontalOverflow() {
+         val xml = read("src/main/res/layout/activity_viop.xml")
+-        assertFalse(xml.contains("<HorizontalScrollView"))
++        val activity = read("src/main/java/tr/borsatakip/v5/ui/ViopActivity.kt")
+         assertTrue(xml.contains("android:id=\"@+id/signalSummary\""))
+-        assertTrue(xml.contains("android:layout_width=\"0dp\""))
++        assertTrue(xml.contains("android:id=\"@+id/summaryLong\""))
++        assertTrue(xml.contains("android:id=\"@+id/summaryShort\""))
++        assertTrue(activity.contains("RecyclerView.VERTICAL"))
++        assertFalse(activity.contains("RecyclerView.HORIZONTAL"))
+     }
+ 
+     @Test fun opportunityCardIsResponsiveAndUnderlyingFallbackIsExplicit() {
+@@ -29,7 +32,7 @@ class B125ViopConfigAndUiFixTest {
+         val adapter = read("src/main/java/tr/borsatakip/v5/ui/ViopUnderlyingOpportunityAdapter.kt")
+         val catalog = read("src/main/java/tr/borsatakip/v5/data/ViopBuiltinContractCatalog.kt")
+         assertFalse(item.contains("android:layout_width=\"300dp\""))
+-        assertTrue(adapter.contains("DAYANAK REFERANSI"))
++        assertTrue(adapter.contains("DAYANAK ANALİZİ"))
+         assertTrue(catalog.contains("UNDERLYING:"))
+         assertFalse(catalog.contains("symbol = \"F_"))
+     }
