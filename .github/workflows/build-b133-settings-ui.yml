@@ -5,7 +5,6 @@ on:
     branches: [v525-b133-settings-ui-source]
     paths:
       - '.github/workflows/build-b133-settings-ui.yml'
-      - 'app/src/main/java/tr/borsatakip/v5/ui/SettingsActivity.kt'
       - 'app/src/main/res/layout/activity_settings.xml'
   workflow_dispatch:
 
@@ -44,12 +43,10 @@ jobs:
           grep -F 'versionCode = 132' /tmp/src/app/build.gradle.kts
           grep -F 'versionName = "5.2.5"' /tmp/src/app/build.gradle.kts
 
-      - name: Apply B133 Settings UI source overlay
+      - name: Apply B133 Settings UI layout only
         shell: bash
         run: |
           set -euo pipefail
-          cp "$GITHUB_WORKSPACE/app/src/main/java/tr/borsatakip/v5/ui/SettingsActivity.kt" \
-             /tmp/src/app/src/main/java/tr/borsatakip/v5/ui/SettingsActivity.kt
           cp "$GITHUB_WORKSPACE/app/src/main/res/layout/activity_settings.xml" \
              /tmp/src/app/src/main/res/layout/activity_settings.xml
 
@@ -72,6 +69,10 @@ jobs:
           grep -F 'versionCode = 133' /tmp/src/app/build.gradle.kts
           grep -F 'versionName = "5.2.5"' /tmp/src/app/build.gradle.kts
           grep -F 'versionCode = 133' /tmp/src/app/src/test/java/tr/borsatakip/v5/data/B117EngineIntegritySourceTest.kt
+          grep -F 'EXTRA_RETURN_TO_VIOP' /tmp/src/app/src/main/java/tr/borsatakip/v5/ui/SettingsActivity.kt
+          grep -F '@+id/runRuntimeDiagnostics' /tmp/src/app/src/main/res/layout/activity_settings.xml
+          grep -F '@+id/forwardOutcome' /tmp/src/app/src/main/res/layout/activity_settings.xml
+          grep -F '@+id/tradeQuantity' /tmp/src/app/src/main/res/layout/activity_settings.xml
 
       - name: Scope lock and static checks
         shell: bash
@@ -100,11 +101,9 @@ jobs:
 
           a = files(base)
           b = files(src)
-          changed = sorted(set(a) | set(b))
-          changed = [p for p in changed if a.get(p) != b.get(p)]
+          changed = sorted(p for p in set(a) | set(b) if a.get(p) != b.get(p))
           expected = sorted([
               'app/build.gradle.kts',
-              'app/src/main/java/tr/borsatakip/v5/ui/SettingsActivity.kt',
               'app/src/main/res/layout/activity_settings.xml',
               'app/src/test/java/tr/borsatakip/v5/data/B117EngineIntegritySourceTest.kt',
           ])
@@ -129,8 +128,21 @@ jobs:
           if missing:
               raise SystemExit(f'MISSING_RESOURCE_IDS={missing}')
 
+          required = {
+              'baseUrl','apiKey','experimentalProviders','yahooFallback','testTradingViewLogin',
+              'tradingViewStatus','refreshMinutes','forwardOutcome','tradeQuantity','tradeCommission',
+              'tradeSlippage','notifications','save','testConnection','dataStatus',
+              'runRuntimeDiagnostics','openBatteryOptimization','runtimeDiagnostics'
+          }
+          layout = (src / 'app/src/main/res/layout/activity_settings.xml').read_text(encoding='utf-8')
+          present = set(re.findall(r'@\+id/([A-Za-z0-9_]+)', layout))
+          missing_required = sorted(required - present)
+          if missing_required:
+              raise SystemExit(f'MISSING_B132_SETTINGS_IDS={missing_required}')
+
           print(f'XML_PARSE=PASS files={len(xmls)}')
           print('RESOURCE_ID_CHECK=PASS')
+          print('B132_SETTINGS_FUNCTION_IDS=PASS')
           PY
 
       - uses: actions/setup-java@v5
@@ -226,7 +238,13 @@ jobs:
             echo 'versionCode=133'
             echo 'versionName=5.2.5'
             echo 'base=B132-HISSELER-VIOP-UI-FINAL'
-            echo 'settings_ui=REDESIGNED'
+            echo 'settings_layout=REDESIGNED'
+            echo 'settings_runtime_logic=B132_PRESERVED'
+            echo 'viop_return_after_provider_test=PRESERVED'
+            echo 'notification_permission_flow=PRESERVED'
+            echo 'auto_scan_scheduler=PRESERVED'
+            echo 'runtime_diagnostics=PRESERVED'
+            echo 'trade_simulation_settings=PRESERVED'
             echo 'hisseler_viop_b132=PRESERVED'
             echo 'backend_api_repository_database=UNCHANGED'
             echo 'navigation_architecture=UNCHANGED'
