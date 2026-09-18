@@ -1,0 +1,100 @@
+name: Export B134 Source
+
+on:
+  push:
+    branches: [v525-b134-settings-control-center]
+    paths:
+      - '.github/workflows/export-b134-source.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reconstruct B134 source
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/b133 /tmp/src /tmp/out
+          mkdir -p /tmp/b133 /tmp/src /tmp/out
+
+          curl -fL --retry 3 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/dilekari-droid/BorsaTakipV5/actions/artifacts/10538687420/zip" \
+            -o /tmp/b133-artifact.zip
+
+          unzip -q /tmp/b133-artifact.zip -d /tmp/b133
+          SRCZIP=$(find /tmp/b133 -type f -name '*B133*Kaynak-Kod.zip' | head -n1)
+          test -n "$SRCZIP" -a -s "$SRCZIP"
+          echo '30d235a41693fdaf1ef03901823e424b5aa5d7af2620b0af90168724bfdfb581  '"$SRCZIP" | sha256sum -c -
+          unzip -q "$SRCZIP" -d /tmp/src
+
+          cat "$GITHUB_WORKSPACE"/ci_payload/b134/part* > /tmp/B134.patch.gz.b64
+          echo 'f8db2d8a1f58fd07b3376102473f73bbcfaee332fac9ef65633fc6b2c74e06f9  /tmp/B134.patch.gz.b64' | sha256sum -c -
+          base64 -d /tmp/B134.patch.gz.b64 > /tmp/B134.patch.gz
+          echo 'c698b57aaf00dea10c0b71ddba54238f167fc052f859112050fe7df07c668f76  /tmp/B134.patch.gz' | sha256sum -c -
+          gzip -dc /tmp/B134.patch.gz > /tmp/B134.patch
+          echo '4446d1083a529fd416b8abcb66857a97ad17835307725b5c96698b47899166d8  /tmp/B134.patch' | sha256sum -c -
+
+          cd /tmp/src
+          git init -q
+          git add .
+          git -c user.email=ci@example.invalid -c user.name=CI commit -qm baseline
+          git apply --check /tmp/B134.patch
+          git apply /tmp/B134.patch
+
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('app/src/test/java/tr/borsatakip/v5/data/B134SettingsControlCenterSourceTest.kt')
+          lines=p.read_text(encoding='utf-8').splitlines(); out=[]; fixed=False
+          for line in lines:
+              if 'assertFalse(details.contains' in line and 'settingsStore.apiKey' in line and 'InputType.TYPE_CLASS_TEXT' in line:
+                  out.append('        assertFalse(details.contains("InputType.TYPE_TEXT_VARIATION_PASSWORD, settingsStore.apiKey"))')
+                  fixed=True
+              else:
+                  out.append(line)
+          if not fixed:
+              raise SystemExit('B134_TEST_SYNTAX_FIX_TARGET_NOT_FOUND')
+          p.write_text('\n'.join(out)+'\n',encoding='utf-8')
+          PY
+
+          grep -F 'applicationId = "tr.borsatakip.v5"' app/build.gradle.kts
+          grep -F 'versionCode = 134' app/build.gradle.kts
+          grep -F 'versionName = "5.2.5"' app/build.gradle.kts
+
+          rm -rf .git .gradle .kotlin app/build build
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import zipfile
+          src=Path('/tmp/src')
+          out=Path('/tmp/out/V5-ARACI-KURUM-5.2.5-B134-SETTINGS-CONTROL-CENTER-Kaynak-Kod.zip')
+          excluded={'.git','.gradle','.kotlin','build'}
+          with zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED) as z:
+              for p in src.rglob('*'):
+                  if not p.is_file():
+                      continue
+                  rel=p.relative_to(src)
+                  if any(part in excluded for part in rel.parts):
+                      continue
+                  z.write(p,rel.as_posix())
+          PY
+
+          sha256sum /tmp/out/V5-ARACI-KURUM-5.2.5-B134-SETTINGS-CONTROL-CENTER-Kaynak-Kod.zip | tee /tmp/out/V5-ARACI-KURUM-5.2.5-B134-SETTINGS-CONTROL-CENTER-Kaynak-Kod.zip.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: B134-SOURCE-EXPORT
+          path: /tmp/out/*
+          retention-days: 90
