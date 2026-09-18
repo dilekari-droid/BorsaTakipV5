@@ -123,6 +123,16 @@
                     android:text="Yahoo gecikmeli BIST yedeği"
                     android:textColor="@color/text_primary" />
 
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:background="@drawable/bg_card"
+                    android:padding="12dp"
+                    android:text="VİOP production için zorunlu uçlar: /v1/health • /v1/viop/contracts • /v1/viop/quote/{symbol} • /v1/viop/history/{symbol}. Kaydet sonrası bağlantı otomatik doğrulanır."
+                    android:textColor="@color/text_secondary"
+                    android:textSize="12sp" />
+
                 <Button
                     android:id="@+id/testConnection"
                     android:layout_width="match_parent"
