@@ -5,7 +5,7 @@ on:
     branches: [v525-b132-hisseler-viop-ui]
     paths:
       - '.github/workflows/build-b132-hisseler-viop-ui.yml'
-      - 'ci_payload/b132_hisseler_viop_ui/B132-HISSELER-VIOP-UI.patch.gz.b64'
+      - 'ci_payload/b132_hisseler_viop_ui/chunks/**'
   workflow_dispatch:
 
 permissions:
@@ -47,8 +47,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          PAYLOAD="$GITHUB_WORKSPACE/ci_payload/b132_hisseler_viop_ui/B132-HISSELER-VIOP-UI.patch.gz.b64"
-          base64 -d "$PAYLOAD" > /tmp/B132.patch.gz
+          CHUNKS="$GITHUB_WORKSPACE/ci_payload/b132_hisseler_viop_ui/chunks"
+          cat "$CHUNKS"/part00.b64 "$CHUNKS"/part01.b64 "$CHUNKS"/part02.b64 "$CHUNKS"/part03.b64 "$CHUNKS"/part04.b64 > /tmp/B132.patch.gz.b64
+          echo '69f3644c632a37bee5b113d6f007485f82b1004d949adafa0b0dacc6ae6b60ce  /tmp/B132.patch.gz.b64' | sha256sum -c -
+          base64 -d /tmp/B132.patch.gz.b64 > /tmp/B132.patch.gz
           gzip -t /tmp/B132.patch.gz
           gzip -dc /tmp/B132.patch.gz > /tmp/B132.patch
           echo '5fc8ad817b33336c8162ca1f5c14fd51b93bc8825898feee329f93da90672557  /tmp/B132.patch' | sha256sum -c -
