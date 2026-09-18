@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/build-b131-viop-main.yml'
       - 'ci_payload/b131_viop_main/B131-VIOP-MAIN-UI-REDESIGN.patch.gz.b64'
+      - 'ci_payload/b131_viop_main/B131-LEGACY-UI-TEST-COMPAT.patch'
   workflow_dispatch:
 
 permissions:
@@ -60,6 +61,9 @@ jobs:
           grep -F 'holder.price.text = "VİOP —"' app/src/main/java/tr/borsatakip/v5/ui/ViopUnderlyingOpportunityAdapter.kt
           cp /tmp/B131.patch /tmp/out/B131-VIOP-MAIN-UI-REDESIGN.patch
           sha256sum /tmp/B131.patch > /tmp/out/B131-VIOP-MAIN-UI-REDESIGN.patch.sha256
+          echo '0d6597c04d2bb7a0b2680ceaa96f9cfdc02b1ee8bd71976743e528339e673e26  '$GITHUB_WORKSPACE/ci_payload/b131_viop_main/B131-LEGACY-UI-TEST-COMPAT.patch | sha256sum -c -
+          patch -p1 --batch --forward < $GITHUB_WORKSPACE/ci_payload/b131_viop_main/B131-LEGACY-UI-TEST-COMPAT.patch
+          cp $GITHUB_WORKSPACE/ci_payload/b131_viop_main/B131-LEGACY-UI-TEST-COMPAT.patch /tmp/out/
 
       - uses: actions/setup-java@v5
         with:
