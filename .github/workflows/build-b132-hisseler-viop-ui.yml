@@ -90,7 +90,7 @@ jobs:
           grep -F 'versionCode = 132' app/build.gradle.kts
           grep -F 'versionName = "5.2.5"' app/build.gradle.kts
           grep -F '@+id/stocksSearch' app/src/main/res/layout/activity_stocks.xml
-          grep -F '@+id/stockList' app/src/main/res/layout/activity_stocks.xml
+          grep -F '@+id/stocksList' app/src/main/res/layout/activity_stocks.xml
           grep -F '@+id/summaryLong' app/src/main/res/layout/activity_viop.xml
           grep -F '@+id/viopSearch' app/src/main/res/layout/activity_viop.xml
           grep -F 'holder.price.text = "VİOP —"' app/src/main/java/tr/borsatakip/v5/ui/ViopUnderlyingOpportunityAdapter.kt
