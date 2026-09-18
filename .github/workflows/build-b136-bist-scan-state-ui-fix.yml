@@ -40,7 +40,6 @@ jobs:
           cp -a /tmp/src/. /tmp/base/
 
           cat "$GITHUB_WORKSPACE"/ci_payload/b136_bist_scan_state_ui_fix/part*.b64 > /tmp/b136.b64
-          echo '69750a54d0bc63a22a9c2689e7c12e6d56342940d5219a98fc83b85baae580cf  /tmp/b136.b64' | sha256sum -c -
           base64 -d /tmp/b136.b64 > /tmp/b136.gz
           echo '5528ba504f2e67bb2bf9f659308b4e16a50adf3b4d48408b6c732242bd284a1b  /tmp/b136.gz' | sha256sum -c -
           gzip -dc /tmp/b136.gz > /tmp/b136.patch
