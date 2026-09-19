@@ -165,13 +165,32 @@ def _normalize_candles(payload: Any, requested_symbol: str) -> HistoryResponse:
             )
         except (KeyError, TypeError, ValueError):
             continue
-        if candle.timestamp <= 0 or candle.high < candle.low or candle.volume < 0:
+        values = (candle.open, candle.high, candle.low, candle.close, candle.volume)
+        if not all(value == value and abs(value) != float("inf") for value in values):
+            continue
+        if (
+            candle.timestamp <= 0
+            or candle.open <= 0
+            or candle.high <= 0
+            or candle.low <= 0
+            or candle.close <= 0
+            or candle.volume < 0
+            or candle.high < max(candle.open, candle.close)
+            or candle.low > min(candle.open, candle.close)
+            or candle.high < candle.low
+        ):
             continue
         candles.append(candle)
     candles.sort(key=lambda c: c.timestamp)
+    unique_by_timestamp: dict[int, Candle] = {}
+    for candle in candles:
+        unique_by_timestamp[candle.timestamp] = candle
+    candles = list(unique_by_timestamp.values())
     if len(candles) < 220:
         raise HTTPException(status_code=422, detail=f"Insufficient OHLCV history: {len(candles)} candles; minimum 220")
     symbol = str(payload.get("symbol") or requested_symbol).strip().upper()
+    if symbol != requested_symbol:
+        raise HTTPException(status_code=409, detail="Upstream symbol does not match requested symbol")
     name = payload.get("name")
     return HistoryResponse(
         symbol=symbol,
