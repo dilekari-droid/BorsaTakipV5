@@ -27,13 +27,28 @@ jobs:
         run: |
           set -euo pipefail
           BASE='https://raw.githubusercontent.com/dilekari-droid/BorsaTakipV5/build-v5.4.1-final-apk/build_payload'
-          : > /tmp/v541.b64
+          mkdir -p /tmp/v541parts
           for n in 000 001 002 003 004 005 006 007 008 009; do
-            curl -fsSL "$BASE/v541_final_part_${n}.b64" >> /tmp/v541.b64
+            curl -fsSL "$BASE/v541_final_part_${n}.b64" -o "/tmp/v541parts/${n}"
           done
-          curl -fsSL "$BASE/v541b_part_010.b64" >> /tmp/v541.b64
-          base64 -d /tmp/v541.b64 > /tmp/v541.tar.xz
-          xz -t /tmp/v541.tar.xz
+          curl -fsSL "$BASE/v541b_part_010.b64" -o /tmp/v541parts/010
+          test "$(wc -c < /tmp/v541parts/008)" -eq 15999
+          prefix=/tmp/v541parts/prefix
+          suffix=/tmp/v541parts/suffix
+          cat /tmp/v541parts/{000,001,002,003,004,005,006,007,008} > "$prefix"
+          cat /tmp/v541parts/{009,010} > "$suffix"
+          found=''
+          alphabet='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+          for ((i=0; i<${#alphabet}; i++)); do
+            c="${alphabet:i:1}"
+            { cat "$prefix"; printf '%s' "$c"; cat "$suffix"; } > /tmp/v541.b64
+            if base64 -d /tmp/v541.b64 > /tmp/v541.tar.xz 2>/dev/null && xz -t /tmp/v541.tar.xz 2>/dev/null; then
+              found="$c"
+              echo "Recovered missing payload boundary character."
+              break
+            fi
+          done
+          test -n "$found"
           tar -xJf /tmp/v541.tar.xz -C .
 
       - name: Enforce V5.4.1 identity
