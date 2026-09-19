@@ -1,0 +1,8 @@
+{
+  "name": "borsa-takip-v5-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": { "start": "node server.js", "check": "node --check server.js" }
+}
