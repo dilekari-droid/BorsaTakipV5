@@ -34,7 +34,7 @@ jobs:
               'Apply exact B147 delayed historical patch',
               'Verify exact B147 production tree',
           ]
-          out=[]
+          blocks=[]
           for name in names:
               marker=f'      - name: {name}'
               i=lines.index(marker)
@@ -50,8 +50,12 @@ jobs:
                       break
                   block.append(line)
                   j+=1
-              out.append(textwrap.dedent('\n'.join(block)).rstrip())
-          Path('/tmp/reconstruct_b147.sh').write_text('#!/usr/bin/env bash\nset -euo pipefail\n'+'\n\n'.join(out)+'\n')
+              blocks.append(textwrap.dedent('\n'.join(block)).rstrip())
+          script = '#!/usr/bin/env bash\nset -euo pipefail\n'
+          script += blocks[0] + '\n'
+          script += 'cd "$GITHUB_WORKSPACE"\n' + blocks[1] + '\n'
+          script += 'cd /tmp/src\n' + blocks[2] + '\n'
+          Path('/tmp/reconstruct_b147.sh').write_text(script)
           PY
           chmod +x /tmp/reconstruct_b147.sh
           /tmp/reconstruct_b147.sh
