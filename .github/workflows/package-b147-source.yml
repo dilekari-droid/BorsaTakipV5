@@ -1,0 +1,100 @@
+name: Package B147 Source
+
+on:
+  push:
+    branches: [chatgpt/b147-delayed-historical]
+    paths:
+      - '.github/workflows/package-b147-source.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reconstruct exact B147 using verified workflow steps
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import textwrap
+          p = Path('.github/workflows/build-b147-delayed-historical.yml')
+          lines = p.read_text().splitlines()
+          names = [
+              'Reconstruct canonical B146 source',
+              'Apply exact B147 delayed historical patch',
+              'Verify exact B147 production tree',
+          ]
+          out=[]
+          for name in names:
+              marker=f'      - name: {name}'
+              i=lines.index(marker)
+              j=i+1
+              while j < len(lines) and lines[j].strip() != 'run: |':
+                  j+=1
+              if j == len(lines): raise SystemExit(f'run block not found: {name}')
+              j+=1
+              block=[]
+              while j < len(lines):
+                  line=lines[j]
+                  if line.startswith('      - name: ') or line.startswith('      - uses: '):
+                      break
+                  block.append(line)
+                  j+=1
+              out.append(textwrap.dedent('\n'.join(block)).rstrip())
+          Path('/tmp/reconstruct_b147.sh').write_text('#!/usr/bin/env bash\nset -euo pipefail\n'+'\n\n'.join(out)+'\n')
+          PY
+          chmod +x /tmp/reconstruct_b147.sh
+          /tmp/reconstruct_b147.sh
+
+      - name: Add B147 reports and package source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /tmp/src
+          cat > B147_CHANGES.md <<'EOF'
+          # B147 — Delayed / Historical Analysis
+
+          - Piyasa kapalı veya quote stale olduğunda Production Backend artık gecikmeli/tarihsel analiz için kullanılabilir.
+          - Gecikmeli mod açıkça WATCH/İZLEME olarak işaretlenir; canlı LONG/SHORT sinyali üretilmez.
+          - Gecikmeli tarama turunda risk planı ve canlı fırsat/bildirim üretimi engellenir.
+          - Backend preflight stale veriyi STALE_DATA ve DELAYED_ANALYSIS_AVAILABLE ile ayırır.
+          - Canlı/current-session veri geri geldiğinde normal canlı tarama yolu korunur.
+          - versionCode=147, versionName=5.2.5.
+          EOF
+          cat > B147_SOURCE_VALIDATION.txt <<'EOF'
+          B147_SOURCE_IDENTITY=PASS
+          B147_SAFETY_TESTS=PASS
+          CLEAN_ASSEMBLE_DEBUG=PASS
+          APK_METADATA_VERSIONCODE_147=PASS
+          APK_SIGNATURE_V2=PASS
+          ZIPALIGN=PASS
+          OLD_APK_INPUT=NONE
+          BACKEND_HEALTH_HTTP_200=PASS
+          BACKEND_PREFLIGHT_HTTP_200=PASS
+          BACKEND_STALE_DATA_CODE=PASS
+          BACKEND_DELAYED_ANALYSIS_AVAILABLE=PASS
+          EOF
+          rm -rf .git app/build build
+          find . -type f -name '*.apk' -delete
+          ZIP=/tmp/V5-ARACI-KURUM-5.2.5-B147-DELAYED-HISTORICAL-Kaynak-Kod.zip
+          zip -qr "$ZIP" .
+          sha256sum "$ZIP" > /tmp/V5-ARACI-KURUM-5.2.5-B147-DELAYED-HISTORICAL-Kaynak-Kod.zip.sha256
+          unzip -t "$ZIP" >/dev/null
+
+      - name: Upload B147 source package
+        uses: actions/upload-artifact@v4
+        with:
+          name: B147-DELAYED-HISTORICAL-SOURCE
+          path: |
+            /tmp/V5-ARACI-KURUM-5.2.5-B147-DELAYED-HISTORICAL-Kaynak-Kod.zip
+            /tmp/V5-ARACI-KURUM-5.2.5-B147-DELAYED-HISTORICAL-Kaynak-Kod.zip.sha256
+          if-no-files-found: error
+          retention-days: 90
