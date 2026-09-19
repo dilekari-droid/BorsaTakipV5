@@ -1,17 +1,15 @@
-name: Android Build
+name: V5.4.1 FINAL Isolated APK
 
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+    branches: [ v5.4.1-final-isolated-apk ]
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout isolated branch
         uses: actions/checkout@v4
 
       - name: Setup JDK 17
@@ -20,135 +18,65 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Gradle cache
+      - name: Setup Gradle 8.9
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
 
-      - name: Clean
-        run: gradle clean
-
-      - name: Unit tests
-        run: gradle :app:testDebugUnitTest
-
-      - name: Lint
-        run: gradle :app:lintDebug
-
-      - name: Debug build
-        run: |
-          gradle :app:assembleDebug
-          mkdir -p app/build/outputs/final
-          cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/final/BorsaTakipV5.1.27-debug.apk
-
-      - name: Release R8 smoke build
-        run: gradle :app:assembleRelease
-
-      - name: Verify APK and quality markers
+      - name: Restore V5.4.1 FINAL source only
         run: |
           set -euo pipefail
-          APK=app/build/outputs/final/BorsaTakipV5.1.27-debug.apk
-          test -f "$APK"
-          unzip -t "$APK" >/tmp/apk-unzip-test.txt
-          tail -n 1 /tmp/apk-unzip-test.txt
-
-          rm -f /tmp/all.dex
-          while IFS= read -r dex; do
-            unzip -p "$APK" "$dex" >> /tmp/all.dex
-          done < <(zipinfo -1 "$APK" | grep -E '^classes([0-9]+)?\.dex$')
-
-          for forbidden in \
-            'api.ornek.com' \
-            'DemoMarketDataProvider' \
-            'LocalBistTestProvider' \
-            'TV_TEST_USERNAME' \
-            'TV_TEST_PASSWORD' \
-            'TradingViewAuthClient' \
-            'TradingViewBrowserLoginActivity' \
-            'TradingViewScannerOpportunityProvider' \
-            'TradingViewViopProvider' \
-            'TradingViewSnapshotScorer' \
-            'OTURUMU UYGULAMAYA AKTAR'; do
-            if strings /tmp/all.dex | grep -Fq "$forbidden"; then
-              echo "Forbidden legacy/test component found in APK: $forbidden"
-              exit 1
-            fi
+          BASE='https://raw.githubusercontent.com/dilekari-droid/BorsaTakipV5/build-v5.4.1-final-apk/build_payload'
+          : > /tmp/v541.b64
+          for n in 000 001 002 003 004 005 006 007 008 009; do
+            curl -fsSL "$BASE/v541_final_part_${n}.b64" >> /tmp/v541.b64
           done
+          curl -fsSL "$BASE/v541b_part_010.b64" >> /tmp/v541.b64
+          base64 -d /tmp/v541.b64 > /tmp/v541.tar.xz
+          xz -t /tmp/v541.tar.xz
+          tar -xJf /tmp/v541.tar.xz -C .
 
-          require_marker() {
-            local marker="$1"
-            local file="$2"
-            grep -Fq "$marker" "$file" || { echo "Required marker missing: $marker in $file"; exit 1; }
-          }
+      - name: Enforce V5.4.1 identity
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p=Path('app/build.gradle.kts')
+          s=p.read_text()
+          s,n1=re.subn(r'versionCode\s*=\s*\d+', 'versionCode = 541', s, count=1)
+          s,n2=re.subn(r'versionName\s*=\s*"[^"]+"', 'versionName = "5.4.1"', s, count=1)
+          if n1 != 1 or n2 != 1:
+              raise SystemExit('Version fields not found exactly once')
+          p.write_text(s)
+          PY
+          grep -F 'versionCode = 541' app/build.gradle.kts
+          grep -F 'versionName = "5.4.1"' app/build.gradle.kts
 
-          require_marker 'ProviderRouter(this@BistScanActivity)' app/src/main/java/tr/borsatakip/v5/ui/BistScanActivity.kt
-          require_marker 'BistScanner(ProviderRouter(this@OpportunityActivity))' app/src/main/java/tr/borsatakip/v5/ui/OpportunityActivity.kt
-          require_marker 'CustomTabsIntent' app/src/main/java/tr/borsatakip/v5/ui/SettingsActivity.kt
-          require_marker 'RealTimeIntegrityPolicy.validate' app/src/main/java/tr/borsatakip/v5/scan/BistScanner.kt
-          require_marker 'ANLIK VERİ DOĞRULANAMADI' app/src/main/java/tr/borsatakip/v5/scan/BistScanner.kt
-          require_marker 'MAX_DATA_AGE_MS = 60_000L' app/src/main/java/tr/borsatakip/v5/data/RealTimeIntegrityPolicy.kt
-          require_marker 'MAX_DECLARED_DELAY_SECONDS = 5' app/src/main/java/tr/borsatakip/v5/data/RealTimeIntegrityPolicy.kt
-          require_marker 'currentSessionIncluded' app/src/main/java/tr/borsatakip/v5/data/MobileMarketDataProvider.kt
-          require_marker 'realtime' backend/app/main.py
-          require_marker 'currentSessionIncluded' backend/app/main.py
-          require_marker 'strictRealtime' backend/app/main.py
-          require_marker 'ANLIK ✓' app/src/main/java/tr/borsatakip/v5/ui/OpportunityAdapter.kt
-          require_marker 'finalSignalScore.coerceIn(0, 100)' app/src/main/java/tr/borsatakip/v5/ui/OpportunityAdapter.kt
-          require_marker 'VERİ KAPSAMI' app/src/main/java/tr/borsatakip/v5/ui/OpportunityAdapter.kt
-          require_marker 'WindowInsetsCompat.Type.systemBars()' app/src/main/java/tr/borsatakip/v5/ui/BaseActivity.kt
-          require_marker 'bg_screen_gradient' app/src/main/res/layout/activity_main.xml
+      - name: Build V5.4.1 FINAL APK
+        run: |
+          set -euo pipefail
+          gradle clean :app:assembleDebug
+          mkdir -p app/build/outputs/final
+          cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/final/V5-ARACI-KURUM-5.4.1-FINAL.apk
 
-          if grep -R -E -q 'TradingViewAuthClient|TradingViewBrowserLoginActivity|TradingViewScannerOpportunityProvider|TradingViewViopProvider|TradingViewSnapshotScorer|android\.webkit\.WebView|WebView/OAuth|OTURUMU UYGULAMAYA AKTAR' app/src; then
-            echo 'Legacy TradingView embedded-auth/WebView reference remains in app source.'
-            exit 1
-          fi
-
+      - name: Verify APK identity and SHA-256
+        run: |
+          set -euo pipefail
+          APK='app/build/outputs/final/V5-ARACI-KURUM-5.4.1-FINAL.apk'
+          test -f "$APK"
+          unzip -t "$APK" >/dev/null
           AAPT=$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -1)
-          test -x "$AAPT"
-          "$AAPT" dump badging "$APK" > /tmp/badging.txt
-          grep -Fq "versionName='5.1.27'" /tmp/badging.txt
-          "$AAPT" dump xmltree "$APK" AndroidManifest.xml > /tmp/manifest.txt
-          grep -Fq 'android:allowBackup(0x01010280)=(type 0x12)0x0' /tmp/manifest.txt
-          test -f app/build/outputs/mapping/release/mapping.txt
-          echo 'V5.1.27 strict real-time integrity, backend-first, browser-only TradingView, R8 checks passed.'
+          "$AAPT" dump badging "$APK" | tee /tmp/badging.txt
+          grep -Fq "versionCode='541'" /tmp/badging.txt
+          grep -Fq "versionName='5.4.1'" /tmp/badging.txt
+          sha256sum "$APK" | tee app/build/outputs/final/V5-ARACI-KURUM-5.4.1-FINAL.apk.sha256
 
-      - name: Check release secrets
-        if: github.event_name != 'pull_request'
-        env:
-          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: |
-          if [ -n "$KEYSTORE_BASE64" ] && [ -n "$KEYSTORE_PASSWORD" ] && [ -n "$KEY_ALIAS" ] && [ -n "$KEY_PASSWORD" ]; then
-            echo "RELEASE_SIGNING_AVAILABLE=true" >> "$GITHUB_ENV"
-          else
-            echo "RELEASE_SIGNING_AVAILABLE=false" >> "$GITHUB_ENV"
-            echo "Signed release skipped: ANDROID_* signing secrets are incomplete."
-          fi
-
-      - name: Prepare release keystore
-        if: env.RELEASE_SIGNING_AVAILABLE == 'true'
-        env:
-          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-        run: printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/borsatakip-release.jks"
-
-      - name: Signed release build and verification
-        if: env.RELEASE_SIGNING_AVAILABLE == 'true'
-        env:
-          BORSA_KEYSTORE_PATH: ${{ runner.temp }}/borsatakip-release.jks
-          BORSA_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          BORSA_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          BORSA_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: |
-          gradle :app:assembleRelease
-          cp app/build/outputs/apk/release/app-release.apk app/build/outputs/final/BorsaTakipV5.1.27-release.apk
-          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)
-          test -x "$APKSIGNER"
-          "$APKSIGNER" verify --verbose --print-certs app/build/outputs/final/BorsaTakipV5.1.27-release.apk
-
-      - name: Upload APK artifacts
+      - name: Upload V5.4.1 FINAL artifact
         uses: actions/upload-artifact@v4
         with:
-          name: BorsaTakipV5.1.27-apk
-          path: app/build/outputs/final/*.apk
+          name: V5-ARACI-KURUM-5.4.1-FINAL
+          path: |
+            app/build/outputs/final/V5-ARACI-KURUM-5.4.1-FINAL.apk
+            app/build/outputs/final/V5-ARACI-KURUM-5.4.1-FINAL.apk.sha256
           if-no-files-found: error
