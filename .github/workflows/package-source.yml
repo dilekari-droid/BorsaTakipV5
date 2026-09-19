@@ -1,0 +1,44 @@
+name: Package Source
+
+on:
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve app version
+        run: |
+          set -euo pipefail
+          VERSION_NAME=$(grep -E 'versionName = "[0-9]+\.[0-9]+\.[0-9]+"' app/build.gradle.kts | sed -E 's/.*"([0-9]+\.[0-9]+\.[0-9]+)".*/\1/' | head -1)
+          test -n "$VERSION_NAME"
+          echo "APP_VERSION=$VERSION_NAME" >> "$GITHUB_ENV"
+
+      - name: Package clean release source
+        run: |
+          set -euo pipefail
+          zip -r "BorsaTakipV${APP_VERSION}-kaynak-kod.zip" . \
+            -x '.git/*' \
+               'app/build/*' \
+               '.gradle/*' \
+               '**/.gradle/*' \
+               '**/build/*' \
+               '*.b64' \
+               'v*.b64' \
+               '*patch*' \
+               '*payload*' \
+               'BORSA-TAKIP-V5.0.0-KAYNAK-KOD.zip' \
+               '*.apk' \
+               '*.zip'
+
+      - name: Upload clean source artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BorsaTakipV${{ env.APP_VERSION }}-kaynak-kod
+          path: BorsaTakipV${{ env.APP_VERSION }}-kaynak-kod.zip
+          if-no-files-found: error

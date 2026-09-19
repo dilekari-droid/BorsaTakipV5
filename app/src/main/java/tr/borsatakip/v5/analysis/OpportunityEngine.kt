@@ -1,9 +1,14 @@
 package tr.borsatakip.v5.analysis
 
+import tr.borsatakip.v5.model.LrcTechnicalSnapshot
 import tr.borsatakip.v5.model.Opportunity
 import tr.borsatakip.v5.model.Stock
+import tr.borsatakip.v5.ui.chart.LinearRegressionChannelCalculator
+import kotlin.math.abs
 
 object OpportunityEngine {
+    private const val LRC_LENGTH = 100
+
     fun score(stock: Stock, kapLabel: String = "Veri yok"): Opportunity? {
         val c = stock.candles.filter { candle ->
             listOf(candle.open, candle.high, candle.low, candle.close, candle.volume).all { it.isFinite() }
@@ -16,6 +21,40 @@ object OpportunityEngine {
         if (!price.isFinite() || price <= 0.0 || !prev.isFinite() || prev <= 0.0 || price20 <= 0.0) return null
 
         val t = TechnicalAnalyzer.analyze(c)
+        val lrcResult = LinearRegressionChannelCalculator.calculate(c.map { it.close }, LRC_LENGTH)
+        val lrc = lrcResult?.let { result ->
+            val idx = result.endIndex
+            val mid = result.regressionAt(idx)
+            val u1 = result.upperAt(idx, 1.0)
+            val l1 = result.lowerAt(idx, 1.0)
+            val u2 = result.upperAt(idx, 2.0)
+            val l2 = result.lowerAt(idx, 2.0)
+            val u3 = result.upperAt(idx, 3.0)
+            val l3 = result.lowerAt(idx, 3.0)
+            val width = u2 - l2
+            val widthPct = if (mid.isFinite() && mid != 0.0) (width / abs(mid)) * 100.0 else null
+            LrcTechnicalSnapshot(
+                period = LRC_LENGTH,
+                slope = result.slope,
+                trend = when (result.trend) {
+                    LinearRegressionChannelCalculator.Trend.UP -> "YÜKSELEN"
+                    LinearRegressionChannelCalculator.Trend.DOWN -> "DÜŞEN"
+                    LinearRegressionChannelCalculator.Trend.FLAT -> "YATAY"
+                },
+                pearsonR = result.pearsonR,
+                upper1 = u1,
+                lower1 = l1,
+                upper2 = u2,
+                lower2 = l2,
+                upper3 = u3,
+                lower3 = l3,
+                channelPosition = channelPosition(price, mid, u1, l1, u2, l2),
+                channelWidth = width,
+                channelWidthPct = widthPct?.takeIf { it.isFinite() },
+                distanceToMidline = result.distanceToMid
+            )
+        }
+
         var longScore = 0
         var shortScore = 0
         val longParts = mutableListOf<String>()
@@ -43,6 +82,20 @@ object OpportunityEngine {
 
         if (t.macd?.isFinite() == true && t.macdSignal?.isFinite() == true) {
             if (t.macd > t.macdSignal) addLong("MACD", 15) else addShort("MACD", 15)
+        }
+
+        // LRC tek başına AL/SAT üretmez. Yalnız mevcut puanlamaya sınırlı trend uyumu katkısı verir.
+        lrc?.let { channel ->
+            when (channel.trend) {
+                "YÜKSELEN" -> {
+                    addLong("LRC100 trend", 6)
+                    if (channel.pearsonR >= 0.70) addLong("LRC Pearson", 4)
+                }
+                "DÜŞEN" -> {
+                    addShort("LRC100 trend", 6)
+                    if (channel.pearsonR <= -0.70) addShort("LRC Pearson", 4)
+                }
+            }
         }
 
         val volumeRatio = t.volumeRatio?.takeIf { it.isFinite() && it >= 0.0 }
@@ -110,6 +163,11 @@ object OpportunityEngine {
 
         val breakdown = buildList {
             addAll(chosenParts)
+            lrc?.let {
+                add("LRC100: ${it.trend} • R ${"%.2f".format(it.pearsonR)} • ${it.channelPosition}")
+                if (price > it.upper2) add("LRC: Üst kanal dışında (+2σ üzeri) • tek başına SAT değildir")
+                if (price < it.lower2) add("LRC: Alt kanal dışında (-2σ altı) • tek başına AL değildir")
+            }
             add("KAP: +$kapScore (${if (kapLabel == "Veri yok") "veri yok" else kapLabel})")
             add("Risk: $risk/100 (fırsat puanından ayrı)")
             add("Toplam: $score/100 • $direction")
@@ -133,10 +191,20 @@ object OpportunityEngine {
             dataTimestamp = stock.dataTimestamp,
             candles = c,
             technical = t,
+            lrc = lrc,
             scoreBreakdown = breakdown,
             isRealtime = stock.isRealtime,
             delaySeconds = stock.delaySeconds,
             currentSessionIncluded = stock.currentSessionIncluded
         )
+    }
+
+    private fun channelPosition(price: Double, mid: Double, u1: Double, l1: Double, u2: Double, l2: Double): String = when {
+        price < l2 -> "ALT -2σ ALTINDA"
+        price < l1 -> "-2σ / -1σ"
+        price < mid -> "-1σ / ORTA"
+        price <= u1 -> "ORTA / +1σ"
+        price <= u2 -> "+1σ / +2σ"
+        else -> "+2σ ÜZERİNDE"
     }
 }
