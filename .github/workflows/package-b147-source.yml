@@ -20,6 +20,8 @@ jobs:
 
       - name: Reconstruct exact B147 using verified workflow steps
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           python3 - <<'PY'
