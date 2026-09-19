@@ -1,0 +1,182 @@
+name: B146 Provider Redirect APK
+
+on:
+  push:
+    branches: [chatgpt/b146-provider-redirect]
+    paths:
+      - '.github/workflows/build-b146-provider-redirect.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reconstruct canonical B135 source
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/src /tmp/out /tmp/b134
+          mkdir -p /tmp/src /tmp/out /tmp/b134
+          curl -fL --retry 3 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/dilekari-droid/BorsaTakipV5/actions/artifacts/10543640533/zip" \
+            -o /tmp/b134-artifact.zip
+          unzip -q /tmp/b134-artifact.zip -d /tmp/b134
+          SRCZIP=$(find /tmp/b134 -type f -name '*B134*Kaynak-Kod.zip' | head -n1)
+          test -n "$SRCZIP" -a -s "$SRCZIP"
+          echo 'f4762d15c48eed74e18164dc1e7d4d727783ee01d8eec833312fdb61121dafa5  '"$SRCZIP" | sha256sum -c -
+          unzip -q "$SRCZIP" -d /tmp/src
+          echo 'e5b73820674c98f95516612a6bfd28ea498d125ea647c5a61f3180ffc9dd914a  ci_payload/b135/B135-MTF-CACHE-FIX.patch.gz.b64' | sha256sum -c -
+          base64 -d ci_payload/b135/B135-MTF-CACHE-FIX.patch.gz.b64 > /tmp/B135.patch.gz
+          echo '614ca22afc822d2d03a14d4f7eeea978c191eda77c298e27665ed11f4905c428  /tmp/B135.patch.gz' | sha256sum -c -
+          gzip -dc /tmp/B135.patch.gz > /tmp/B135.patch
+          cd /tmp/src
+          git init -q
+          git add .
+          git -c user.email=ci@example.invalid -c user.name=CI commit -qm baseline
+          git apply --check /tmp/B135.patch
+          git apply /tmp/B135.patch
+
+      - name: Reconstruct exact B143 production source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat build_payloads/b143_overlay_part00.b64 build_payloads/b143_overlay_part01.b64 build_payloads/b143_overlay_part02.b64 build_payloads/b143_overlay_part03a.b64 build_payloads/b143_overlay_part03b.b64 build_payloads/b143_overlay_part04.b64 build_payloads/b143_overlay_part05.b64 > /tmp/b137-overlay.b64
+          echo '103faff0ecda5c1b803b0cea932c602c4d60cfed6a26bb47b2ec02122f7ce74a  /tmp/b137-overlay.b64' | sha256sum -c -
+          base64 -d /tmp/b137-overlay.b64 | tar -xJf - -C /tmp/src
+          cat build_payloads/b143_patch_part00.b64 build_payloads/b143_patch_part01.b64 build_payloads/b143_patch_part02.b64 build_payloads/b143_patch_part03.b64 build_payloads/b143_patch_part04.b64 build_payloads/b143_patch_part05.b64 build_payloads/b143_patch_part06.b64 > /tmp/b137-to-b143.patch.xz.b64
+          echo 'e759ca50a0ffc49bb22b0981b70d7ebfa8284151bc5843cc2711131db98f4e3d  /tmp/b137-to-b143.patch.xz.b64' | sha256sum -c -
+          base64 -d /tmp/b137-to-b143.patch.xz.b64 | xz -d > /tmp/b137-to-b143.patch
+          cd /tmp/src
+          patch -p1 < /tmp/b137-to-b143.patch
+
+      - name: Apply B144 and B145 exact patches
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -d build_payloads/b144_lens_patch.b64 > /tmp/B144.patch
+          echo 'a9732f6e6f255347438e176e1816961ab1b768daba90ede725fec43c326b95cb  /tmp/B144.patch' | sha256sum -c -
+          cd /tmp/src
+          git apply --check /tmp/B144.patch
+          git apply /tmp/B144.patch
+          echo 'dcc3e3c7c0d823f90dcb1d83495aa5d15a11a989455c433b89f251c7772d5be8  '"$GITHUB_WORKSPACE/build_payloads/B144-to-B145.patch" | sha256sum -c -
+          git apply --check "$GITHUB_WORKSPACE/build_payloads/B144-to-B145.patch"
+          git apply "$GITHUB_WORKSPACE/build_payloads/B144-to-B145.patch"
+          grep -F 'versionCode = 145' app/build.gradle.kts
+
+      - name: Verify exact B145 production tree
+        shell: bash
+        working-directory: /tmp/src
+        run: |
+          set -euo pipefail
+          { find app/src/main -type f -print0; printf '%s\0' app/build.gradle.kts build.gradle.kts settings.gradle.kts gradle.properties gradle/wrapper/gradle-wrapper.properties; } | sort -z | xargs -0 sha256sum > /tmp/B145_PRODUCTION_TREE_SHA256.txt
+          echo '1d43bac0a33c30920e6615c63c6e6fd024aaad34a4d5ffc078062d955baae84c  /tmp/B145_PRODUCTION_TREE_SHA256.txt' | sha256sum -c -
+
+      - name: Apply B146 provider redirect patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 -d build_payloads/B145-to-B146.patch.b64 > /tmp/B146.patch
+          echo '52cab9d1f26f34d2408c2ed6e240cd7e3dc17bde507d83a67b2a28d2a27a0435  /tmp/B146.patch' | sha256sum -c -
+          cd /tmp/src
+          git apply --check /tmp/B146.patch
+          git apply /tmp/B146.patch
+          grep -F 'versionCode = 146' app/build.gradle.kts
+          grep -F 'openProviderSettings()' app/src/main/java/tr/borsatakip/v5/ui/BistScanActivity.kt
+          grep -F 'SettingsDetailActivity.MODE_DATA_CONNECTION' app/src/main/java/tr/borsatakip/v5/ui/BistScanActivity.kt
+          grep -F 'SettingsDetailActivity.MODE_API_KEYS' app/src/main/java/tr/borsatakip/v5/ui/BistScanActivity.kt
+
+      - name: Verify exact B146 production tree
+        shell: bash
+        working-directory: /tmp/src
+        run: |
+          set -euo pipefail
+          { find app/src/main -type f -print0; printf '%s\0' app/build.gradle.kts build.gradle.kts settings.gradle.kts gradle.properties gradle/wrapper/gradle-wrapper.properties; } | sort -z | xargs -0 sha256sum > /tmp/B146_PRODUCTION_TREE_SHA256.txt
+          echo '53e909198d83b51dd755ab35a9b77adff26ef22286b3fb4a668e910c5334881a  /tmp/B146_PRODUCTION_TREE_SHA256.txt' | sha256sum -c -
+          echo 'B146_SOURCE_IDENTITY=PASS'
+
+      - name: Purge previous APK and build outputs
+        shell: bash
+        working-directory: /tmp/src
+        run: |
+          set -euo pipefail
+          find . -type f -name '*.apk' -print -delete
+          rm -rf app/build build
+          test -z "$(find . -type f -name '*.apk' -print -quit)"
+          echo 'OLD_APK_INPUT=NONE'
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Clean assemble B146
+        shell: bash
+        working-directory: /tmp/src
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon clean assembleDebug --stacktrace
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          cp "$APK" /tmp/out/V5-2.146.apk
+          sha256sum /tmp/out/V5-2.146.apk | tee /tmp/out/APK-SHA256.txt
+
+      - name: Verify B146 APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=/tmp/out/V5-2.146.apk
+          unzip -t "$APK" | tee /tmp/out/APK-ZIP-TEST.txt
+          BT=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -1)
+          AAPT="$ANDROID_HOME/build-tools/$BT/aapt"
+          SIGNER="$ANDROID_HOME/build-tools/$BT/apksigner"
+          ZIPALIGN="$ANDROID_HOME/build-tools/$BT/zipalign"
+          BADGING=$($AAPT dump badging "$APK" | head -n1)
+          echo "$BADGING" | tee /tmp/out/APK-BADGING.txt
+          echo "$BADGING" | grep -F "name='tr.borsatakip.v5'"
+          echo "$BADGING" | grep -F "versionCode='146'"
+          echo "$BADGING" | grep -F "versionName='5.2.5'"
+          $SIGNER verify --verbose --print-certs "$APK" | tee /tmp/out/APKSIGNER.txt
+          $SIGNER verify --verbose "$APK" | grep -F 'Verified using v2 scheme (APK Signature Scheme v2): true'
+          $ZIPALIGN -c -v 4 "$APK" | tee /tmp/out/ZIPALIGN.txt
+
+      - name: Provenance
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo 'B146 PROVIDER SETTINGS REDIRECT'
+            echo 'applicationId=tr.borsatakip.v5'
+            echo 'versionCode=146'
+            echo 'versionName=5.2.5'
+            echo 'apk_name=V5-2.146.apk'
+            echo 'source_identity_sha256=53e909198d83b51dd755ab35a9b77adff26ef22286b3fb4a668e910c5334881a'
+            echo 'old_apk_input=NONE'
+            echo 'build_command=./gradlew --no-daemon clean assembleDebug --stacktrace'
+            echo "workflow_commit=$GITHUB_SHA"
+          } > /tmp/out/PROVENANCE.txt
+
+      - name: Upload V5-2.146 APK artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: V5-2.146-B146-PROVIDER-REDIRECT
+          path: /tmp/out/*
+          if-no-files-found: error
+          retention-days: 90
