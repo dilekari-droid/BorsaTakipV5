@@ -1,0 +1,30 @@
+name: Export B147 Exact Patch
+
+on:
+  push:
+    branches: [chatgpt/b147-delayed-historical]
+    paths:
+      - '.github/workflows/export-b147-patch.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify and decode exact B147 patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '11cb2d9d13a04fe79fc7b257141fd00c241f8031d86da02621e1c3e4c54bccc5  build_payloads/B146-to-B147.patch.gz.b64' | sha256sum -c -
+          base64 -d build_payloads/B146-to-B147.patch.gz.b64 | gzip -d > B146-to-B147.patch
+          echo '310e2a78ebae7577427b619e3118eee84f4940e96b168e9c35b3d25d151355ab  B146-to-B147.patch' | sha256sum -c -
+      - uses: actions/upload-artifact@v4
+        with:
+          name: B147-EXACT-PATCH
+          path: B146-to-B147.patch
+          if-no-files-found: error
+          retention-days: 7
